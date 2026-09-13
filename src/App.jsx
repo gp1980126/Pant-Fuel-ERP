@@ -241,6 +241,48 @@ function App() {
     return () => { mounted = false; listener?.subscription?.unsubscribe?.(); };
   }, []);
 
+  const refreshCloudData = async () => {
+    if (!CLOUD_ENABLED || !session?.uid) return { ok:false, reason:"Cloud session not ready" };
+    try {
+      setCloudStatus("connecting");
+      const latest = await cloudLoadState(CLOUD_STATION_ID);
+      if (!latest?.data) return { ok:false, reason:"Cloud state not found" };
+      const next = normalizeIntegrityData(repairLegacyAuditChain(latest.data));
+      const scan = scanTransactionIntegrity(next);
+      if (scan.errors.length) {
+        const reason = scan.errors.slice(0,5).map(x => x.reason).join(" | ");
+        setCloudStatus("error");
+        console.error("Cloud refresh rejected by integrity scanner", scan);
+        return { ok:false, reason };
+      }
+      cloudApplyingRef.current = true;
+      cloudVersionRef.current = Number(latest.version || 0);
+      cloudLastSavedHashRef.current = stableHash(JSON.stringify(next));
+      setData(next);
+      setCloudStatus("online");
+      window.setTimeout(() => { cloudApplyingRef.current = false; }, 0);
+      return { ok:true, version:Number(latest.version || 0), count:Array.isArray(next.credits) ? next.credits.length : 0 };
+    } catch (e) {
+      console.error("Cloud refresh failed:", e);
+      setCloudStatus("error");
+      return { ok:false, reason:e?.message || "Cloud refresh failed" };
+    }
+  };
+
+  useEffect(() => {
+    if (!CLOUD_ENABLED || !session?.uid || !cloudHydratedRef.current) return;
+    const refresh = () => { void refreshCloudData(); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [session?.uid]);
+
   useEffect(() => {
     if (!CLOUD_ENABLED || !session?.uid || !cloudHydratedRef.current) return;
     return subscribeState(CLOUD_STATION_ID, remote => {
@@ -1322,6 +1364,11 @@ const importData = (event) => {
               <div className="userbar">
                 <span className="rolebadge">{session.role}</span>{session.role === USER_ROLES.VIEW_ONLY && <span className="rolebadge" title="Read-only role">👁️ View Only</span>}{CLOUD_ENABLED && <span className="rolebadge" title="Cloud synchronization status">☁️ {cloudStatus === "online" ? "Synced" : cloudStatus === "saving" ? "Saving…" : cloudStatus === "conflict" ? "Conflict" : cloudStatus}</span>}
                 <span style={{fontSize:"12px"}}>{session.name}</span>
+                {CLOUD_ENABLED && <button type="button" className="btn small" title="Load latest data directly from Supabase" onClick={async () => { const r = await refreshCloudData(); if (r.ok) alert(`☁️ Latest cloud data loaded.
+
+Credits: ${r.count}`); else alert(`❌ Cloud refresh failed
+
+${r.reason}`); }}>↻ Cloud Refresh</button>}
                 <button className="logout" onClick={async () => { try { if (CLOUD_ENABLED) await cloudSignOut(); else localStorage.removeItem(KEY + '_session'); } catch(e) { console.error(e); } setSession(null); setCloudReady(!CLOUD_ENABLED); setCloudStatus(CLOUD_ENABLED ? "login-required" : "local"); setPage("Dashboard"); }}>Logout</button>
               </div>
 
