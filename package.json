@@ -1,0 +1,25 @@
+{
+  "name": "pumppro-commercial",
+  "private": true,
+  "version": "4.0.1-hardened-commercial",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "node scripts/parse-check.mjs",
+    "regression": "node scripts/regression-check.mjs",
+    "release-check": "node scripts/release-check.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.115.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.1.0"
+  },
+  "description": "StationMitra commercial petrol-pump accounting foundation — hardened baseline"
+}
