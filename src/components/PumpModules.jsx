@@ -530,7 +530,35 @@ export function CollectionDetail({ data, totals, setPage, update }) {
     if (date) setMonth(String(date).slice(0,7));
   }, [date]);
 
-  const dayRow = d => canonicalDailyPayments(data).find(r => String(r.date) === String(d)) || {};
+  const paymentRowScore = row => {
+    const fuels = ["MS", "HSD", "CNG"];
+    const keys = [
+      "cash", "paytm", "card", "dtplus", "hppay", "phonepe",
+      "credit", "pumpExpense", "other", "total", "difference"
+    ];
+    return fuels.reduce((score, fuel) => {
+      const p = row?.[fuel];
+      if (!p || typeof p !== "object") return score;
+      return score + keys.reduce(
+        (n, key) => n + (p[key] !== undefined && p[key] !== "" ? 1 : 0),
+        0
+      );
+    }, 0);
+  };
+
+  // Historical data can contain duplicate rows for the same date.
+  // Always use the most complete payment row so Collection never shows
+  // blank/zero values from a partial recovery row.
+  const dayRow = d => {
+    const rowsForDate = (data.dailyPayments || []).filter(
+      r => String(r?.date || "") === String(d)
+    );
+    return rowsForDate.reduce(
+      (best, row) =>
+        !best || paymentRowScore(row) > paymentRowScore(best) ? row : best,
+      null
+    ) || {};
+  };
   const creditsForDate = d => (data.credits || []).filter(c => String(c.date) === String(d));
   const creditByFuel = d => {
     const out = { MS:0, HSD:0, CNG:0 };
@@ -5250,7 +5278,6 @@ export function DailySaleSummary({ data }) {
     fuelSummary[r.fuel].qty += n(r.qty);
     fuelSummary[r.fuel].amount += n(r.amount);
   });
-
 
   // Udhari हमेशा Credit Sale Register से आएगी.
   // पुराने saved payment में credit: 0 होने पर भी वास्तविक Udhari दिखेगी.
