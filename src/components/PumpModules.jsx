@@ -530,34 +530,33 @@ export function CollectionDetail({ data, totals, setPage, update }) {
     if (date) setMonth(String(date).slice(0,7));
   }, [date]);
 
-  const paymentRowScore = row => {
-    const fuels = ["MS", "HSD", "CNG"];
-    const keys = [
-      "cash", "paytm", "card", "dtplus", "hppay", "phonepe",
-      "credit", "pumpExpense", "other", "total", "difference"
-    ];
-    return fuels.reduce((score, fuel) => {
-      const p = row?.[fuel];
-      if (!p || typeof p !== "object") return score;
-      return score + keys.reduce(
-        (n, key) => n + (p[key] !== undefined && p[key] !== "" ? 1 : 0),
-        0
-      );
-    }, 0);
-  };
-
-  // Historical data can contain duplicate rows for the same date.
-  // Always use the most complete payment row so Collection never shows
-  // blank/zero values from a partial recovery row.
+  // Prefer the most complete saved payment row for a date.
+  // Legacy backups can contain duplicate/partial rows; canonicalDailyPayments()
+  // may otherwise select the incomplete row and make Collection look blank.
   const dayRow = d => {
-    const rowsForDate = (data.dailyPayments || []).filter(
-      r => String(r?.date || "") === String(d)
-    );
+    const rowsForDate = (Array.isArray(data.dailyPayments) ? data.dailyPayments : [])
+      .filter(r => String(r?.date || "") === String(d));
+
+    const scorePaymentRow = row => {
+      const fuels = ["MS", "HSD", "CNG"];
+      const keys = [
+        "cash", "paytm", "card", "dtplus", "hppay", "phonepe",
+        "credit", "pumpExpense", "other"
+      ];
+      return fuels.reduce((score, fuel) => {
+        const p = row?.[fuel];
+        if (!p || typeof p !== "object") return score;
+        return score + keys.reduce(
+          (nKeys, key) => nKeys + (p[key] !== undefined && p[key] !== "" ? 1 : 0),
+          0
+        );
+      }, 0);
+    };
+
     return rowsForDate.reduce(
-      (best, row) =>
-        !best || paymentRowScore(row) > paymentRowScore(best) ? row : best,
+      (best, row) => !best || scorePaymentRow(row) > scorePaymentRow(best) ? row : best,
       null
-    ) || {};
+    ) || canonicalDailyPayments(data).find(r => String(r.date) === String(d)) || {};
   };
   const creditsForDate = d => (data.credits || []).filter(c => String(c.date) === String(d));
   const creditByFuel = d => {
