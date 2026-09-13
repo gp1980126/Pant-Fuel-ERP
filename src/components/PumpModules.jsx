@@ -5211,7 +5211,7 @@ export function DailySaleSummary({ data }) {
     fuelSummary[r.fuel].amount += n(r.amount);
   });
 
-  const payment = savedPayment(data, date) || {};
+  
 
   // Udhari हमेशा Credit Sale Register से आएगी.
   // पुराने saved payment में credit: 0 होने पर भी वास्तविक Udhari दिखेगी.
