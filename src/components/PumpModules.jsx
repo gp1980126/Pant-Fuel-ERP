@@ -4802,7 +4802,12 @@ export function Purchase({data,update}){
   };
   const filtered=existing.filter(p=>p.date>=from&&p.date<=to);
   const fuels=['MS','HSD','CNG'];
-  const sumFuel=f=>filtered.filter(p=>p.fuel===f).reduce((a,p)=>({qty:a.qty+n(p.quantity),basic:a.basic+n(p.basicAmount),tax:a.tax+n(p.taxAmount),total:a.total+purchaseLandedValue(p)}),{qty:0,basic:0,tax:0,total:0});
+  // Purchase totals are always derived from the actual saved HPCL invoice totals.
+  // Normalize fuel labels so legacy/lower-case records cannot silently disappear.
+  const sumFuel=f=>filtered.filter(p=>String(p?.fuel||'').trim().toUpperCase()===f).reduce((a,p)=>({qty:a.qty+n(p.quantity),basic:a.basic+n(p.basicAmount),tax:a.tax+n(p.taxAmount),total:a.total+purchaseLandedValue(p)}),{qty:0,basic:0,tax:0,total:0});
+  const actualMSPurchaseTotal=sumFuel('MS').total;
+  const actualHSDPurchaseTotal=sumFuel('HSD').total;
+  const actualMSHSDPurchaseTotal=actualMSPurchaseTotal+actualHSDPurchaseTotal;
   const purchaseRate=p=>purchaseEffectiveRate(p);
   const fuelEffectiveRate=f=>fuelPurchaseSummary(filtered,f).effectiveRate;
 
@@ -4883,7 +4888,7 @@ export function Purchase({data,update}){
           return <div className="card" key={`recon-${f}`}><span>{f} Purchase / Receipt</span><strong>{f==='CNG'?'N/A':`${(purchaseQ-linkedQ).toFixed(2)} L unreceived`}</strong><small>Purchase {purchaseQ.toFixed(f==='CNG'?3:2)} {f==='CNG'?'Kg':'L'} · Linked Receipt {f==='CNG'?'N/A':linkedQ.toFixed(2)+' L'} · Legacy/Unlinked Filling {f==='CNG'?'N/A':unlinkedQ.toFixed(2)+' L'}</small></div>
         })}</div>
       </div>
-      <div className="cards" style={{gridTemplateColumns:'repeat(3,1fr)'}}>{fuels.map(f=>{const x=sumFuel(f);const avg=fuelEffectiveRate(f);return <div className="card" key={f}><span>{f} Purchase</span><strong>{x.qty.toFixed(f==='CNG'?3:2)} {f==='CNG'?'Kg':'L'}</strong><small>Assessable {money(x.basic)} · Tax {money(x.tax)} · Total {money(x.total)} · Rate {money(avg)}/{f==='CNG'?'Kg':'L'}</small></div>})}</div>
+      <div className="cards" style={{gridTemplateColumns:'repeat(4,1fr)'}}>{fuels.map(f=>{const x=sumFuel(f);const avg=fuelEffectiveRate(f);return <div className="card" key={f}><span>{f} Purchase</span><strong>{x.qty.toFixed(f==='CNG'?3:2)} {f==='CNG'?'Kg':'L'}</strong><small>Assessable {money(x.basic)} · Tax {money(x.tax)} · Total {money(x.total)} · Rate {money(avg)}/{f==='CNG'?'Kg':'L'}</small></div>})}<div className="card" style={{border:'2px solid #0f766e'}}><span>MS + HSD ACTUAL PURCHASE</span><strong>{money(actualMSHSDPurchaseTotal)}</strong><small>Actual saved HPCL Invoice Total Amount · {from} to {to}</small></div></div>
       {fuels.map(f=>{const rows=filtered.filter(p=>p.fuel===f).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));const x=sumFuel(f);const unit=f==='CNG'?'Kg':'L';return <section className="panel" key={f} style={{marginTop:16,border:'2px solid #dbeafe'}}><h3>{f} — Purchase Bills</h3><div className="actions" style={{display:"flex",gap:8,flexWrap:"wrap",margin:"10px 0 12px"}}><button type="button" className="btn" onClick={()=>purchasePrintFuel(f)}>🖨️ Print / PDF</button><button type="button" className="btn" onClick={()=>purchaseExcelFuel(f)}>📊 Excel</button><button type="button" className="btn" onClick={()=>purchaseWhatsAppFuel(f)}>💬 WhatsApp</button></div><Table headers={['Bill Date','Invoice No','Qty',`Bill Rate / ${unit}`,`Effective Rate / ${unit}`,'Assessable Value','Tax Amount','Total Amount']} rows={rows.map(p=>[p.date,p.invoiceNo,`${n(p.quantity).toFixed(f==='CNG'?3:2)} ${p.unit||unit}`,money(p.rate),<b>{money(purchaseRate(p))}</b>,money(p.basicAmount??0),money(p.taxAmount),money(purchaseLandedValue(p))])} rowIds={rows.map(p=>p.id||`${p.date}|${p.invoiceNo}|${p.fuel}`)} onDelete={id=>update({purchases:existing.filter(p=>(p.id||`${p.date}|${p.invoiceNo}|${p.fuel}`)!==id)})}/><div style={{marginTop:10,fontWeight:700}}>Total {f}: {x.qty.toFixed(f==='CNG'?3:2)} {unit} · Assessable {money(x.basic)} · Tax {money(x.tax)} · Total {money(x.total)} · Effective Rate {money(fuelEffectiveRate(f))}/{unit}</div></section>})}
     </section>
   </div>;
