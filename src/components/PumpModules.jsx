@@ -4732,9 +4732,7 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
   return products.map(p=>{
     const assessable = n(p.basicAmount);
     const tax = n(p.taxAmount);
-    const billTotal = products.length > 1
-      ? (assessable + tax)
-      : (n(p.totalAmount) || grand || (assessable + tax));
+    const billTotal = n(p.totalAmount) || grand || (assessable + tax);
     // Purchase rate = (Total Assessable Value + Tax) / Ltr (MS/HSD) or Kg (CNG).
     // This is the landed purchase rate used by the Purchase section.
     const landedRate = p.quantity > 0
@@ -4804,12 +4802,7 @@ export function Purchase({data,update}){
   };
   const filtered=existing.filter(p=>p.date>=from&&p.date<=to);
   const fuels=['MS','HSD','CNG'];
-  // Purchase totals are always derived from the actual saved HPCL invoice totals.
-  // Normalize fuel labels so legacy/lower-case records cannot silently disappear.
-  const sumFuel=f=>filtered.filter(p=>String(p?.fuel||'').trim().toUpperCase()===f).reduce((a,p)=>({qty:a.qty+n(p.quantity),basic:a.basic+n(p.basicAmount),tax:a.tax+n(p.taxAmount),total:a.total+purchaseLandedValue(p)}),{qty:0,basic:0,tax:0,total:0});
-  const actualMSPurchaseTotal=sumFuel('MS').total;
-  const actualHSDPurchaseTotal=sumFuel('HSD').total;
-  const actualMSHSDPurchaseTotal=actualMSPurchaseTotal+actualHSDPurchaseTotal;
+  const sumFuel=f=>filtered.filter(p=>p.fuel===f).reduce((a,p)=>({qty:a.qty+n(p.quantity),basic:a.basic+n(p.basicAmount),tax:a.tax+n(p.taxAmount),total:a.total+purchaseLandedValue(p)}),{qty:0,basic:0,tax:0,total:0});
   const purchaseRate=p=>purchaseEffectiveRate(p);
   const fuelEffectiveRate=f=>fuelPurchaseSummary(filtered,f).effectiveRate;
 
@@ -4890,7 +4883,7 @@ export function Purchase({data,update}){
           return <div className="card" key={`recon-${f}`}><span>{f} Purchase / Receipt</span><strong>{f==='CNG'?'N/A':`${(purchaseQ-linkedQ).toFixed(2)} L unreceived`}</strong><small>Purchase {purchaseQ.toFixed(f==='CNG'?3:2)} {f==='CNG'?'Kg':'L'} · Linked Receipt {f==='CNG'?'N/A':linkedQ.toFixed(2)+' L'} · Legacy/Unlinked Filling {f==='CNG'?'N/A':unlinkedQ.toFixed(2)+' L'}</small></div>
         })}</div>
       </div>
-      <div className="cards" style={{gridTemplateColumns:'repeat(4,1fr)'}}>{fuels.map(f=>{const x=sumFuel(f);const avg=fuelEffectiveRate(f);return <div className="card" key={f}><span>{f} Purchase</span><strong>{x.qty.toFixed(f==='CNG'?3:2)} {f==='CNG'?'Kg':'L'}</strong><small>Assessable {money(x.basic)} · Tax {money(x.tax)} · Total {money(x.total)} · Rate {money(avg)}/{f==='CNG'?'Kg':'L'}</small></div>})}<div className="card" style={{border:'2px solid #0f766e'}}><span>MS + HSD ACTUAL PURCHASE</span><strong>{money(actualMSHSDPurchaseTotal)}</strong><small>Actual saved HPCL Invoice Total Amount · {from} to {to}</small></div></div>
+      <div className="cards" style={{gridTemplateColumns:'repeat(3,1fr)'}}>{fuels.map(f=>{const x=sumFuel(f);const avg=fuelEffectiveRate(f);return <div className="card" key={f}><span>{f} Purchase</span><strong>{x.qty.toFixed(f==='CNG'?3:2)} {f==='CNG'?'Kg':'L'}</strong><small>Assessable {money(x.basic)} · Tax {money(x.tax)} · Total {money(x.total)} · Rate {money(avg)}/{f==='CNG'?'Kg':'L'}</small></div>})}</div>
       {fuels.map(f=>{const rows=filtered.filter(p=>p.fuel===f).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));const x=sumFuel(f);const unit=f==='CNG'?'Kg':'L';return <section className="panel" key={f} style={{marginTop:16,border:'2px solid #dbeafe'}}><h3>{f} — Purchase Bills</h3><div className="actions" style={{display:"flex",gap:8,flexWrap:"wrap",margin:"10px 0 12px"}}><button type="button" className="btn" onClick={()=>purchasePrintFuel(f)}>🖨️ Print / PDF</button><button type="button" className="btn" onClick={()=>purchaseExcelFuel(f)}>📊 Excel</button><button type="button" className="btn" onClick={()=>purchaseWhatsAppFuel(f)}>💬 WhatsApp</button></div><Table headers={['Bill Date','Invoice No','Qty',`Bill Rate / ${unit}`,`Effective Rate / ${unit}`,'Assessable Value','Tax Amount','Total Amount']} rows={rows.map(p=>[p.date,p.invoiceNo,`${n(p.quantity).toFixed(f==='CNG'?3:2)} ${p.unit||unit}`,money(p.rate),<b>{money(purchaseRate(p))}</b>,money(p.basicAmount??0),money(p.taxAmount),money(purchaseLandedValue(p))])} rowIds={rows.map(p=>p.id||`${p.date}|${p.invoiceNo}|${p.fuel}`)} onDelete={id=>update({purchases:existing.filter(p=>(p.id||`${p.date}|${p.invoiceNo}|${p.fuel}`)!==id)})}/><div style={{marginTop:10,fontWeight:700}}>Total {f}: {x.qty.toFixed(f==='CNG'?3:2)} {unit} · Assessable {money(x.basic)} · Tax {money(x.tax)} · Total {money(x.total)} · Effective Rate {money(fuelEffectiveRate(f))}/{unit}</div></section>})}
     </section>
   </div>;
@@ -5228,31 +5221,63 @@ export function DailySaleSummary({ data }) {
     CNG: creditTotalForFuel(data, date, "CNG")
   };
 
-  const paymentForFuel = fuel => {
-    const p = payment[fuel] || {};
-    const credit = creditByFuel[fuel];
+  // Payment Breakdown compatibility layer:
+  // Historical days can contain duplicate/partial daily-payment rows.
+  // Prefer the most complete fuel-wise row, while keeping Credit Sale Register
+  // as the authoritative source for Udhari/Credit. This fixes legacy dates
+  // without touching the frozen accounting/storage/cloud-sync core.
+  const paymentRowsForDate = (data.dailyPayments || []).filter(
+    r => String(r?.date || "") === String(date)
+  );
 
-    const total = payTotal({
-      ...p,
-      credit
-    });
+  const paymentRowScore = row => {
+    const fuels = ["MS", "HSD", "CNG"];
+    return fuels.reduce((score, fuel) => {
+      const p = row?.[fuel];
+      if (!p || typeof p !== "object") return score;
+      const keys = ["cash", "paytm", "card", "dtplus", "hppay", "phonepe", "credit", "pumpExpense", "other"];
+      return score + keys.reduce((nKeys, key) =>
+        nKeys + (p[key] !== undefined && p[key] !== "" ? 1 : 0), 0
+      );
+    }, 0);
+  };
+
+  const paymentRow = paymentRowsForDate.reduce((best, row) =>
+    !best || paymentRowScore(row) > paymentRowScore(best) ? row : best, null
+  );
+
+  const payment = paymentRow || savedPayment(data, date) || {};
+
+  const paymentForFuel = fuel => {
+    const raw = payment?.[fuel];
+    const p = raw && typeof raw === "object" ? raw : {};
+    const standard = paymentForFuelStandard(data, date, fuel) || {};
+
+    // Support historical aliases/shapes without changing stored records.
+    const cash = n(p.cash ?? standard.cash);
+    const paytm = n(p.paytm ?? standard.paytm);
+    const card = n(p.card ?? standard.card);
+    const dtplus = n(p.dtplus ?? p.dtPlus ?? standard.dtplus);
+    const hppay = n(p.hppay ?? p.hpPay ?? standard.hppay);
+    const phonepe = n(p.phonepe ?? p.phonePe ?? standard.phonepe);
+    const savedCredit = n(p.credit ?? p.udhari ?? standard.credit);
+    const ledgerCredit = n(creditByFuel[fuel]);
+    const credit = ledgerCredit > 0 ? ledgerCredit : savedCredit;
+    const pumpExpense = n(p.pumpExpense ?? standard.pumpExpense) +
+      (p.pumpExpense === undefined && p.other !== undefined ? n(p.other) : 0);
 
     const receiptTotal =
-      n(p.cash) + n(p.paytm) + n(p.card) + n(p.dtplus) +
-      n(p.hppay) + n(p.phonepe);
-    // Other is a pump expense/adjustment, not a receipt and must not
-    // participate in sale-vs-collection reconciliation.
-    const pumpExpense = n(p.pumpExpense) + (p.pumpExpense === undefined ? n(p.other) : 0);
+      cash + paytm + card + dtplus + hppay + phonepe;
     const reconciliationTotal = receiptTotal + credit;
     const adjustedReconciliationTotal = reconciliationTotal + pumpExpense;
 
     return {
-      cash: n(p.cash),
-      paytm: n(p.paytm),
-      card: n(p.card),
-      dtplus: n(p.dtplus),
-      hppay: n(p.hppay),
-      phonepe: n(p.phonepe),
+      cash,
+      paytm,
+      card,
+      dtplus,
+      hppay,
+      phonepe,
       credit,
       other: pumpExpense,
       pumpExpense,
