@@ -735,8 +735,48 @@ export function FuelSale({
     });
 
   useEffect(() => {
-    const p =
-      savedPayment(data, date);
+    // Prefer the most complete saved payment row for this date.
+    // Legacy backups can contain duplicate rows where the last row only
+    // has credit/zero values; selecting that row makes Payment Breakdown
+    // appear blank even though a complete row exists.
+    const paymentRowsForDate = dailyPayments.filter(
+      r => String(r?.date || "") === String(date)
+    );
+
+    const paymentRowScore = row => {
+      const fuels = ["MS", "HSD", "CNG"];
+
+      return fuels.reduce((score, fuel) => {
+        const p = row?.[fuel];
+        if (!p || typeof p !== "object") return score;
+
+        const keys = [
+          "cash",
+          "paytm",
+          "card",
+          "dtplus",
+          "hppay",
+          "phonepe",
+          "credit",
+          "pumpExpense",
+          "other"
+        ];
+
+        return score + keys.reduce(
+          (n, key) =>
+            n + (p[key] !== undefined && p[key] !== "" ? 1 : 0),
+          0
+        );
+      }, 0);
+    };
+
+    const p = paymentRowsForDate.reduce(
+      (best, row) =>
+        !best || paymentRowScore(row) > paymentRowScore(best)
+          ? row
+          : best,
+      null
+    ) || savedPayment(data, date);
 
     setPayments(
       p?.MS ||
@@ -5211,7 +5251,7 @@ export function DailySaleSummary({ data }) {
     fuelSummary[r.fuel].amount += n(r.amount);
   });
 
-  
+  const payment = savedPayment(data, date) || {};
 
   // Udhari हमेशा Credit Sale Register से आएगी.
   // पुराने saved payment में credit: 0 होने पर भी वास्तविक Udhari दिखेगी.
