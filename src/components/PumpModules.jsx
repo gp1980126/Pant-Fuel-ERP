@@ -4732,7 +4732,9 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
   return products.map(p=>{
     const assessable = n(p.basicAmount);
     const tax = n(p.taxAmount);
-    const billTotal = n(p.totalAmount) || grand || (assessable + tax);
+    const billTotal = products.length > 1
+      ? (assessable + tax)
+      : (n(p.totalAmount) || grand || (assessable + tax));
     // Purchase rate = (Total Assessable Value + Tax) / Ltr (MS/HSD) or Kg (CNG).
     // This is the landed purchase rate used by the Purchase section.
     const landedRate = p.quantity > 0
