@@ -21,23 +21,23 @@ jobs:
           from pathlib import Path
           p = Path('src/App.jsx')
           s = p.read_text(encoding='utf-8')
-          old = '''{CLOUD_ENABLED && <button type="button" className="btn small" title="Load latest data directly from Supabase" onClick={async () => { const r = await refreshCloudData(); if (r.ok) alert(`☁️ Latest cloud data loaded.
-
-Credits: ${r.count}`); else alert(`❌ Cloud refresh failed
-
-${r.reason}`); }}>↻ Cloud Refresh</button>}'''
-          new = '''<button type="button" className="btn small" title="Cloud data / Supabase" onClick={async () => {
-            if (!CLOUD_ENABLED) {
-              alert("☁️ Cloud button is ready, but this deployment is not connected to Supabase yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel, then redeploy.");
-              return;
-            }
-            const r = await refreshCloudData();
-            if (r.ok) alert(`☁️ Latest cloud data loaded.\\n\\nCredits: ${r.count}`);
-            else alert(`❌ Cloud refresh failed\\n\\n${r.reason}`);
-          }}>{CLOUD_ENABLED ? "☁️ Cloud" : "☁️ Cloud (Setup)"}</button>'''
-          if old not in s:
+          start = s.find('{CLOUD_ENABLED && <button')
+          end_marker = '↻ Cloud Refresh</button>}'
+          end = s.find(end_marker, start)
+          if start < 0 or end < 0:
               raise SystemExit('Expected Cloud Refresh block was not found; no changes made.')
-          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          end += len(end_marker)
+          new = ('<button type="button" className="btn small" title="Cloud data / Supabase" '
+                 'onClick={async () => {\n'
+                 '  if (!CLOUD_ENABLED) {\n'
+                 '    alert("☁️ Cloud button is ready, but this deployment is not connected to Supabase yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel, then redeploy.");\n'
+                 '    return;\n'
+                 '  }\n'
+                 '  const r = await refreshCloudData();\n'
+                 '  if (r.ok) alert(`☁️ Latest cloud data loaded.\\n\\nCredits: ${r.count}`);\n'
+                 '  else alert(`❌ Cloud refresh failed\\n\\n${r.reason}`);\n'
+                 '}}> {CLOUD_ENABLED ? "☁️ Cloud" : "☁️ Cloud (Setup)"}</button>').replace('}> {', '}>{')
+          p.write_text(s[:start] + new + s[end:], encoding='utf-8')
 
       - name: Verify Cloud button
         run: |
