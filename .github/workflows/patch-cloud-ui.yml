@@ -2,14 +2,14 @@ name: Patch Cloud UI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch-cloud-ui:
-    if: "${{ !contains(github.event.head_commit.message, 'fix: expose Cloud button') }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -49,8 +49,7 @@ ${r.reason}`); }}>↻ Cloud Refresh</button>}'''
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/App.jsx .github/workflows/patch-cloud-ui.yml
-          git commit -m "fix: expose Cloud button"
+          git add src/App.jsx
           git rm .github/workflows/patch-cloud-ui.yml
-          git commit -m "chore: remove one-shot Cloud UI patch workflow"
+          git commit -m "fix: expose Cloud button"
           git push
