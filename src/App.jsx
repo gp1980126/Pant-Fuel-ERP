@@ -1364,11 +1364,15 @@ const importData = (event) => {
               <div className="userbar">
                 <span className="rolebadge">{session.role}</span>{session.role === USER_ROLES.VIEW_ONLY && <span className="rolebadge" title="Read-only role">👁️ View Only</span>}{CLOUD_ENABLED && <span className="rolebadge" title="Cloud synchronization status">☁️ {cloudStatus === "online" ? "Synced" : cloudStatus === "saving" ? "Saving…" : cloudStatus === "conflict" ? "Conflict" : cloudStatus}</span>}
                 <span style={{fontSize:"12px"}}>{session.name}</span>
-                {CLOUD_ENABLED && <button type="button" className="btn small" title="Load latest data directly from Supabase" onClick={async () => { const r = await refreshCloudData(); if (r.ok) alert(`☁️ Latest cloud data loaded.
-
-Credits: ${r.count}`); else alert(`❌ Cloud refresh failed
-
-${r.reason}`); }}>↻ Cloud Refresh</button>}
+                <button type="button" className="btn small" title="Cloud data / Supabase" onClick={async () => {
+  if (!CLOUD_ENABLED) {
+    alert("☁️ Cloud button is ready, but this deployment is not connected to Supabase yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel, then redeploy.");
+    return;
+  }
+  const r = await refreshCloudData();
+  if (r.ok) alert(`☁️ Latest cloud data loaded.\n\nCredits: ${r.count}`);
+  else alert(`❌ Cloud refresh failed\n\n${r.reason}`);
+}}>{CLOUD_ENABLED ? "☁️ Cloud" : "☁️ Cloud (Setup)"}</button>
                 <button className="logout" onClick={async () => { try { if (CLOUD_ENABLED) await cloudSignOut(); else localStorage.removeItem(KEY + '_session'); } catch(e) { console.error(e); } setSession(null); setCloudReady(!CLOUD_ENABLED); setCloudStatus(CLOUD_ENABLED ? "login-required" : "local"); setPage("Dashboard"); }}>Logout</button>
               </div>
 
