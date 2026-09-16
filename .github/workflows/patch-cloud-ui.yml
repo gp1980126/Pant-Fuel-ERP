@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   patch-cloud-ui:
-    if: ${{ !contains(github.event.head_commit.message, 'fix: expose Cloud button') }}
+    if: "${{ !contains(github.event.head_commit.message, 'fix: expose Cloud button') }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
