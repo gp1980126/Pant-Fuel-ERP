@@ -1,0 +1,59 @@
+name: StationMitra merged cloud patch
+on:
+  push:
+    branches: [stationmitra-merged-17-09-cloud]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply merged cloud login patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('src/App.jsx')
+          s = app.read_text(encoding='utf-8')
+          old = 'import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";'
+          new = 'import { CLOUD_ENABLED, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";'
+          if old not in s and 'cloudResetPassword' not in s:
+              raise SystemExit('App import anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '  const [loginError, setLoginError] = useState("");\n  const [integrityReport, setIntegrityReport] = useState(null);'
+          new = '  const [loginError, setLoginError] = useState("");\n  const [resetMessage, setResetMessage] = useState("");\n  const [resetBusy, setResetBusy] = useState(false);\n  const [integrityReport, setIntegrityReport] = useState(null);'
+          if old in s and 'const [resetMessage' not in s:
+              s = s.replace(old, new, 1)
+
+          old = '<button className="login-btn" type="submit">LOGIN</button>\n            <div className="login-error" style={{display:loginError ? "block" : "none"}}>{loginError}</div>'
+          new = '''<button className="login-btn" type="submit">LOGIN</button>\n            {CLOUD_ENABLED && <button type="button" className="btn" style={{marginTop:8,width:"100%"}} onClick={async e => {\n              const form = e.currentTarget.form;\n              const email = String(new FormData(form).get("email") || "").trim();\n              setLoginError(""); setResetMessage("");\n              if (!email.includes("@")) { setLoginError("Forgot Password के लिए registered email address डालें।"); return; }\n              setResetBusy(true);\n              try { await cloudResetPassword(email); setResetMessage("Password reset link आपके registered email पर भेज दिया गया है।"); }\n              catch (error) { setLoginError(error?.message || "Password reset email नहीं भेजा जा सका।"); }\n              finally { setResetBusy(false); }\n            }}>{resetBusy ? "SENDING…" : "Forgot Password?"}</button>}\n            <div className="login-error" style={{display:loginError ? "block" : "none"}}>{loginError}</div>\n            {resetMessage && <div style={{marginTop:8,color:"#15803d",fontSize:12,textAlign:"center"}}>{resetMessage}</div>}'''
+          if old in s and 'Forgot Password?' not in s:
+              s = s.replace(old, new, 1)
+          app.write_text(s, encoding='utf-8')
+
+          c = Path('src/cloud_sync_supabase.js')
+          s = c.read_text(encoding='utf-8')
+          anchor = '''export async function cloudSignOut() {'''
+          fn = '''export async function cloudResetPassword(email) {\n  if (!supabase) throw new Error('Cloud is not configured');\n  const cleanEmail = String(email || '').trim();\n  if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Registered email address डालें।');\n  const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {\n    redirectTo: window.location.origin,\n  });\n  if (error) throw error;\n  return true;\n}\n\n'''
+          if 'export async function cloudResetPassword' not in s:
+              if anchor not in s: raise SystemExit('cloud sync anchor not found')
+              s = s.replace(anchor, fn + anchor, 1)
+              c.write_text(s, encoding='utf-8')
+          PY
+      - name: Verify patch
+        run: |
+          grep -q 'cloudResetPassword' src/App.jsx
+          grep -q 'cloudResetPassword' src/cloud_sync_supabase.js
+          grep -q 'Forgot Password?' src/App.jsx
+          npm ci --ignore-scripts
+          npm run build
+      - name: Commit patched build
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/App.jsx src/cloud_sync_supabase.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: merge Cloud auth reset into StationMitra build'
+          git push
