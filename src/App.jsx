@@ -393,7 +393,7 @@ function App() {
       const next = { ...d, ...incoming };
       if (!Number.isFinite(Number(next.cngStateTaxRate))) next.cngStateTaxRate = 0.05;
       if (Object.prototype.hasOwnProperty.call(incoming, 'credits')) {
-        next.dailyPayments = syncCreditPayments(next.dailyPayments, next.credits);
+        // Credit Sale is the source of truth; do not rewrite protected Daily Payment rows during Credit Save.
       }
 
       const changedKeys = Object.keys(incoming).filter(k => k !== 'auditLogs');
