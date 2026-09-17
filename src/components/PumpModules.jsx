@@ -1761,6 +1761,691 @@ export function PaymentSection({
   </section>;
 }
 
+export function OpeningSetup({
+  data,
+  update,
+  session
+}) {
+
+  const reset = () => {
+    if (session?.role !== USER_ROLES.ADMIN) return;
+    if (window.confirm(
+        "सारा local ERP data reset करना है?"
+    )) {
+
+      localStorage.removeItem(KEY);
+
+      update(
+        initialData()
+      );
+
+    }
+  };
+
+  return (
+    <div className="content">
+
+      <div className="warning">
+
+        <b>
+          01-08-2026 Opening Setup
+        </b>
+
+        <br />
+
+        MS/HSD stock और nozzle openings
+        fixed हैं. CNG stock maintain
+        नहीं होगा.
+
+      </div>
+
+      <div className="grid">
+
+        <section className="panel">
+
+          <h3>
+            Fuel Stock Opening
+          </h3>
+
+          <div className="form">
+
+            <Field label="MS">
+              <input
+                className="readonly"
+                readOnly
+                value={`${n(data.openingStock?.MS ?? 9356)} L`}
+              />
+            </Field>
+
+            <Field label="HSD">
+              <input
+                className="readonly"
+                readOnly
+                value={`${n(data.openingStock?.HSD ?? 7500)} L`}
+              />
+            </Field>
+
+            <Field label="CNG">
+              <input
+                className="readonly"
+                readOnly
+                value="No Stock"
+              />
+            </Field>
+
+          </div>
+
+        </section>
+
+        <section className="panel">
+
+          <h3>
+            Rates
+          </h3>
+
+          <div className="form">
+
+            {[
+              "MS",
+              "HSD",
+              "CNG"
+            ].map(f => (
+
+              <Field
+                key={f}
+                label={f}
+              >
+
+                <input
+                  className="readonly"
+                  readOnly
+                  value={
+                    data.rates[f]
+                  }
+                />
+
+              </Field>
+
+            ))}
+
+          </div>
+
+        </section>
+
+      </div>
+
+      <section
+        className="panel"
+        style={{
+          marginTop:18
+        }}
+      >
+
+        <h3>
+          Nozzle Opening Readings
+        </h3>
+
+        <Table
+          headers={[
+            "Nozzle",
+            "Fuel",
+            "01-08-2026 Opening"
+          ]}
+          rows={
+            NOZZLES.map(
+              x => [
+                x[0],
+                x[1],
+                OPENING[x[0]]
+              ]
+            )
+          }
+        />
+
+      </section>
+
+      <div className="actions">
+
+        {session?.role === USER_ROLES.ADMIN && <button className="btn red" onClick={reset}>Reset Local Data</button>}
+
+      </div>
+
+    </div>
+  );
+}
+
+
+/* =========================================================
+   PARTY MASTER
+========================================================= */
+
+
+export function PartyMaster({
+  data,
+  update
+}) {
+
+  const empty = {
+    name:"",
+    mobile:"",
+    gst:"",
+    limit:""
+  };
+
+  const [f, setF] =
+    useState(empty);
+
+  const [editId, setEditId] =
+    useState(null);
+
+  const [search, setSearch] =
+    useState("");
+
+  const [page, setPage] =
+    useState(1);
+
+  const [per, setPer] =
+    useState(20);
+
+  const [msg, setMsg] =
+    useState("");
+
+  const filtered =
+    data.parties.filter(p => {
+
+      const q =
+        search
+          .toLowerCase()
+          .trim();
+
+      return (
+        !q ||
+        [
+          p.name,
+          p.mobile,
+          p.gst
+        ].some(v =>
+          String(v || "")
+            .toLowerCase()
+            .includes(q)
+        )
+      );
+    });
+
+  const pages =
+    Math.max(
+      1,
+      Math.ceil(
+        filtered.length / per
+      )
+    );
+
+  const list =
+    filtered.slice(
+      (page - 1) * per,
+      page * per
+    );
+
+  useEffect(
+    () => setPage(1),
+    [search, per]
+  );
+
+  function save() {
+
+    const name =
+      f.name.trim();
+
+    if (!name) {
+      return setMsg(
+        "Party name जरूरी है."
+      );
+    }
+
+    if (
+      data.parties.some(
+        p =>
+          p.id !== editId &&
+          p.name
+            .trim()
+            .toLowerCase() ===
+          name.toLowerCase()
+      )
+    ) {
+      return setMsg(
+        "यह party पहले से मौजूद है."
+      );
+    }
+
+    if (editId !== null) {
+
+      update({
+        parties:
+          data.parties.map(
+            p =>
+              p.id === editId
+                ? {
+                    ...p,
+                    ...f,
+                    name
+                  }
+                : p
+          )
+      });
+
+    } else {
+
+      update({
+        parties:[
+          ...data.parties,
+          {
+            ...f,
+            name,
+            id:Date.now()
+          }
+        ]
+      });
+
+    }
+
+    setF(empty);
+    setEditId(null);
+
+    setMsg(
+      editId !== null
+        ? "Party updated."
+        : "Party added."
+    );
+  }
+
+  function edit(p) {
+
+    setF({
+      name:p.name || "",
+      mobile:p.mobile || "",
+      gst:p.gst || "",
+      limit:p.limit || ""
+    });
+
+    setEditId(p.id);
+    setMsg("");
+  }
+
+  function del(id) {
+
+    const p =
+      data.parties.find(
+        x => x.id === id
+      );
+
+    if (
+      p &&
+      window.confirm(
+        `"${p.name}" delete करना है?`
+      )
+    ) {
+
+      update({
+        parties:
+          data.parties.filter(
+            x => x.id !== id
+          )
+      });
+
+      if (editId === id) {
+        setEditId(null);
+        setF(empty);
+      }
+
+      setMsg(
+        "Party deleted."
+      );
+    }
+  }
+
+  return (
+    <div className="content">
+
+      <section className="panel">
+
+        <h2>
+          Party Master
+          {editId !== null
+            ? " — Edit Party"
+            : ""}
+        </h2>
+
+        <div className="form">
+
+          <Field label="NAME *">
+
+            <input
+              value={f.name}
+              onChange={e =>
+                setF({
+                  ...f,
+                  name:e.target.value
+                })
+              }
+            />
+
+          </Field>
+
+          <Field label="MOBILE">
+
+            <input
+              inputMode="numeric"
+              value={f.mobile}
+              onChange={e =>
+                setF({
+                  ...f,
+                  mobile:e.target.value
+                })
+              }
+            />
+
+          </Field>
+
+          <Field label="GST">
+
+            <input
+              value={f.gst}
+              onChange={e =>
+                setF({
+                  ...f,
+                  gst:
+                    e.target.value
+                      .toUpperCase()
+                })
+              }
+            />
+
+          </Field>
+
+          <Field label="CREDIT LIMIT">
+
+            <input
+              type="number"
+              step=".01"
+              value={f.limit}
+              onChange={e =>
+                setF({
+                  ...f,
+                  limit:
+                    e.target.value
+                })
+              }
+            />
+
+          </Field>
+
+        </div>
+
+        <div className="actions">
+
+          <button
+            className="btn"
+            onClick={save}
+          >
+            {editId !== null
+              ? "✓ Update Party"
+              : "＋ Add Party"}
+          </button>
+
+          {editId !== null && (
+            <button
+              className="btn gray"
+              onClick={() => {
+                setEditId(null);
+                setF(empty);
+              }}
+            >
+              Cancel
+            </button>
+          )}
+
+          <button
+            className="btn gray"
+            onClick={() => {
+              setEditId(null);
+              setF(empty);
+            }}
+          >
+            Clear
+          </button>
+
+        </div>
+
+        {msg && (
+          <div
+            className={
+              msg.includes("जरूरी") ||
+              msg.includes("पहले से")
+                ? "notice error"
+                : "notice"
+            }
+          >
+            {msg}
+          </div>
+        )}
+
+      </section>
+
+      <section
+        className="panel"
+        style={{
+          marginTop:18
+        }}
+      >
+
+        <div
+          style={{
+            display:"flex",
+            justifyContent:"space-between",
+            alignItems:"center",
+            gap:10,
+            flexWrap:"wrap"
+          }}
+        >
+
+          <h2>
+            Party List ({filtered.length})
+          </h2>
+
+          <input
+            className="search"
+            placeholder="Search party / mobile / GST..."
+            value={search}
+            onChange={e =>
+              setSearch(
+                e.target.value
+              )
+            }
+          />
+
+        </div>
+
+        <Table
+          headers={[
+            "#",
+            "Party",
+            "Mobile",
+            "GST",
+            "Limit",
+            "Actions"
+          ]}
+          rows={
+            list.map(
+              (p, i) => [
+                <b>
+                  {(page - 1) *
+                    per +
+                    i +
+                    1}
+                </b>,
+
+                <b>
+                  {p.name}
+                </b>,
+
+                p.mobile || "—",
+
+                p.gst || "—",
+
+                money(p.limit),
+
+                <span
+                  style={{
+                    display:"flex",
+                    gap:6
+                  }}
+                >
+
+                  <button
+                    className="btn small"
+                    onClick={() =>
+                      edit(p)
+                    }
+                  >
+                    ✎ Edit
+                  </button>
+
+                  <button
+                    className="btn red small"
+                    onClick={() =>
+                      del(p.id)
+                    }
+                  >
+                    🗑 Delete
+                  </button>
+
+                </span>
+              ]
+            )
+          }
+        />
+
+        <div className="pagination">
+
+          <button
+            disabled={page === 1}
+            onClick={() =>
+              setPage(1)
+            }
+          >
+            «
+          </button>
+
+          <button
+            disabled={page === 1}
+            onClick={() =>
+              setPage(page - 1)
+            }
+          >
+            ‹
+          </button>
+
+          {Array.from(
+            {
+              length:pages
+            },
+            (_, i) => i + 1
+          )
+            .slice(
+              Math.max(
+                0,
+                page - 3
+              ),
+              Math.min(
+                pages,
+                page + 2
+              )
+            )
+            .map(x => (
+
+              <button
+                className={
+                  x === page
+                    ? "active"
+                    : ""
+                }
+                key={x}
+                onClick={() =>
+                  setPage(x)
+                }
+              >
+                {x}
+              </button>
+
+            ))}
+
+          <button
+            disabled={
+              page === pages
+            }
+            onClick={() =>
+              setPage(page + 1)
+            }
+          >
+            ›
+          </button>
+
+          <button
+            disabled={
+              page === pages
+            }
+            onClick={() =>
+              setPage(pages)
+            }
+          >
+            »
+          </button>
+
+          <span
+            style={{
+              marginLeft:"auto"
+            }}
+          >
+            Rows{" "}
+
+            <select
+              value={per}
+              onChange={e =>
+                setPer(
+                  Number(
+                    e.target.value
+                  )
+                )
+              }
+            >
+              <option>10</option>
+              <option>20</option>
+              <option>50</option>
+              <option>100</option>
+            </select>
+
+          </span>
+
+        </div>
+
+        <p>
+          Total {data.parties.length}
+          {" "}parties
+        </p>
+
+      </section>
+
+    </div>
+  );
+}
+
+
+/* =========================================================
+   CREDIT SALE
+========================================================= */
+
+
+
 /* =========================================================
    CREDIT SALE
 ========================================================= */
