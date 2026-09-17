@@ -1,0 +1,59 @@
+name: daily-credit-integrity-fix-v2
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-daily-credit-integrity-v2.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch and remove temporary workflow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/core/pumpDomain.js')
+          s=p.read_text()
+          old="""row.fingerprint = transactionFingerprint('DAILY_PAYMENT', { ...row, transactionId });
+        row.fingerprintVersion = 2;"""
+          new="""const normalFingerprint = transactionFingerprint('DAILY_PAYMENT', { ...row, transactionId });
+        const collision = rows.some((other, otherIndex) =>
+          otherIndex !== entry.index && String(other?.fingerprint || '') === String(normalFingerprint)
+        );
+        row.fingerprint = collision
+          ? stableHash(`DAILY_PAYMENT|${transactionId}|${canonicalIntegrityValue(row)}`)
+          : normalFingerprint;
+        row.fingerprintVersion = collision ? 3 : 2;"""
+          if old not in s: raise SystemExit('sync fingerprint pattern not found')
+          s=s.replace(old,new,1)
+          old2="""if (version >= 2) {
+          const expected = transactionFingerprint(type,row);
+          if (fp!==String(expected)) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v2 fingerprint mismatch`});
+        } else {"""
+          new2="""if (version === 3 && type === 'DAILY_PAYMENT') {
+          const tx = String(row.transactionId || '').trim();
+          const expected = tx ? stableHash(`DAILY_PAYMENT|${tx}|${canonicalIntegrityValue(row)}`) : '';
+          if (!expected || fp!==String(expected)) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v3 fingerprint mismatch`});
+        } else if (version >= 2) {
+          const expected = transactionFingerprint(type,row);
+          if (fp!==String(expected)) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v2 fingerprint mismatch`});
+        } else {"""
+          if old2 not in s: raise SystemExit('scanner pattern not found')
+          s=s.replace(old2,new2,1)
+          old3="if (!fp || version < 2 || !row.transactionId) return row;"
+          new3="if (!fp || version < 2 || version === 3 || !row.transactionId) return row;"
+          if old3 not in s: raise SystemExit('migration pattern not found')
+          s=s.replace(old3,new3,1)
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/core/pumpDomain.js
+          git commit -m "fix: prevent credit save fingerprint collisions"
+          git rm .github/workflows/fix-daily-credit-integrity-v2.yml .github/workflows/fix-daily-credit-integrity.yml || true
+          git commit -m "chore: remove temporary integrity workflows"
+          git push
