@@ -3,10 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 
 const url = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
 const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const configured = Boolean(url && anonKey);
+const deployedHost = typeof window !== 'undefined' && /(^|\.)vercel\.app$/i.test(window.location.hostname);
 
-export const CLOUD_ENABLED = Boolean(url && anonKey);
+// A deployed Vercel build must never silently fall back to the old local-login
+// path. If build-time Supabase variables are missing, Cloud mode stays selected
+// and the UI receives an explicit CLOUD_NOT_CONFIGURED error instead.
+export const CLOUD_ENABLED = configured || deployedHost;
 
-export const supabase = CLOUD_ENABLED
+export const supabase = configured
   ? createClient(url, anonKey, {
       auth: {
         persistSession: true,
@@ -18,8 +23,9 @@ export const supabase = CLOUD_ENABLED
 
 export async function cloudSignIn(email, password) {
   if (!supabase) {
-    const e = new Error('Cloud is not configured');
+    const e = new Error('Cloud configuration missing: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not available in this Vercel build.');
     e.code = 'CLOUD_NOT_CONFIGURED';
+    e.stage = 'CONFIG';
     throw e;
   }
 
@@ -39,7 +45,7 @@ export async function cloudSignIn(email, password) {
 }
 
 export async function cloudResetPassword(email) {
-  if (!supabase) throw new Error('Cloud is not configured');
+  if (!supabase) throw new Error('Cloud configuration missing: Supabase environment variables are not available in this build.');
   const cleanEmail = String(email || '').trim();
   if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Registered email address डालें।');
   const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
