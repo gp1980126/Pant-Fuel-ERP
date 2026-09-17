@@ -5759,50 +5759,45 @@ export function DailySaleSummary({ data }) {
         <h3>Final Daily Summary</h3>
         <div className="table">
           <table>
-            <thead>
-              <tr>
-                <th>Fuel</th><th>Total Sale</th><th>Total Payment</th>
-                <th>Adjusted Difference</th><th>Salesman Pending</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th>Fuel</th><th>Total Sale</th><th>Total Payment</th>
+              <th>Density Expense</th><th>JUMP</th><th>Pump Expense</th>
+              <th>Adjusted Total</th><th>Adjusted Difference</th><th>Salesman Pending</th>
+            </tr></thead>
             <tbody>
               {["MS", "HSD", "CNG"].map(fuel => (
                 <tr key={fuel}>
                   <td><b>{fuel}</b></td>
                   <td>{money(fuelSummary[fuel].amount)}</td>
                   <td>{money(paymentsByFuel[fuel].total)}</td>
+                  <td>{money(paymentsByFuel[fuel].densityExpense)}</td>
+                  <td>{money(paymentsByFuel[fuel].jump)}</td>
+                  <td>{money(paymentsByFuel[fuel].pumpExpense)}</td>
+                  <td><b>{money(n(paymentsByFuel[fuel].total)+n(paymentsByFuel[fuel].densityExpense)+n(paymentsByFuel[fuel].jump)+n(paymentsByFuel[fuel].pumpExpense))}</b></td>
                   <td>{money(paymentsByFuel[fuel].difference)}</td>
                   <td>{money(salesmanPendingToday[fuel])}</td>
                 </tr>
               ))}
               <tr>
-                <td><b>LUBRICANT</b></td>
-                <td>{money(lubricantSummary.amount)}</td>
-                <td>{money(lubricantSummary.amount)}</td>
-                <td>{money(0)}</td>
-                <td>{money(0)}</td>
+                <td><b>LUBRICANT</b></td><td>{money(lubricantSummary.amount)}</td><td>{money(lubricantSummary.amount)}</td>
+                <td>{money(0)}</td><td>{money(0)}</td><td>{money(0)}</td>
+                <td><b>{money(lubricantSummary.amount)}</b></td><td>{money(0)}</td><td>{money(0)}</td>
               </tr>
               <tr>
-                <td><b>GRAND TOTAL</b></td>
-                <td><b>{money(totalSale)}</b></td>
-                <td><b>{money(totalPayment)}</b></td>
+                <td><b>GRAND TOTAL</b></td><td><b>{money(totalSale)}</b></td><td><b>{money(totalPayment)}</b></td>
+                <td><b>{money(n(paymentsByFuel.MS.densityExpense)+n(paymentsByFuel.HSD.densityExpense))}</b></td>
+                <td><b>{money(n(paymentsByFuel.MS.jump)+n(paymentsByFuel.HSD.jump)+n(paymentsByFuel.CNG.jump))}</b></td>
+                <td><b>{money(n(paymentsByFuel.MS.pumpExpense)+n(paymentsByFuel.HSD.pumpExpense)+n(paymentsByFuel.CNG.pumpExpense))}</b></td>
+                <td><b>{money(n(totalPayment)+n(paymentsByFuel.MS.densityExpense)+n(paymentsByFuel.HSD.densityExpense)+n(paymentsByFuel.MS.jump)+n(paymentsByFuel.HSD.jump)+n(paymentsByFuel.CNG.jump)+n(paymentsByFuel.MS.pumpExpense)+n(paymentsByFuel.HSD.pumpExpense)+n(paymentsByFuel.CNG.pumpExpense))}</b></td>
                 <td><b>{money(totalDifference)}</b></td>
-                <td>
-                  <b>{money(
-                    salesmanPendingToday.MS +
-                    salesmanPendingToday.HSD +
-                    salesmanPendingToday.CNG
-                  )}</b>
-                </td>
+                <td><b>{money(salesmanPendingToday.MS+salesmanPendingToday.HSD+salesmanPendingToday.CNG)}</b></td>
               </tr>
             </tbody>
           </table>
         </div>
-
+        <p style={{margin:'10px 0 0',fontSize:12,color:'#475569'}}>Adjusted Total = Total Payment + Density Expense + JUMP + Pump Expense. Density/JUMP को Difference में दोबारा नहीं गिना जाता।</p>
         <div className={Math.abs(totalDifference) <= 0.50 ? "balance-ok" : "balance-bad"}>
-          {Math.abs(totalDifference) <= 0.50
-            ? "✓ Daily Sale / Payment Status: OK"
-            : `⚠ Daily Difference: ${money(totalDifference)}`}
+          {Math.abs(totalDifference) <= 0.50 ? "✓ Daily Sale / Payment Status: OK" : `⚠ Daily Difference: ${money(totalDifference)}`}
         </div>
       </section>
     </div>
