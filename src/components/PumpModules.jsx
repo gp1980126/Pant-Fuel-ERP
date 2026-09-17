@@ -932,9 +932,9 @@ export function FuelSale({
       });
 
   const diff = {
-    MS: rupee(saleTotals.MS - accountedTotal({ ...payments.MS, credit: creditByFuel.MS })),
-    HSD: rupee(saleTotals.HSD - accountedTotal({ ...payments.HSD, credit: creditByFuel.HSD })),
-    CNG: rupee(saleTotals.CNG - accountedTotal({ ...payments.CNG, credit: creditByFuel.CNG }))
+    MS: rupee(saleTotals.MS - (accountedTotal({ ...payments.MS, credit: creditByFuel.MS }) + n(payments.MS?.pumpExpense) + n(payments.MS?.densityExpense) + n(payments.MS?.jump))),
+    HSD: rupee(saleTotals.HSD - (accountedTotal({ ...payments.HSD, credit: creditByFuel.HSD }) + n(payments.HSD?.pumpExpense) + n(payments.HSD?.densityExpense) + n(payments.HSD?.jump))),
+    CNG: rupee(saleTotals.CNG - (accountedTotal({ ...payments.CNG, credit: creditByFuel.CNG }) + n(payments.CNG?.pumpExpense) + n(payments.CNG?.jump)))
   };
 
   const totalPayment =
@@ -950,8 +950,10 @@ export function FuelSale({
     n(payments.CNG?.pumpExpense) + n(payments.CNG?.other)
   );
 
+  const totalDensityExpense = n(payments.MS?.densityExpense) + n(payments.HSD?.densityExpense);
+  const totalJump = n(payments.MS?.jump) + n(payments.HSD?.jump) + n(payments.CNG?.jump);
   const totalDifference = rupee(
-    totalSale - totalPayment - totalPumpExpense
+    totalSale - totalPayment - totalPumpExpense - totalDensityExpense - totalJump
   );
 
   const pending =
@@ -1704,6 +1706,7 @@ export function FuelSale({
    यह function केवल एक बार है
 ========================================================= */
 
+// Density/JUMP patch 17-09-2026
 export function PaymentSection({
   fuel,
   payments,
@@ -1713,765 +1716,50 @@ export function PaymentSection({
   diff,
   creditTotal
 }) {
-
   const paymentMethods = [
-    ["cash", "Cash"],
-    ["paytm", "Paytm"],
-    ["card", "ATM / Card"],
-    ["dtplus", "DT Plus"],
-    ["hppay", "HP Pay"],
-    ["phonepe", "PhonePe"],
-    ["credit", "Party Receivable / Credit"],
-    ["pumpExpense", "Expense"]
+    ["cash", "Cash"], ["paytm", "Paytm"], ["card", "ATM / Card"],
+    ["dtplus", "DT Plus"], ["hppay", "HP Pay"], ["phonepe", "PhonePe"],
+    ["credit", "Party Receivable / Credit"], ["pumpExpense", "Expense"]
   ];
+  const digital = ["paytm","card","dtplus","hppay","phonepe"]
+    .reduce((a,k)=>a+n(payments[fuel]?.[k]),0);
+  const expense=n(payments[fuel]?.pumpExpense);
+  const densityExpense = (fuel === "MS" || fuel === "HSD") ? n(payments[fuel]?.densityExpense) : 0;
+  const jump = n(payments[fuel]?.jump);
+  const setField=(key,value)=>setPayments(p=>({...p,[fuel]:{...p[fuel],[key]:value}}));
 
-  const digital = [
-    "paytm",
-    "card",
-    "dtplus",
-    "hppay",
-    "phonepe"
-  ].reduce((a, k) => a + n(payments[fuel]?.[k]), 0);
-
-  const expense = n(payments[fuel]?.pumpExpense);
-
-  return (
-    <section className="panel" style={{ marginTop:18 }}>
-      <h2>{fuel} Payment Breakdown</h2>
-      <p>
-        इस fuel की दिन की वास्तविक receiving अलग भरें.
-        <b> Paytm</b> और <b>ATM / Card</b> अलग दर्ज होंगे.
-        <b> Expense</b> payment receiving नहीं है; यह अलग expense है.
-        <b> Udhari / Credit</b> केवल Credit Sale Register से आएगी.
-      </p>
-
-      <div className="form">
-        {paymentMethods.map(([k, l]) => (
-          <Field key={k} label={l}>
-            <input
-              type="number"
-              step=".01"
-              value={
-                k === "credit"
-                  ? creditTotal
-                  : payments[fuel]?.[k] ?? ""
-              }
-              readOnly={k === "credit"}
-              className={k === "credit" ? "readonly" : ""}
-              onChange={e => {
-                if (k === "credit") return;
-                setPayments(p => ({
-                  ...p,
-                  [fuel]: {
-                    ...p[fuel],
-                    [k]: e.target.value,
-                    ...(k === "pumpExpense" ? { other: "" } : {})
-                  }
-                }));
-              }}
-            />
-          </Field>
-        ))}
-      </div>
-
-      <div className="total-box">
-        <div className="mini"><span>SALE</span><strong>{money(saleTotals[fuel])}</strong></div>
-        <div className="mini"><span>PAYMENT</span><strong>{money(paymentTotal(fuel))}</strong></div>
-        <div className="mini"><span>CASH</span><strong>{money(payments[fuel]?.cash)}</strong></div>
-        <div className="mini"><span>DIGITAL</span><strong>{money(digital)}</strong></div>
-        <div className="mini"><span>EXPENSE</span><strong>{money(expense)}</strong></div>
-      </div>
-
-      {Math.abs(diff[fuel]) <= 0.50 ? (
-        <div className="balance-ok">✓ {fuel} Payment matches Sale — Difference ₹0.00</div>
-      ) : (
-        <div className="balance-bad">⚠ {fuel} Difference: {money(diff[fuel])}</div>
-      )}
-    </section>
-  );
-}
-
-/* =========================================================
-   OPENING SETUP
-========================================================= */
-
-export function OpeningSetup({
-  data,
-  update,
-  session
-}) {
-
-  const reset = () => {
-    if (session?.role !== USER_ROLES.ADMIN) return;
-    if (window.confirm(
-        "सारा local ERP data reset करना है?"
-    )) {
-
-      localStorage.removeItem(KEY);
-
-      update(
-        initialData()
-      );
-
-    }
-  };
-
-  return (
-    <div className="content">
-
-      <div className="warning">
-
-        <b>
-          01-08-2026 Opening Setup
-        </b>
-
-        <br />
-
-        MS/HSD stock और nozzle openings
-        fixed हैं. CNG stock maintain
-        नहीं होगा.
-
-      </div>
-
-      <div className="grid">
-
-        <section className="panel">
-
-          <h3>
-            Fuel Stock Opening
-          </h3>
-
-          <div className="form">
-
-            <Field label="MS">
-              <input
-                className="readonly"
-                readOnly
-                value={`${n(data.openingStock?.MS ?? 9356)} L`}
-              />
-            </Field>
-
-            <Field label="HSD">
-              <input
-                className="readonly"
-                readOnly
-                value={`${n(data.openingStock?.HSD ?? 7500)} L`}
-              />
-            </Field>
-
-            <Field label="CNG">
-              <input
-                className="readonly"
-                readOnly
-                value="No Stock"
-              />
-            </Field>
-
-          </div>
-
-        </section>
-
-        <section className="panel">
-
-          <h3>
-            Rates
-          </h3>
-
-          <div className="form">
-
-            {[
-              "MS",
-              "HSD",
-              "CNG"
-            ].map(f => (
-
-              <Field
-                key={f}
-                label={f}
-              >
-
-                <input
-                  className="readonly"
-                  readOnly
-                  value={
-                    data.rates[f]
-                  }
-                />
-
-              </Field>
-
-            ))}
-
-          </div>
-
-        </section>
-
-      </div>
-
-      <section
-        className="panel"
-        style={{
-          marginTop:18
-        }}
-      >
-
-        <h3>
-          Nozzle Opening Readings
-        </h3>
-
-        <Table
-          headers={[
-            "Nozzle",
-            "Fuel",
-            "01-08-2026 Opening"
-          ]}
-          rows={
-            NOZZLES.map(
-              x => [
-                x[0],
-                x[1],
-                OPENING[x[0]]
-              ]
-            )
-          }
-        />
-
-      </section>
-
-      <div className="actions">
-
-        {session?.role === USER_ROLES.ADMIN && <button className="btn red" onClick={reset}>Reset Local Data</button>}
-
-      </div>
-
+  return <section className="panel" style={{marginTop:18}}>
+    <h2>{fuel} Payment Breakdown</h2>
+    <p>Actual receiving अलग भरें. Density केवल MS/HSD के लिए है; JUMP MS/HSD/CNG में अलग दर्ज होगी.</p>
+    <div className="form">
+      {paymentMethods.map(([k,l])=><Field key={k} label={l}>
+        <input type="number" step=".01" value={k==="credit"?creditTotal:(payments[fuel]?.[k]??"")} readOnly={k==="credit"} className={k==="credit"?"readonly":""}
+          onChange={e=>k!=="credit"&&setField(k,e.target.value)} />
+      </Field>)}
     </div>
-  );
-}
-
-
-/* =========================================================
-   PARTY MASTER
-========================================================= */
-
-export function PartyMaster({
-  data,
-  update
-}) {
-
-  const empty = {
-    name:"",
-    mobile:"",
-    gst:"",
-    limit:""
-  };
-
-  const [f, setF] =
-    useState(empty);
-
-  const [editId, setEditId] =
-    useState(null);
-
-  const [search, setSearch] =
-    useState("");
-
-  const [page, setPage] =
-    useState(1);
-
-  const [per, setPer] =
-    useState(20);
-
-  const [msg, setMsg] =
-    useState("");
-
-  const filtered =
-    data.parties.filter(p => {
-
-      const q =
-        search
-          .toLowerCase()
-          .trim();
-
-      return (
-        !q ||
-        [
-          p.name,
-          p.mobile,
-          p.gst
-        ].some(v =>
-          String(v || "")
-            .toLowerCase()
-            .includes(q)
-        )
-      );
-    });
-
-  const pages =
-    Math.max(
-      1,
-      Math.ceil(
-        filtered.length / per
-      )
-    );
-
-  const list =
-    filtered.slice(
-      (page - 1) * per,
-      page * per
-    );
-
-  useEffect(
-    () => setPage(1),
-    [search, per]
-  );
-
-  function save() {
-
-    const name =
-      f.name.trim();
-
-    if (!name) {
-      return setMsg(
-        "Party name जरूरी है."
-      );
-    }
-
-    if (
-      data.parties.some(
-        p =>
-          p.id !== editId &&
-          p.name
-            .trim()
-            .toLowerCase() ===
-          name.toLowerCase()
-      )
-    ) {
-      return setMsg(
-        "यह party पहले से मौजूद है."
-      );
-    }
-
-    if (editId !== null) {
-
-      update({
-        parties:
-          data.parties.map(
-            p =>
-              p.id === editId
-                ? {
-                    ...p,
-                    ...f,
-                    name
-                  }
-                : p
-          )
-      });
-
-    } else {
-
-      update({
-        parties:[
-          ...data.parties,
-          {
-            ...f,
-            name,
-            id:Date.now()
-          }
-        ]
-      });
-
-    }
-
-    setF(empty);
-    setEditId(null);
-
-    setMsg(
-      editId !== null
-        ? "Party updated."
-        : "Party added."
-    );
-  }
-
-  function edit(p) {
-
-    setF({
-      name:p.name || "",
-      mobile:p.mobile || "",
-      gst:p.gst || "",
-      limit:p.limit || ""
-    });
-
-    setEditId(p.id);
-    setMsg("");
-  }
-
-  function del(id) {
-
-    const p =
-      data.parties.find(
-        x => x.id === id
-      );
-
-    if (
-      p &&
-      window.confirm(
-        `"${p.name}" delete करना है?`
-      )
-    ) {
-
-      update({
-        parties:
-          data.parties.filter(
-            x => x.id !== id
-          )
-      });
-
-      if (editId === id) {
-        setEditId(null);
-        setF(empty);
-      }
-
-      setMsg(
-        "Party deleted."
-      );
-    }
-  }
-
-  return (
-    <div className="content">
-
-      <section className="panel">
-
-        <h2>
-          Party Master
-          {editId !== null
-            ? " — Edit Party"
-            : ""}
-        </h2>
-
-        <div className="form">
-
-          <Field label="NAME *">
-
-            <input
-              value={f.name}
-              onChange={e =>
-                setF({
-                  ...f,
-                  name:e.target.value
-                })
-              }
-            />
-
-          </Field>
-
-          <Field label="MOBILE">
-
-            <input
-              inputMode="numeric"
-              value={f.mobile}
-              onChange={e =>
-                setF({
-                  ...f,
-                  mobile:e.target.value
-                })
-              }
-            />
-
-          </Field>
-
-          <Field label="GST">
-
-            <input
-              value={f.gst}
-              onChange={e =>
-                setF({
-                  ...f,
-                  gst:
-                    e.target.value
-                      .toUpperCase()
-                })
-              }
-            />
-
-          </Field>
-
-          <Field label="CREDIT LIMIT">
-
-            <input
-              type="number"
-              step=".01"
-              value={f.limit}
-              onChange={e =>
-                setF({
-                  ...f,
-                  limit:
-                    e.target.value
-                })
-              }
-            />
-
-          </Field>
-
-        </div>
-
-        <div className="actions">
-
-          <button
-            className="btn"
-            onClick={save}
-          >
-            {editId !== null
-              ? "✓ Update Party"
-              : "＋ Add Party"}
-          </button>
-
-          {editId !== null && (
-            <button
-              className="btn gray"
-              onClick={() => {
-                setEditId(null);
-                setF(empty);
-              }}
-            >
-              Cancel
-            </button>
-          )}
-
-          <button
-            className="btn gray"
-            onClick={() => {
-              setEditId(null);
-              setF(empty);
-            }}
-          >
-            Clear
-          </button>
-
-        </div>
-
-        {msg && (
-          <div
-            className={
-              msg.includes("जरूरी") ||
-              msg.includes("पहले से")
-                ? "notice error"
-                : "notice"
-            }
-          >
-            {msg}
-          </div>
-        )}
-
-      </section>
-
-      <section
-        className="panel"
-        style={{
-          marginTop:18
-        }}
-      >
-
-        <div
-          style={{
-            display:"flex",
-            justifyContent:"space-between",
-            alignItems:"center",
-            gap:10,
-            flexWrap:"wrap"
-          }}
-        >
-
-          <h2>
-            Party List ({filtered.length})
-          </h2>
-
-          <input
-            className="search"
-            placeholder="Search party / mobile / GST..."
-            value={search}
-            onChange={e =>
-              setSearch(
-                e.target.value
-              )
-            }
-          />
-
-        </div>
-
-        <Table
-          headers={[
-            "#",
-            "Party",
-            "Mobile",
-            "GST",
-            "Limit",
-            "Actions"
-          ]}
-          rows={
-            list.map(
-              (p, i) => [
-                <b>
-                  {(page - 1) *
-                    per +
-                    i +
-                    1}
-                </b>,
-
-                <b>
-                  {p.name}
-                </b>,
-
-                p.mobile || "—",
-
-                p.gst || "—",
-
-                money(p.limit),
-
-                <span
-                  style={{
-                    display:"flex",
-                    gap:6
-                  }}
-                >
-
-                  <button
-                    className="btn small"
-                    onClick={() =>
-                      edit(p)
-                    }
-                  >
-                    ✎ Edit
-                  </button>
-
-                  <button
-                    className="btn red small"
-                    onClick={() =>
-                      del(p.id)
-                    }
-                  >
-                    🗑 Delete
-                  </button>
-
-                </span>
-              ]
-            )
-          }
-        />
-
-        <div className="pagination">
-
-          <button
-            disabled={page === 1}
-            onClick={() =>
-              setPage(1)
-            }
-          >
-            «
-          </button>
-
-          <button
-            disabled={page === 1}
-            onClick={() =>
-              setPage(page - 1)
-            }
-          >
-            ‹
-          </button>
-
-          {Array.from(
-            {
-              length:pages
-            },
-            (_, i) => i + 1
-          )
-            .slice(
-              Math.max(
-                0,
-                page - 3
-              ),
-              Math.min(
-                pages,
-                page + 2
-              )
-            )
-            .map(x => (
-
-              <button
-                className={
-                  x === page
-                    ? "active"
-                    : ""
-                }
-                key={x}
-                onClick={() =>
-                  setPage(x)
-                }
-              >
-                {x}
-              </button>
-
-            ))}
-
-          <button
-            disabled={
-              page === pages
-            }
-            onClick={() =>
-              setPage(page + 1)
-            }
-          >
-            ›
-          </button>
-
-          <button
-            disabled={
-              page === pages
-            }
-            onClick={() =>
-              setPage(pages)
-            }
-          >
-            »
-          </button>
-
-          <span
-            style={{
-              marginLeft:"auto"
-            }}
-          >
-            Rows{" "}
-
-            <select
-              value={per}
-              onChange={e =>
-                setPer(
-                  Number(
-                    e.target.value
-                  )
-                )
-              }
-            >
-              <option>10</option>
-              <option>20</option>
-              <option>50</option>
-              <option>100</option>
-            </select>
-
-          </span>
-
-        </div>
-
-        <p>
-          Total {data.parties.length}
-          {" "}parties
-        </p>
-
-      </section>
-
+    <div className="actions" style={{marginTop:10}}>
+      {(fuel === "MS" || fuel === "HSD") && <button type="button" className="btn" onClick={()=>setField("densityOpen",!payments[fuel]?.densityOpen)}>🧪 Density</button>}
+      <button type="button" className="btn" onClick={()=>setField("jumpOpen",!payments[fuel]?.jumpOpen)}>↕️ JUMP</button>
     </div>
-  );
+    {payments[fuel]?.densityOpen && (fuel === "MS" || fuel === "HSD") && <div className="form" style={{marginTop:10}}>
+      <Field label={`Density — ${fuel} Reading`}><input value={payments[fuel]?.densityReading??""} placeholder="जैसे 0.7420" onChange={e=>setField("densityReading",e.target.value)} /></Field>
+      <Field label={`Density — ${fuel} Expense (₹)`}><input type="number" step=".01" min="0" value={payments[fuel]?.densityExpense??""} placeholder="वास्तविक खर्च" onChange={e=>setField("densityExpense",e.target.value)} /></Field>
+    </div>}
+    {payments[fuel]?.jumpOpen && <div className="form" style={{marginTop:10}}>
+      <Field label={`JUMP — ${fuel} (₹)`}><input type="number" step=".01" min="0" value={payments[fuel]?.jump??""} placeholder="वास्तविक JUMP राशि" onChange={e=>setField("jump",e.target.value)} /></Field>
+    </div>}
+    <div className="total-box">
+      <div className="mini"><span>SALE</span><strong>{money(saleTotals[fuel])}</strong></div>
+      <div className="mini"><span>PAYMENT</span><strong>{money(paymentTotal(fuel))}</strong></div>
+      <div className="mini"><span>CASH</span><strong>{money(payments[fuel]?.cash)}</strong></div>
+      <div className="mini"><span>DIGITAL</span><strong>{money(digital)}</strong></div>
+      <div className="mini"><span>DENSITY EXPENSE</span><strong>{money(densityExpense)}</strong></div>
+      <div className="mini"><span>JUMP</span><strong>{money(jump)}</strong></div>
+      <div className="mini"><span>EXPENSE</span><strong>{money(expense)}</strong></div>
+    </div>
+    {Math.abs(diff[fuel])<=0.50?<div className="balance-ok">✓ {fuel} Payment matches Sale — Difference ₹0.00</div>:<div className="balance-bad">⚠ {fuel} Difference: {money(diff[fuel])}</div>}
+  </section>;
 }
-
 
 /* =========================================================
    CREDIT SALE
@@ -5334,7 +4622,9 @@ export function DailySaleSummary({ data }) {
     const receiptTotal =
       cash + paytm + card + dtplus + hppay + phonepe;
     const reconciliationTotal = receiptTotal + credit;
-    const adjustedReconciliationTotal = reconciliationTotal + pumpExpense;
+    const densityExpense = (fuel === "MS" || fuel === "HSD") ? n(p.densityExpense) : 0;
+    const jump = n(p.jump);
+    const adjustedReconciliationTotal = reconciliationTotal + pumpExpense + densityExpense + jump;
 
     return {
       cash,
@@ -5348,6 +4638,9 @@ export function DailySaleSummary({ data }) {
       pumpExpense,
       total: reconciliationTotal,
       receiptTotal,
+      densityReading: p.densityReading || "",
+      densityExpense,
+      jump,
       adjustedTotal: adjustedReconciliationTotal,
       difference: rupee(fuelSummary[fuel].amount - adjustedReconciliationTotal)
     };
@@ -5409,7 +4702,8 @@ export function DailySaleSummary({ data }) {
   // Expense was paid before the salesman deposited cash. Therefore it
   // reduces the cash to be deposited, but it still belongs to the expense
   // account and must be added back for sale reconciliation.
-  const totalDifference = rupee(totalSale - totalPayment - totalPumpExpense);
+  const totalAdjustment = ["MS","HSD","CNG"].reduce((sum,fuel) => sum + n(paymentsByFuel[fuel].densityExpense) + n(paymentsByFuel[fuel].jump), 0);
+  const totalDifference = rupee(totalSale - totalPayment - totalPumpExpense - totalAdjustment);
 
   const paymentMethods = METHODS;
 
@@ -5427,6 +4721,8 @@ export function DailySaleSummary({ data }) {
                   <th key={k}>{label}</th>
                 ))}
                 <th>Receipt Total</th>
+                <th>Density Expense</th>
+                <th>JUMP</th>
                 <th>Pump Expense</th>
                 <th>Adjusted Difference</th>
               </tr>
@@ -5437,6 +4733,8 @@ export function DailySaleSummary({ data }) {
                   <td key={k}>{money(p[k])}</td>
                 ))}
                 <td><b>{money(p.receiptTotal)}</b></td>
+                <td><b>{money(p.densityExpense)}</b></td>
+                <td><b>{money(p.jump)}</b></td>
                 <td><b>{money(p.pumpExpense)}</b></td>
                 <td><b>{money(p.difference)}</b></td>
               </tr>
