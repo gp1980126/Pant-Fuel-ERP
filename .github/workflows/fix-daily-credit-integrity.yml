@@ -1,0 +1,97 @@
+name: apply-daily-credit-integrity-fix
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, 'apply daily credit integrity fix')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch integrity logic
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/core/pumpDomain.js')
+          s = p.read_text()
+          start = s.index('export function syncCreditPayments')
+          end = s.index('export async function hashPassword', start)
+          new = '''export function syncCreditPayments(list, credits) {
+  // Credit Sale is the source of truth for receivable reporting, but a credit
+  // save must NOT rewrite historical Daily Payment rows into a fingerprint
+  // collision. There can legitimately be more than one daily-payment row for
+  // a date (for example a recovered credit-only row plus the original collection row).
+  const rows = Array.isArray(list) ? list.map(x => ({ ...x })) : [];
+  const byDate = new Map();
+  rows.forEach((row, index) => {
+    if (row?.date) byDate.set(String(row.date), { row, index });
+  });
+  const sums = new Map();
+  for (const c of (Array.isArray(credits) ? credits : [])) {
+    const date = String(c?.date || '');
+    const fuel = String(c?.fuel || '');
+    if (!date || !['MS','HSD','CNG'].includes(fuel)) continue;
+    if (!sums.has(date)) sums.set(date, { MS:0, HSD:0, CNG:0 });
+    const netCredit = n(c.amount) - n(c.cashReceivedFromDriver) + n(c.cashGivenToDriver);
+    sums.get(date)[fuel] += netCredit;
+  }
+  for (const [date, vals] of sums) {
+    let entry = byDate.get(date);
+    if (!entry) {
+      const row = { date };
+      rows.push(row);
+      entry = { row, index: rows.length - 1 };
+      byDate.set(date, entry);
+    }
+    const row = { ...entry.row };
+    let changed = false;
+    ['MS','HSD','CNG'].forEach(fuel => {
+      const oldFuel = (row[fuel] && typeof row[fuel] === 'object') ? row[fuel] : {};
+      const nextCredit = rupee(vals[fuel]);
+      if (String(oldFuel.credit ?? '') !== String(nextCredit)) changed = true;
+      row[fuel] = { ...oldFuel, credit: nextCredit };
+    });
+    if (changed) {
+      const transactionId = String(row.transactionId || '').trim();
+      if (transactionId) {
+        const normalFingerprint = transactionFingerprint('DAILY_PAYMENT', { ...row, transactionId });
+        const collision = rows.some((other, otherIndex) =>
+          otherIndex !== entry.index && String(other?.fingerprint || '') === String(normalFingerprint)
+        );
+        row.fingerprint = collision
+          ? stableHash(`DAILY_PAYMENT|${transactionId}|${canonicalIntegrityValue(row)}`)
+          : normalFingerprint;
+        row.fingerprintVersion = collision ? 3 : 2;
+      } else {
+        Object.assign(row, ensureTransactionIdentity('DAILY_PAYMENT', row));
+      }
+    }
+    rows[entry.index] = row;
+    byDate.set(date, { row, index: entry.index });
+  }
+  return rows.sort((a,b) => String(a?.date || '').localeCompare(String(b?.date || '')));
+}
+
+'''
+          s = s[:start] + new + s[end:]
+          old = """if (version >= 2) {\n          const expected = transactionFingerprint(type,row);\n          if (fp!==String(expected)) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v2 fingerprint mismatch`});\n        } else {"""
+          newscan = """if (version === 3 && type === 'DAILY_PAYMENT') {\n          const tx = String(row.transactionId || '').trim();\n          const expected = tx ? stableHash(`DAILY_PAYMENT|${tx}|${canonicalIntegrityValue(row)}`) : '';\n          if (!expected || fp!==String(expected)) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v3 fingerprint mismatch`});\n        } else if (version >= 2) {\n          const expected = transactionFingerprint(type,row);\n          if (fp!==String(expected)) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v2 fingerprint mismatch`});\n        } else {"""
+          if old not in s: raise SystemExit('scanner pattern not found')
+          s=s.replace(old,new,1)
+          old2="if (!fp || version < 2 || !row.transactionId) return row;"
+          new2="if (!fp || version < 2 || version === 3 || !row.transactionId) return row;"
+          if old2 not in s: raise SystemExit('migration pattern not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/core/pumpDomain.js
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: prevent credit save fingerprint collisions"
+          git push
+          git rm .github/workflows/fix-daily-credit-integrity.yml
+          git commit -m "chore: remove temporary integrity fix workflow"
+          git push
