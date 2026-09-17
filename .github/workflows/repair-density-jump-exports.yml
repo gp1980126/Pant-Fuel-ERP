@@ -1,0 +1,47 @@
+name: Repair Density JUMP exports
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore missing exports
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+          p=Path('src/components/PumpModules.jsx')
+          s=p.read_text(encoding='utf-8')
+          if 'export function OpeningSetup(' in s and 'export function PartyMaster(' in s:
+              print('Exports already present; nothing to do.')
+              raise SystemExit(0)
+          base=subprocess.check_output(['git','show','62a78fba4d0ec5355514c4ef7c75f6a8ca950bec:src/components/PumpModules.jsx'],text=True)
+          def block(name, endname):
+              a=base.index(f'export function {name}(')
+              b=base.index(f'export function {endname}(',a)
+              return base[a:b]
+          opening=block('OpeningSetup','PartyMaster')
+          a=base.index('export function PartyMaster(')
+          b=base.index('export function CreditSale(',a)
+          party=base[a:b]
+          marker='/* =========================================================\n   CREDIT SALE'
+          pos=s.index(marker)
+          s=s[:pos]+opening+'\n'+party+'\n'+s[pos:]
+          p.write_text(s,encoding='utf-8')
+          PY
+          npm ci --silent
+          npm run build
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/components/PumpModules.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: restore OpeningSetup and PartyMaster exports"
+          git push
