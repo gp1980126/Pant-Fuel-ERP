@@ -1,0 +1,59 @@
+name: Merge Density JUMP v2
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch verified source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('src/components/PumpModules.jsx'); s=p.read_text(encoding='utf-8')
+          if 'Density & JUMP — Separate Daily Adjustment' in s and 'densityOpen' in s and 'const totalAdjustment' in s:
+              print('Density/JUMP already present; nothing to do.')
+          else:
+              start=s.index('export function PaymentSection({')
+              candidates=[x for x in (s.find('\n/* =========================================================\n   CREDIT SALE',start),s.find('\n/* =========================================================\n   OPENING SETUP',start)) if x>=0]
+              if not candidates: raise SystemExit('PaymentSection end marker not found')
+              end=min(candidates)
+              payment='''export function PaymentSection({ fuel, payments, setPayments, saleTotals, paymentTotal, diff, creditTotal }) {\n  const methods=[["cash","Cash"],["paytm","Paytm"],["card","ATM / Card"],["dtplus","DT Plus"],["hppay","HP Pay"],["phonepe","PhonePe"],["credit","Party Receivable / Credit"],["pumpExpense","Expense"]];\n  const digital=["paytm","card","dtplus","hppay","phonepe"].reduce((a,k)=>a+n(payments[fuel]?.[k]),0);\n  const expense=n(payments[fuel]?.pumpExpense);\n  const densityExpense=(fuel==="MS"||fuel==="HSD")?n(payments[fuel]?.densityExpense):0;\n  const jump=n(payments[fuel]?.jump);\n  const setField=(key,value)=>setPayments(p=>({...p,[fuel]:{...p[fuel],[key]:value}}));\n  return <section className="panel" style={{marginTop:18}}><h2>{fuel} Payment Breakdown</h2>\n    <p>Actual receiving अलग भरें. <b>Density</b> केवल MS/HSD के लिए है; <b>JUMP</b> MS/HSD/CNG में अलग दर्ज होगी.</p>\n    <div className="form">{methods.map(([k,l])=><Field key={k} label={l}><input type="number" step=".01" value={k==="credit"?creditTotal:(payments[fuel]?.[k]??"")} readOnly={k==="credit"} className={k==="credit"?"readonly":""} onChange={e=>k!=="credit"&&setField(k,e.target.value)}/></Field>)}</div>\n    <div className="actions" style={{marginTop:10}}>{(fuel==="MS"||fuel==="HSD")&&<button type="button" className="btn" onClick={()=>setField("densityOpen",!payments[fuel]?.densityOpen)}>🧪 Density</button>}<button type="button" className="btn" onClick={()=>setField("jumpOpen",!payments[fuel]?.jumpOpen)}>↕️ JUMP</button></div>\n    {payments[fuel]?.densityOpen&&(fuel==="MS"||fuel==="HSD")&&<div className="form" style={{marginTop:10}}><Field label={`Density — ${fuel} Reading`}><input value={payments[fuel]?.densityReading??""} placeholder="जैसे 0.7420" onChange={e=>setField("densityReading",e.target.value)}/></Field><Field label={`Density — ${fuel} Expense (₹)`}><input type="number" step=".01" min="0" value={payments[fuel]?.densityExpense??""} placeholder="वास्तविक खर्च" onChange={e=>setField("densityExpense",e.target.value)}/></Field></div>}\n    {payments[fuel]?.jumpOpen&&<div className="form" style={{marginTop:10}}><Field label={`JUMP — ${fuel} (₹)`}><input type="number" step=".01" min="0" value={payments[fuel]?.jump??""} placeholder="वास्तविक JUMP राशि" onChange={e=>setField("jump",e.target.value)}/></Field></div>}\n    <div className="total-box"><div className="mini"><span>SALE</span><strong>{money(saleTotals[fuel])}</strong></div><div className="mini"><span>PAYMENT</span><strong>{money(paymentTotal(fuel))}</strong></div><div className="mini"><span>CASH</span><strong>{money(payments[fuel]?.cash)}</strong></div><div className="mini"><span>DIGITAL</span><strong>{money(digital)}</strong></div><div className="mini"><span>DENSITY EXPENSE</span><strong>{money(densityExpense)}</strong></div><div className="mini"><span>JUMP</span><strong>{money(jump)}</strong></div><div className="mini"><span>EXPENSE</span><strong>{money(expense)}</strong></div></div>\n    {Math.abs(diff[fuel])<=0.50?<div className="balance-ok">✓ {fuel} Payment matches Sale — Difference ₹0.00</div>:<div className="balance-bad">⚠ {fuel} Difference: {money(diff[fuel])}</div>}</section>;\n}\n'''
+              s=s[:start]+payment+s[end:]
+              old='''  const totalDifference = rupee(\n    totalSale - totalPayment - totalPumpExpense\n  );'''
+              new='''  const totalDensityExpense=n(payments.MS?.densityExpense)+n(payments.HSD?.densityExpense);\n  const totalJump=n(payments.MS?.jump)+n(payments.HSD?.jump)+n(payments.CNG?.jump);\n  const totalDifference=rupee(totalSale-totalPayment-totalPumpExpense-totalDensityExpense-totalJump);'''
+              if old in s: s=s.replace(old,new,1)
+              ds=s.index('export function DailySaleSummary({ data })')
+              a=s.find('  const payment = savedPayment(data, date) || {};',ds)
+              b=s.find('\n  const paymentsByFuel = {',a)
+              if a<0 or b<0: raise SystemExit('Daily payment block marker not found')
+              block='''  const paymentRowsForDate=(data.dailyPayments||[]).filter(r=>String(r?.date||"")===String(date));\n  const paymentRowScore=row=>["MS","HSD","CNG"].reduce((score,fuel)=>{const p=row?.[fuel];if(!p||typeof p!=="object")return score;return score+["cash","paytm","card","dtplus","hppay","phonepe","credit","pumpExpense","other","densityExpense","jump"].reduce((n,k)=>n+(p[k]!==undefined&&p[k]!==""?1:0),0)},0);\n  const payment=paymentRowsForDate.reduce((best,row)=>!best||paymentRowScore(row)>paymentRowScore(best)?row:best,null)||savedPayment(data,date)||{};\n  const creditByFuel={MS:creditTotalForFuel(data,date,"MS"),HSD:creditTotalForFuel(data,date,"HSD"),CNG:creditTotalForFuel(data,date,"CNG")};\n  const paymentForFuel=fuel=>{const p=payment?.[fuel]||{};const standard=paymentForFuelStandard(data,date,fuel)||{};const cash=n(p.cash??standard.cash),paytm=n(p.paytm??standard.paytm),card=n(p.card??standard.card),dtplus=n(p.dtplus??p.dtPlus??standard.dtplus),hppay=n(p.hppay??p.hpPay??standard.hppay),phonepe=n(p.phonepe??p.phonePe??standard.phonepe);const savedCredit=n(p.credit??p.udhari??standard.credit),credit=n(creditByFuel[fuel])>0?n(creditByFuel[fuel]):savedCredit;const pumpExpense=n(p.pumpExpense??standard.pumpExpense)+(p.pumpExpense===undefined?n(p.other):0);const densityExpense=(fuel==="MS"||fuel==="HSD")?n(p.densityExpense):0;const jump=n(p.jump);const receiptTotal=cash+paytm+card+dtplus+hppay+phonepe;const reconciliationTotal=receiptTotal+credit;const adjustedTotal=reconciliationTotal+pumpExpense+densityExpense+jump;return {cash,paytm,card,dtplus,hppay,phonepe,credit,other:pumpExpense,pumpExpense,densityReading:p.densityReading||"",densityExpense,jump,total:reconciliationTotal,receiptTotal,adjustedTotal,difference:rupee(fuelSummary[fuel].amount-adjustedTotal)};};\n'''
+              s=s[:a]+block+s[b:]
+              ds=s.index('export function DailySaleSummary({ data })')
+              c=s.index('  const totalPumpExpense =',ds)
+              d=s.index('\n\n  const paymentMethods = METHODS;',c)
+              seg=s[c:d]
+              seg=re.sub(r'const totalPumpExpense =([\s\S]*?)const totalDifference = rupee\(totalSale - totalPayment - totalPumpExpense\);','''const totalPumpExpense=paymentsByFuel.MS.pumpExpense+paymentsByFuel.HSD.pumpExpense+paymentsByFuel.CNG.pumpExpense;\n  const totalAdjustment=["MS","HSD","CNG"].reduce((sum,fuel)=>sum+n(paymentsByFuel[fuel].densityExpense)+n(paymentsByFuel[fuel].jump),0);\n  const totalDifference=rupee(totalSale-totalPayment-totalPumpExpense-totalAdjustment);''',seg,count=1)
+              s=s[:c]+seg+s[d:]
+              ds=s.index('export function DailySaleSummary({ data })')
+              h=s.index('<h3>Reconciliation Difference / Recovery — Fuel-wise</h3>',ds)
+              sec=s.rfind('<section',ds,h)
+              panel='''<section className="panel" style={{ marginTop: 18 }}><h3>Density & JUMP — Separate Daily Adjustment</h3><div className="table"><table><thead><tr><th>Fuel</th><th>Density Reading</th><th>Density Expense</th><th>JUMP</th></tr></thead><tbody>{["MS","HSD","CNG"].map(fuel=>{const p=paymentsByFuel[fuel];return <tr key={fuel}><td><b>{fuel}</b></td><td>{fuel==="CNG"?"—":(p.densityReading||"—")}</td><td>{fuel==="CNG"?"—":money(p.densityExpense)}</td><td>{money(p.jump)}</td></tr>})}<tr className="total-row"><td><b>TOTAL</b></td><td>—</td><td><b>{money(n(paymentsByFuel.MS.densityExpense)+n(paymentsByFuel.HSD.densityExpense))}</b></td><td><b>{money(n(paymentsByFuel.MS.jump)+n(paymentsByFuel.HSD.jump)+n(paymentsByFuel.CNG.jump))}</b></td></tr></tbody></table></div><p style={{marginBottom:0,color:"#6b7280"}}>Density और JUMP को Difference में दोबारा नहीं गिना जाएगा।</p></section>\n\n'''
+              s=s[:sec]+panel+s[sec:]
+              p.write_text(s,encoding='utf-8')
+          PY
+          grep -q 'densityOpen' src/components/PumpModules.jsx
+          grep -q 'Density & JUMP — Separate Daily Adjustment' src/components/PumpModules.jsx
+          grep -q 'totalAdjustment' src/components/PumpModules.jsx
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/PumpModules.jsx
+          git commit -m 'feat: merge verified Density JUMP controls' || exit 0
+          git push
