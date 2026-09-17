@@ -28,6 +28,17 @@ export async function cloudSignIn(email, password) {
   return data;
 }
 
+export async function cloudResetPassword(email) {
+  if (!supabase) throw new Error('Cloud is not configured');
+  const cleanEmail = String(email || '').trim();
+  if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Registered email address डालें।');
+  const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+    redirectTo: window.location.origin,
+  });
+  if (error) throw error;
+  return true;
+}
+
 export async function cloudSignOut() {
   if (!supabase) return;
 

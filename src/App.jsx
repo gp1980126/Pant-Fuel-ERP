@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
+import { CLOUD_ENABLED, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
 import {
   START_DATE,
   PUMP_NAME,
@@ -133,6 +133,8 @@ function App() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
   const [integrityReport, setIntegrityReport] = useState(null);
   const [importPreview, setImportPreview] = useState(null);
   const [mutationError, setMutationError] = useState("");
@@ -1261,7 +1263,18 @@ const importData = (event) => {
             <div className="login-field"><label>Username / Email</label><input name="email" type="text" autoComplete="username" required /></div>
             <div className="login-field"><label>Password</label><input name="password" type="password" autoComplete="current-password" required /></div>
             <button className="login-btn" type="submit">LOGIN</button>
+            {CLOUD_ENABLED && <button type="button" className="btn" style={{marginTop:8,width:"100%"}} onClick={async e => {
+              const form = e.currentTarget.form;
+              const email = String(new FormData(form).get("email") || "").trim();
+              setLoginError(""); setResetMessage("");
+              if (!email.includes("@")) { setLoginError("Forgot Password के लिए registered email address डालें।"); return; }
+              setResetBusy(true);
+              try { await cloudResetPassword(email); setResetMessage("Password reset link आपके registered email पर भेज दिया गया है।"); }
+              catch (error) { setLoginError(error?.message || "Password reset email नहीं भेजा जा सका।"); }
+              finally { setResetBusy(false); }
+            }}>{resetBusy ? "SENDING…" : "Forgot Password?"}</button>}
             <div className="login-error" style={{display:loginError ? "block" : "none"}}>{loginError}</div>
+            {resetMessage && <div style={{marginTop:8,color:"#15803d",fontSize:12,textAlign:"center"}}>{resetMessage}</div>}
             <div className="role-hint"><b>4 Roles:</b> Admin · Owner · Manager · Operator<br/>Cloud mode: login is shared across devices. Local mode: login is browser-only.</div>
           </form>
         </div>
