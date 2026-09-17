@@ -17,14 +17,24 @@ export const supabase = CLOUD_ENABLED
   : null;
 
 export async function cloudSignIn(email, password) {
-  if (!supabase) throw new Error('Cloud is not configured');
+  if (!supabase) {
+    const e = new Error('Cloud is not configured');
+    e.code = 'CLOUD_NOT_CONFIGURED';
+    throw e;
+  }
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
-  if (error) throw error;
+  if (error) {
+    // Keep Supabase's structured Auth error code so the UI can distinguish
+    // a real credential failure from a later profile/cloud-state failure.
+    error.code = error.code || 'auth_error';
+    error.stage = 'AUTH';
+    throw error;
+  }
   return data;
 }
 
@@ -56,7 +66,10 @@ export async function cloudGetProfile(userId) {
     .eq('id', userId)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    error.stage = 'PROFILE';
+    throw error;
+  }
   return data;
 }
 
@@ -71,7 +84,10 @@ export async function cloudLoadState(
     .eq('station_id', stationId)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    error.stage = 'CLOUD_STATE';
+    throw error;
+  }
   return data || null;
 }
 
