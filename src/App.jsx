@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { CLOUD_ENABLED, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
+import { CLOUD_ENABLED, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudGetStationId, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
 import {
   START_DATE,
   PUMP_NAME,
@@ -131,6 +131,7 @@ function App() {
   };
   const [dark, setDark] = useState(false);
   const [session, setSession] = useState(null);
+  const [runtimeStationId, setRuntimeStationId] = useState(CLOUD_STATION_ID);
   const [authReady, setAuthReady] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [resetMessage, setResetMessage] = useState("");
@@ -168,7 +169,10 @@ function App() {
     }
     const role = normalizeRole(profile.role);
     if (!role) throw new Error("Cloud profile role is invalid");
-    const cloudRow = await cloudLoadState(CLOUD_STATION_ID);
+    const resolvedStationId = await cloudGetStationId(authUser.id);
+    if (!resolvedStationId) throw new Error("Cloud pump is not provisioned for this account");
+    setRuntimeStationId(resolvedStationId);
+    const cloudRow = await cloudLoadState(resolvedStationId);
     let nextData;
     let version;
     if (cloudRow?.data) {
@@ -182,12 +186,12 @@ function App() {
       const scan = scanTransactionIntegrity(nextData);
       if (scan.errors.length) throw new Error(`Local state failed integrity validation: ${scan.errors[0].reason}`);
       try {
-        const created = await cloudSaveState(CLOUD_STATION_ID, nextData, 0, authUser.id);
+        const created = await cloudSaveState(resolvedStationId, nextData, 0, authUser.id);
         version = Number(created?.new_version || 1);
       } catch (e) {
         if (e?.code !== "CLOUD_CONFLICT") throw e;
         // Another device initialized the station a moment earlier. Never overwrite it.
-        const latest = await cloudLoadState(CLOUD_STATION_ID);
+        const latest = await cloudLoadState(resolvedStationId);
         if (!latest?.data) throw e;
         nextData = normalizeIntegrityData(repairLegacyAuditChain(latest.data));
         version = Number(latest.version || 1);
@@ -247,7 +251,7 @@ function App() {
     if (!CLOUD_ENABLED || !session?.uid) return { ok:false, reason:"Cloud session not ready" };
     try {
       setCloudStatus("connecting");
-      const latest = await cloudLoadState(CLOUD_STATION_ID);
+      const latest = await cloudLoadState(runtimeStationId);
       if (!latest?.data) return { ok:false, reason:"Cloud state not found" };
       const next = normalizeIntegrityData(repairLegacyAuditChain(latest.data));
       const scan = scanTransactionIntegrity(next);
@@ -283,11 +287,11 @@ function App() {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [session?.uid]);
+  }, [session?.uid, runtimeStationId]);
 
   useEffect(() => {
     if (!CLOUD_ENABLED || !session?.uid || !cloudHydratedRef.current) return;
-    return subscribeState(CLOUD_STATION_ID, remote => {
+    return subscribeState(runtimeStationId, remote => {
       const remoteVersion = Number(remote?.version || 0);
       if (!remote?.data || remoteVersion <= cloudVersionRef.current) return;
       try {
@@ -448,7 +452,7 @@ function App() {
     cloudSaveTimerRef.current = setTimeout(async () => {
       try {
         setCloudStatus("saving");
-        const result = await cloudSaveState(CLOUD_STATION_ID, data, cloudVersionRef.current, session.uid);
+        const result = await cloudSaveState(runtimeStationId, data, cloudVersionRef.current, session.uid);
         cloudVersionRef.current = Number(result?.new_version || cloudVersionRef.current + 1);
         cloudLastSavedHashRef.current = payloadHash;
         setCloudStatus("online");
@@ -768,7 +772,7 @@ const importData = (event) => {
           if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current);
           setCloudStatus("saving");
           const saved = await cloudSaveState(
-            CLOUD_STATION_ID,
+            runtimeStationId,
             finalCandidate,
             Number(cloudVersionRef.current || 0),
             session.uid
