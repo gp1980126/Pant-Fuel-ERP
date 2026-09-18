@@ -79,6 +79,29 @@ export async function cloudGetProfile(userId) {
   return data;
 }
 
+
+export async function cloudGetStationId(userId) {
+  if (!supabase || !userId) return null;
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('pump_id,tenant_id')
+    .eq('id', userId)
+    .maybeSingle();
+  if (profileError) { profileError.stage = 'PROFILE_CONTEXT'; throw profileError; }
+  if (!profile?.pump_id) return null;
+  const { data: pump, error: pumpError } = await supabase
+    .from('sm_pumps')
+    .select('id,tenant_id,station_id,pump_code,pump_name,active')
+    .eq('id', profile.pump_id)
+    .maybeSingle();
+  if (pumpError) { pumpError.stage = 'PUMP_CONTEXT'; throw pumpError; }
+  if (!pump?.active || !pump?.station_id) return null;
+  if (profile.tenant_id && pump.tenant_id && String(profile.tenant_id) !== String(pump.tenant_id)) {
+    const e = new Error('Cloud pump context mismatch'); e.code = 'PUMP_CONTEXT_MISMATCH'; e.stage = 'PUMP_CONTEXT'; throw e;
+  }
+  return String(pump.station_id).trim() || null;
+}
+
 export async function cloudLoadState(
   stationId = 'SATAT-FILLING-STATION'
 ) {
