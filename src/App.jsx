@@ -461,7 +461,7 @@ function App() {
         if (error?.code === "CLOUD_CONFLICT") {
           setCloudStatus("conflict");
           try {
-            const latest = await cloudLoadState(CLOUD_STATION_ID);
+            const latest = await cloudLoadState(runtimeStationId);
             if (latest?.data) {
               const next = normalizeIntegrityData(repairLegacyAuditChain(latest.data));
               cloudApplyingRef.current = true;
