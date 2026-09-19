@@ -854,9 +854,29 @@ export function FuelSale({
         // If historical/local data contains more than one row for the same
         // date + nozzle, Fuel Sale must display the latest genuine saved row.
         // Array.find() could show an older Testing=0 row and hide restored edits.
+        // Cloud/legacy rows can carry date/nozzle values with a different
+        // representation (whitespace, casing, or a Date-like string).  Use
+        // one canonical comparison here so an existing saved meter row is
+        // never displayed as a blank/new row.
+        const canonicalMeterDate = value => {
+          if (value === null || value === undefined) return "";
+          const raw = String(value).trim();
+          if (!raw) return "";
+          const iso = raw.match(/^(\\d{4}-\\d{2}-\\d{2})/);
+          return iso ? iso[1] : raw.slice(0, 10);
+        };
+        const canonicalNozzle = value => String(value ?? "").trim().toUpperCase();
+        const targetDate = canonicalMeterDate(date);
+        const targetNozzle = canonicalNozzle(nozzle);
         const saved = typeof sales.findLast === "function"
-          ? sales.findLast(s => s.date === date && s.nozzle === nozzle)
-          : [...sales].reverse().find(s => s.date === date && s.nozzle === nozzle);
+          ? sales.findLast(s =>
+              canonicalMeterDate(s?.date) === targetDate &&
+              canonicalNozzle(s?.nozzle) === targetNozzle
+            )
+          : [...sales].reverse().find(s =>
+              canonicalMeterDate(s?.date) === targetDate &&
+              canonicalNozzle(s?.nozzle) === targetNozzle
+            );
 
         // Opening हमेशा सबसे हाल की पिछली sale की Closing से आएगी.
         const opening = openingFor(
