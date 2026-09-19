@@ -5480,12 +5480,12 @@ export function DailySaleSummary({ data }) {
     ].map(escapeCsv).join(","));
 
     lines.push("");
-    lines.push(["Fuel", "Cash", "Paytm + ATM (POS)", "DT Plus", "HP Pay", "PhonePe", "Udhari / Credit", "Pump Expense / Other", "Receipt Total", "Adjusted Difference"].map(escapeCsv).join(","));
+    lines.push(["Fuel", "Cash", "Paytm + ATM (POS)", "DT Plus", "HP Pay", "PhonePe", "Udhari / Credit", "Pump Expense / Other", "Density Reading", "Density Expense", "JUMP", "Receipt Total", "Adjusted Difference"].map(escapeCsv).join(","));
     ["MS", "HSD", "CNG"].forEach(fuel => {
       const p = paymentsByFuel[fuel];
       lines.push([
         fuel, p.cash, p.paytm, p.dtplus, p.hppay,
-        p.phonepe, p.credit, p.other, p.total, p.difference
+        p.phonepe, p.credit, p.other, p.densityReading || "", p.densityExpense || 0, p.jump || 0, p.total, p.difference
       ].map(escapeCsv).join(","));
     });
 
@@ -5724,6 +5724,34 @@ export function DailySaleSummary({ data }) {
       {fuelCard("MS")}
       {fuelCard("HSD")}
       {fuelCard("CNG")}
+
+      <section className="panel" style={{ marginTop: 18 }}>
+        <h3>🧪 Density + ↕️ JUMP — Daily Record</h3>
+        <p style={{marginTop:0,color:"#6b7280"}}>
+          Cloud में saved Daily Payment record से Density Reading / Density Expense / JUMP दिखाए जा रहे हैं।
+          यह display-only summary है; existing sales और cloud data को बदला नहीं जाता।
+        </p>
+        <div className="table">
+          <table>
+            <thead><tr><th>Fuel</th><th>Density Reading</th><th>Density Expense</th><th>JUMP</th><th>Record Status</th></tr></thead>
+            <tbody>
+              {["MS","HSD","CNG"].map(fuel => {
+                const p = paymentsByFuel[fuel] || {};
+                const densityAllowed = fuel === "MS" || fuel === "HSD";
+                const hasDensity = densityAllowed && (String(p.densityReading ?? "").trim() !== "" || n(p.densityExpense) !== 0);
+                const hasJump = n(p.jump) !== 0;
+                return <tr key={fuel}>
+                  <td><b>{fuel}</b></td>
+                  <td>{densityAllowed ? (String(p.densityReading ?? "").trim() || "—") : "N/A"}</td>
+                  <td>{densityAllowed ? money(p.densityExpense) : "N/A"}</td>
+                  <td>{money(p.jump)}</td>
+                  <td>{hasDensity || hasJump ? "✓ Saved" : "— No entry"}</td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="panel" style={{ marginTop: 18 }}>
         <h3>Reconciliation Difference / Recovery — Fuel-wise</h3>
