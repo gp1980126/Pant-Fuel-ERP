@@ -1237,10 +1237,15 @@ export function load() {
     }
     const mergedPurchases = dedupePurchaseBills(mergeById(base.purchases, Array.isArray(saved.purchases) ? saved.purchases : []));
     const mergedPaytmTotals = (() => {
-      const savedTotals = Array.isArray(saved.paytmTotals) ? saved.paytmTotals : [];
-      const byDate = new Map((base.paytmTotals || DEFAULT_PAYTM_TOTALS).map(x => [x.date, { ...x }]));
-      savedTotals.forEach(x => { if (x?.date) byDate.set(String(x.date), { ...x }); });
-      return Array.from(byDate.values()).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+      // Defensive recovery: older/local backups may contain null or malformed
+      // POS rows. Never let one bad row crash the entire application at boot.
+      const seedTotals = (Array.isArray(base.paytmTotals) ? base.paytmTotals : DEFAULT_PAYTM_TOTALS)
+        .filter(x => x && typeof x === "object" && x.date);
+      const savedTotals = (Array.isArray(saved.paytmTotals) ? saved.paytmTotals : [])
+        .filter(x => x && typeof x === "object" && x.date);
+      const byDate = new Map(seedTotals.map(x => [String(x.date), { ...x }]));
+      savedTotals.forEach(x => byDate.set(String(x.date), { ...x }));
+      return Array.from(byDate.values()).sort((a,b)=>String(a?.date || "").localeCompare(String(b?.date || "")));
     })();
     const mergedDailyPayments = recoverKnownAug29PaymentRow(
       normalizePOSPayments(mergeById(base.dailyPayments, Array.isArray(saved.dailyPayments) ? saved.dailyPayments : [])),
