@@ -1,15 +1,20 @@
 // PumpPro cloud sync adapter (Supabase)
 import { createClient } from '@supabase/supabase-js';
 
-const url = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
-const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
-const configured = Boolean(url && anonKey);
-const deployedHost = typeof window !== 'undefined' && /(^|\.)vercel\.app$/i.test(window.location.hostname);
+// Vercel preview builds in this isolated test project may not have build-time
+// environment variables attached. The Supabase URL + anon key are client-side
+// credentials and are intentionally safe to ship in a browser build; RLS and
+// Auth remain the security boundary. Environment variables still take priority.
+const FALLBACK_SUPABASE_URL = 'https://vzfmhppgninuinvmwyjn.supabase.co';
+const FALLBACK_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6Zm1ocHBnbmludWludm13eWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyNTAzMzMsImV4cCI6MjEwNDgyNjMzM30.V2pl_mnWbbmYwYnvaIyCpk6pLWA7HVDts-bVlAVV3z0';
 
-// A deployed Vercel build must never silently fall back to the old local-login
-// path. If build-time Supabase variables are missing, Cloud mode stays selected
-// and the UI receives an explicit CLOUD_NOT_CONFIGURED error instead.
-export const CLOUD_ENABLED = configured || deployedHost;
+const url = String(import.meta.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL).trim();
+const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY).trim();
+const configured = Boolean(url && anonKey);
+
+// A deployed Vercel build is Cloud-first. The isolated test build also has a
+// browser-safe fallback so missing Vercel env configuration cannot disable Cloud.
+export const CLOUD_ENABLED = configured;
 
 export const supabase = configured
   ? createClient(url, anonKey, {
@@ -23,7 +28,7 @@ export const supabase = configured
 
 export async function cloudSignIn(email, password) {
   if (!supabase) {
-    const e = new Error('Cloud configuration missing: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not available in this Vercel build.');
+    const e = new Error('Cloud configuration missing: Supabase client is not configured in this build.');
     e.code = 'CLOUD_NOT_CONFIGURED';
     e.stage = 'CONFIG';
     throw e;
@@ -35,8 +40,6 @@ export async function cloudSignIn(email, password) {
   });
 
   if (error) {
-    // Keep Supabase's structured Auth error code so the UI can distinguish
-    // a real credential failure from a later profile/cloud-state failure.
     error.code = error.code || 'auth_error';
     error.stage = 'AUTH';
     throw error;
@@ -45,7 +48,7 @@ export async function cloudSignIn(email, password) {
 }
 
 export async function cloudResetPassword(email) {
-  if (!supabase) throw new Error('Cloud configuration missing: Supabase environment variables are not available in this build.');
+  if (!supabase) throw new Error('Cloud configuration missing: Supabase is not configured in this build.');
   const cleanEmail = String(email || '').trim();
   if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('Registered email address डालें।');
   const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
@@ -57,9 +60,7 @@ export async function cloudResetPassword(email) {
 
 export async function cloudSignOut() {
   if (!supabase) return;
-
   const { error } = await supabase.auth.signOut();
-
   if (error) throw error;
 }
 
@@ -68,7 +69,7 @@ export async function cloudGetProfile(userId) {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,email,username,name,role,active')
+    .select('id,email,username,name,role,active,pump_id')
     .eq('id', userId)
     .maybeSingle();
 
@@ -79,12 +80,11 @@ export async function cloudGetProfile(userId) {
   return data;
 }
 
-
 export async function cloudGetStationId(userId) {
   if (!supabase || !userId) return null;
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('pump_id,tenant_id')
+    .select('pump_id')
     .eq('id', userId)
     .maybeSingle();
   if (profileError) { profileError.stage = 'PROFILE_CONTEXT'; throw profileError; }
@@ -96,15 +96,10 @@ export async function cloudGetStationId(userId) {
     .maybeSingle();
   if (pumpError) { pumpError.stage = 'PUMP_CONTEXT'; throw pumpError; }
   if (!pump?.active || !pump?.station_id) return null;
-  if (profile.tenant_id && pump.tenant_id && String(profile.tenant_id) !== String(pump.tenant_id)) {
-    const e = new Error('Cloud pump context mismatch'); e.code = 'PUMP_CONTEXT_MISMATCH'; e.stage = 'PUMP_CONTEXT'; throw e;
-  }
   return String(pump.station_id).trim() || null;
 }
 
-export async function cloudLoadState(
-  stationId = 'SATAT-FILLING-STATION'
-) {
+export async function cloudLoadState(stationId = 'SATAT-FILLING-STATION') {
   if (!supabase) return null;
 
   const { data, error } = await supabase
@@ -120,47 +115,31 @@ export async function cloudLoadState(
   return data || null;
 }
 
-export async function cloudSaveState(
-  stationId,
-  data,
-  expectedVersion,
-  userId
-) {
+export async function cloudSaveState(stationId, data, expectedVersion, userId) {
   if (!supabase) return null;
 
-  const { data: rows, error } = await supabase.rpc(
-    'save_app_state',
-    {
-      p_station_id: stationId,
-      p_data: data,
-      p_expected_version: Number(expectedVersion || 0),
-      p_user_id: userId,
-    }
-  );
+  const { data: rows, error } = await supabase.rpc('save_app_state', {
+    p_station_id: stationId,
+    p_data: data,
+    p_expected_version: Number(expectedVersion || 0),
+    p_user_id: userId,
+  });
 
   if (error) throw error;
 
   const row = Array.isArray(rows) ? rows[0] : rows;
 
   if (!row || row.ok === false) {
-    const e = new Error(
-      row?.message || 'Cloud version conflict'
-    );
-
+    const e = new Error(row?.message || 'Cloud version conflict');
     e.code = row?.code || 'CLOUD_CONFLICT';
-    e.currentVersion =
-      row?.current_version ?? null;
-
+    e.currentVersion = row?.current_version ?? null;
     throw e;
   }
 
   return row;
 }
 
-export function subscribeState(
-  stationId,
-  onRemoteState
-) {
+export function subscribeState(stationId, onRemoteState) {
   if (!supabase) return () => {};
 
   const channel = supabase
