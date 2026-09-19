@@ -218,6 +218,16 @@ function App() {
       }
       return;
     }
+    // A Vercel build is intentionally Cloud-first, but a missing build-time
+    // Supabase configuration must never dereference a null client. Show a
+    // recoverable configuration state instead of crashing the entire app.
+    if (!supabase) {
+      setAuthReady(true);
+      setCloudReady(false);
+      setCloudStatus("error");
+      setLoginError("Cloud configuration missing: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not available in this Vercel build.");
+      return;
+    }
     let mounted = true;
     const bootstrap = async () => {
       try {
