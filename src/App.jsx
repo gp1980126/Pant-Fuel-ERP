@@ -423,9 +423,26 @@ function App() {
       const prepared = normalizeIntegrityData(next);
       const beforeScan = scanTransactionIntegrity(d);
       const scan = scanTransactionIntegrity(prepared);
-      const signature = x => `${x.type}|${x.collection||""}|${x.index??""}|${x.reason||""}`;
-      const beforeErrors = new Set(beforeScan.errors.map(signature));
-      const newErrors = scan.errors.filter(x => !beforeErrors.has(signature(x)));
+      // Compare integrity errors by stable transaction identity, never by array index.
+      // Normalization/imports can reorder rows; using index here can turn an existing
+      // historical error into a false "new" error and block an unrelated save.
+      const integrityErrorKey = (x, snapshot) => {
+        const collection = String(x?.collection || "");
+        const type = String(x?.type || "");
+        const rows = Array.isArray(snapshot?.[collection]) ? snapshot[collection] : [];
+        const idx = Number.isInteger(x?.index) ? x.index : -1;
+        const row = idx >= 0 ? rows[idx] : null;
+        const tx = String(row?.transactionId || "").trim();
+        const fp = String(row?.fingerprint || row?.transactionFingerprint || "").trim();
+        const reason = String(x?.reason || "").replace(/\[\d+\]/g, "[]");
+        if (type === "DUPLICATE_FINGERPRINT") return `${type}|${collection}|${fp}`;
+        if (type === "DUPLICATE_TRANSACTION_ID") return `${type}|${collection}|${tx}`;
+        if (type === "CROSS_COLLECTION_TRANSACTION_ID") return `${type}|${collection}|${tx}`;
+        if (type === "TAMPERED_FINGERPRINT") return `${type}|${collection}|${tx || fp}`;
+        return `${type}|${collection}|${tx || fp}|${reason}`;
+      };
+      const beforeErrors = new Set(beforeScan.errors.map(x => integrityErrorKey(x, d)));
+      const newErrors = scan.errors.filter(x => !beforeErrors.has(integrityErrorKey(x, prepared)));
       if (newErrors.length) {
         const reason = newErrors.slice(0,5).map(x=>x.reason).join(" | ");
         console.error("[INTEGRITY BLOCK]", { before: beforeScan, after: scan, newErrors });
