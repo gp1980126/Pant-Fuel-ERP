@@ -69,7 +69,7 @@ export async function cloudGetProfile(userId) {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,email,username,name,role,active')
+    .select('id,email,username,name,role,active,pump_id')
     .eq('id', userId)
     .maybeSingle();
 
