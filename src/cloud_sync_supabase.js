@@ -84,7 +84,7 @@ export async function cloudGetStationId(userId) {
   if (!supabase || !userId) return null;
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('pump_id,tenant_id')
+    .select('pump_id')
     .eq('id', userId)
     .maybeSingle();
   if (profileError) { profileError.stage = 'PROFILE_CONTEXT'; throw profileError; }
@@ -96,9 +96,6 @@ export async function cloudGetStationId(userId) {
     .maybeSingle();
   if (pumpError) { pumpError.stage = 'PUMP_CONTEXT'; throw pumpError; }
   if (!pump?.active || !pump?.station_id) return null;
-  if (profile.tenant_id && pump.tenant_id && String(profile.tenant_id) !== String(pump.tenant_id)) {
-    const e = new Error('Cloud pump context mismatch'); e.code = 'PUMP_CONTEXT_MISMATCH'; e.stage = 'PUMP_CONTEXT'; throw e;
-  }
   return String(pump.station_id).trim() || null;
 }
 
