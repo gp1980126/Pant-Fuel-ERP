@@ -1335,7 +1335,7 @@ const importData = (event) => {
               "Opening Setup",
               "Party Master",
               "Credit Sale",
-              "Cash Entry",
+              "💵 Cash Entry",
               "Party Ledger",
               "Collection Detail",
               "Reports",
@@ -1531,7 +1531,7 @@ const importData = (event) => {
             />
           )}
 
-          {page === "Cash Entry" && canAccess(session.role, "Cash Entry") && (
+          {page === "💵 Cash Entry" && canAccess(session.role, "Cash Entry") && (
             <CashEntry
               data={data}
               update={update}
@@ -1618,10 +1618,3 @@ import {
   SalePurchaseProfitLoss,
   DailySaleSummary,
   DataQualityBadge,
-  Stock,
-  Field,
-  Table
-} from "./components/PumpModules";
-import { TallyExport } from "./components/TallyExport";
-
-export default App;
