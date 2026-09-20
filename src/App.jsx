@@ -1352,12 +1352,12 @@ const importData = (event) => {
               <button
                 type="button"
                 className={
-                  page === x
+                  page === (x === "💵 Cash Entry" ? "Cash Entry" : x)
                     ? "active"
                     : ""
                 }
                 onClick={() =>
-                  setPage(x)
+                  setPage(x === "💵 Cash Entry" ? "Cash Entry" : x)
                 }
                 key={x}
               >
