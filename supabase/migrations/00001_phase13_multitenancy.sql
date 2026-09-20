@@ -125,7 +125,7 @@ declare
   v_pump public.sm_pumps%rowtype;
   v_version bigint;
   v_role text;
-  v_allowed text[] := array['sales','credits','dailyPayments','ledgerPayments','recoveries',
+  v_allowed text[] := array['sales','credits','cashEntries','dailyPayments','ledgerPayments','recoveries',
                             'dipReadings','attendance','electricityBills','electricityPayments','staff'];
   v_op_allowed text[] := array['sales','credits','dailyPayments'];
   v_key text;
@@ -188,7 +188,7 @@ begin
     where s.station_id = p_station_id
       and exists (
         select 1 from jsonb_object_keys(coalesce(p_data,'{}'::jsonb)) k
-        where k in ('sales','credits','purchases','fillings','dipReadings','dailyPayments',
+        where k in ('sales','credits','cashEntries','purchases','fillings','dipReadings','dailyPayments',
                     'ledgerPayments','recoveries','paytmTotals')
           and exists (
             select 1 from jsonb_array_elements(p_data->k) r
