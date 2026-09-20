@@ -38,18 +38,18 @@ export const ROLE_PERMISSIONS = {
   [USER_ROLES.ADMIN]: ["*"],
   [USER_ROLES.OWNER]: [
     "Dashboard","Accounts","Tally / CA Export","Fuel Sale","Opening Setup","Party Master","Credit Sale",
-    "Party Ledger","Collection Detail","Reports","Purchase","Lubricant","Sale Purchase P&L","Daily Sale Summary","Stock","Staff & Electricity","User Management","Audit Trail","Accounting Period Lock"
+    "Party Ledger","Cash Entry","Collection Detail","Reports","Purchase","Lubricant","Sale Purchase P&L","Daily Sale Summary","Stock","Staff & Electricity","User Management","Audit Trail","Accounting Period Lock"
   ],
   [USER_ROLES.MANAGER]: [
     "Dashboard","Accounts","Tally / CA Export","Fuel Sale","Opening Setup","Party Master","Credit Sale",
     "Party Ledger","Collection Detail","Reports","Daily Sale Summary","Stock","Lubricant","Staff & Electricity"
   ],
   [USER_ROLES.OPERATOR]: [
-    "Dashboard","Fuel Sale","Credit Sale","Lubricant","Collection Detail","Daily Sale Summary"
+    "Dashboard","Fuel Sale","Credit Sale","Cash Entry","Lubricant","Collection Detail","Daily Sale Summary"
   ],
   [USER_ROLES.VIEW_ONLY]: [
     "Dashboard","Accounts","Tally / CA Export","Fuel Sale","Credit Sale","Party Master",
-    "Party Ledger","Collection Detail","Reports","Purchase","Lubricant","Sale Purchase P&L",
+    "Party Ledger","Cash Entry","Collection Detail","Reports","Purchase","Lubricant","Sale Purchase P&L",
     "Daily Sale Summary","Stock","Staff & Electricity"
   ]
 };
@@ -392,7 +392,7 @@ export function scanTransactionIntegrity(data) {
   const globalTransactionIds = new Map();
   const numericFields = {
     sales:['qty','rate','amount','testing'], purchases:['quantity','rate','basicAmount','taxAmount','totalAmount'],
-    fillings:['quantity'], credits:['amount'], recoveries:['amount'], dipReadings:['dip'],
+    fillings:['quantity'], credits:['amount'], cashEntries:['amount'], recoveries:['amount'], dipReadings:['dip'],
     ledgerPayments:['amount'], ledgerOpenings:['amount'], electricityBills:['amount'], electricityPayments:['amount'],
     staff:[], attendance:[]
   };
