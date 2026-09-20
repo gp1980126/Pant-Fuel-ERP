@@ -2167,7 +2167,9 @@ export function PartyMaster({
 
             <input
               type="number"
+              min="0"
               step=".01"
+              placeholder="0 = No Limit"
               value={f.limit}
               onChange={e =>
                 setF({
@@ -2586,6 +2588,41 @@ export function CreditSale({
     ? rupee(n(f.manualAmount))
     : rupee(n(f.qty) * creditRate);
 
+  // Credit control: party-wise live outstanding and credit-limit check.
+  // A limit of 0 means "No Limit".
+  const selectedParty = data.parties.find(
+    p => String(p?.name || "") === String(f.party || "")
+  ) || null;
+
+  const partyCreditLimit = n(selectedParty?.limit);
+
+  const partyOpeningSigned = (() => {
+    const opening = (data.ledgerOpenings || []).find(
+      o => String(o?.party || "") === String(f.party || "")
+    );
+    if (!opening) return 0;
+    const amount = rupee(opening.amount);
+    return String(opening.type || "DEBIT").toUpperCase() === "CREDIT"
+      ? -amount
+      : amount;
+  })();
+
+  const partySalesBefore = ledgerCreditRows(data.credits)
+    .filter(c => String(c?.party || "") === String(f.party || ""))
+    .reduce((sum, c) => sum + rupee(c.amount), 0);
+
+  const partyReceiptsBefore = (data.ledgerPayments || [])
+    .filter(p => String(p?.party || "") === String(f.party || ""))
+    .reduce((sum, p) => sum + rupee(p.amount), 0);
+
+  const selectedPartyOutstanding = rupee(
+    partyOpeningSigned + partySalesBefore - partyReceiptsBefore
+  );
+
+  const partyAvailableLimit = partyCreditLimit > 0
+    ? rupee(partyCreditLimit - selectedPartyOutstanding)
+    : null;
+
   function save() {
 
     if (!f.party || !f.parchiNo) {
@@ -2601,6 +2638,32 @@ export function CreditSale({
       return setMsg("Date valid YYYY-MM-DD होनी चाहिए और 01-08-2026 से पहले नहीं हो सकती।");
     }
     const normalizedParchi = String(f.parchiNo).trim();
+
+    // Check the credit limit using the balance BEFORE this new/edited sale.
+    // When editing the same party, exclude the old sale from the exposure first.
+    const oldCredit = editId !== null
+      ? (data.credits || []).find(c => String(c.id) === String(editId))
+      : null;
+
+    const exposureBeforeThisSale = rupee(
+      selectedPartyOutstanding -
+      (oldCredit && String(oldCredit.party || "") === String(f.party || "")
+        ? rupee(oldCredit.amount)
+        : 0)
+    );
+
+    const projectedOutstanding = rupee(exposureBeforeThisSale + amount);
+
+    if (
+      partyCreditLimit > 0 &&
+      projectedOutstanding > partyCreditLimit + 0.005
+    ) {
+      const excess = rupee(projectedOutstanding - partyCreditLimit);
+      return setMsg(
+        `Credit Limit ₹${partyCreditLimit.toFixed(2)} पार हो रही है। Current/Projected Outstanding ₹${projectedOutstanding.toFixed(2)} है; Limit से ₹${excess.toFixed(2)} अधिक है। पहले Payment Receiving करें या Party Master में Limit बढ़ाएँ।`
+      );
+    }
+
     const duplicateParchi = (data.credits || []).some(c =>
       String(c?.parchiNo || "").trim().toLowerCase() === normalizedParchi.toLowerCase() &&
       c.id !== editId
@@ -2863,6 +2926,31 @@ export function CreditSale({
           </Field>
 
         </div>
+
+        {f.party && (
+          <div
+            className="notice"
+            style={{
+              marginTop: 12,
+              display: "flex",
+              gap: 18,
+              flexWrap: "wrap",
+              alignItems: "center"
+            }}
+          >
+            <span><b>Party:</b> {f.party}</span>
+            <span><b>Credit Limit:</b> {partyCreditLimit > 0 ? moneyRupee(partyCreditLimit) : "No Limit"}</span>
+            <span><b>Current Outstanding:</b> {moneyRupee(selectedPartyOutstanding)}</span>
+            {partyAvailableLimit !== null && (
+              <span>
+                <b>Available Limit:</b>{" "}
+                <strong style={{color: partyAvailableLimit < 0 ? "#b91c1c" : "#166534"}}>
+                  {moneyRupee(partyAvailableLimit)}
+                </strong>
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="actions">
 
