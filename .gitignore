@@ -17,3 +17,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 *.swp
+
+# Private per-station business data (Phase 13) — never tracked
+src/core/private/
+
+# Release archives — distribute via GitHub Releases, not git
+*.zip

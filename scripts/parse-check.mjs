@@ -34,13 +34,15 @@ for (const rel of REQUIRED_FILES) {
 }
 if (ok) pass("all required entry files present and non-empty");
 
-// Collect source files
+// Collect TRACKED source files. src/core/private/ is gitignored per-station
+// business data (Phase 13) and is deliberately never scanned or shipped.
+const PRIVATE_DIR = path.join(SRC, "core", "private") + path.sep;
 const srcFiles = [];
 (function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) walk(full);
-    else if (/\.(jsx?|css)$/.test(e.name)) srcFiles.push(full);
+    else if (/\.(jsx?|css)$/.test(e.name) && !(full + path.sep).startsWith(PRIVATE_DIR)) srcFiles.push(full);
   }
 })(SRC);
 
@@ -101,6 +103,27 @@ const srcFiles = [];
   else pass("package.json gates (check/regression/release-check) all resolve to real scripts");
 }
 
+// 5b. No tenant business-data signatures in tracked src (Phase 13 leak guard)
+{
+  const sigs = [
+    { re: /fp1-[0-9a-f]{16}/, label: "transaction fingerprint data" },
+    { re: /TX-SALES-\d{10,}/, label: "embedded sale transaction ids" },
+    { re: /EMBEDDED_BACKUP_2026_09_06 = \{/, label: "embedded data blob literal" },
+    { re: /SATAT FILLING/i, label: "station identity literal (must come from env — Phase 13 white-label)" },
+    { re: /05ABWFS/i, label: "hardcoded GSTIN" },
+    { re: /Gaujajali|HALDWANI/i, label: "hardcoded station address" },
+  ];
+  const hits = [];
+  for (const f of srcFiles) {
+    const text = fs.readFileSync(f, "utf8");
+    for (const { re, label } of sigs) {
+      if (re.test(text)) hits.push(`${label} in ${path.relative(ROOT, f)}`);
+    }
+  }
+  if (hits.length) hits.forEach(fail);
+  else pass("no tenant business-data payloads in tracked src/ (Phase 13 isolation)");
+}
+
 // 6. .gitignore must protect env files (README promises this)
 {
   const gi = path.join(ROOT, ".gitignore");
@@ -108,6 +131,9 @@ const srcFiles = [];
   const protectsEnv = /^\.env\.?\*?$/m.test(text) || /^\.env$/m.test(text);
   if (!protectsEnv) fail(".gitignore missing or does not ignore .env files");
   else pass(".gitignore protects .env files");
+  const protectsPrivate = /^src\/core\/private\/?$/m.test(text);
+  if (!protectsPrivate) fail(".gitignore does not ignore src/core/private/ (station data would leak)");
+  else pass(".gitignore protects src/core/private/ (station data stays local)");
 }
 
 console.log("");

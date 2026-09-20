@@ -59,6 +59,9 @@ for (const script of ["scripts/parse-check.mjs", "scripts/regression-check.mjs"]
     const banned = tracked.filter(f =>
       /(^|\/)(\.env($|\.)|node_modules\/|dist\/)/.test(f) && f !== ".env.example"
     );
+    const privateLeaked = tracked.filter(f => f.startsWith("src/core/private/"));
+    if (privateLeaked.length) privateLeaked.forEach(f => fail(`private station data tracked by git: ${f}`));
+    else pass("no src/core/private/ station data tracked by git");
     if (tracked.includes(".env.example")) pass(".env.example is tracked (template for setup)");
     else fail(".env.example is NOT tracked by git");
     if (banned.length) banned.forEach(f => fail(`forbidden tracked file: ${f}`));

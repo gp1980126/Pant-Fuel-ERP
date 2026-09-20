@@ -26,8 +26,8 @@ Phase 12 intentionally changed role/security files:
 Current frozen core file hashes (verified by npm run release-check):
 FROZEN_HASHES_BEGIN
 5603be9e81a862c76ff85d1f07d05b4b8547cd12115558dfbedf2d6d1bd348cd  src/services/storage/localStore.js
-c2b32a2c761fc54543322ec2e76f27f26ea1968d740808e787b285c61b713a93  src/cloud_sync_supabase.js
-72d54a0a3ec297fc728bbf1d761b0197023b21d4d991b0fd1a26ea04a158e3a6  src/config/appConfig.js
+98a7c81b0086a77c600adef77564ffe0b92cdfccca88ba9ac2c21fc114b305c6  src/cloud_sync_supabase.js
+6a1470d7dc21914a7a03d8b46c1521bcfebdae9e4b25417f11b57aa17410daf4  src/config/appConfig.js
 FROZEN_HASHES_END
 
 === HARDENING UPDATE 2026-09-20 (contd, branch arena/01a0bc8f-pant-fuel-erp) ===
@@ -37,3 +37,12 @@ FROZEN_HASHES_END
   into src/core/embeddedBackupData.js for reviewability. Data values unchanged; public export preserved.
 - pumpDomain.js is now 86,589 bytes of reviewable domain code.
 FROZEN_HASHES block below remains the current hash authority.
+
+=== PHASE 13 MULTI-TENANCY 2026-09-20 (branch arena/01a0bc8f-pant-fuel-erp) ===
+- Tracked source made identity-neutral: station name/GSTIN/address/dealer/jurisdiction now env-driven
+  (src/config/stationIdentity.js); appConfig.js + cloud_sync_supabase.js defaults neutralized
+  (frozen hashes refreshed below — intentional change, data untouched).
+- Station business data moved to UNTRACKED src/core/private/stationData.js (gitignored);
+  initialData() output verified byte-identical (sha256 c6afd6aa...) with private file present.
+- Added tenantSeed (blank commercial start), plans catalogue, Supabase tenant-isolation SQL
+  (template) and station-provision Edge Function scaffold. Regression gate now 18 checks.

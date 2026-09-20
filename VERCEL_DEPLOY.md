@@ -9,6 +9,18 @@ Set these in Project Settings → Environment Variables:
 - `VITE_SUPABASE_ANON_KEY` (browser-safe Publishable key may be used as the value)
 - `VITE_PUMPPRO_STATION_ID`
 
+## Phase 13 (2026-09-20): identity env vars are now REQUIRED
+Tracked source is now identity-neutral (white-label). Set these too or the login
+screen and printed bills will show neutral placeholders INSTEAD of your station
+name/GSTIN/address:
+- `VITE_PUMPPRO_PUMP_NAME` = SATAT FILLING STATION
+- `VITE_PUMPPRO_GSTIN` = (your GSTIN)
+- `VITE_PUMPPRO_STATE_CODE` = 05
+- `VITE_PUMPPRO_ADDR` = (full pump address printed on bills)
+- `VITE_PUMPPRO_DEALER_LINE` = DEALER - HINDUSTAN PETROLEUM CORP. LTD.
+- `VITE_PUMPPRO_JURISDICTION` = (jurisdiction city on bill terms)
+- `VITE_PUMPPRO_SUPPLIER` = (default purchase supplier)
+
 Do not add service_role/secret keys to Vercel frontend variables.
 
 ## Deploy

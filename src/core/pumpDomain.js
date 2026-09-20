@@ -1,4 +1,4 @@
-import { EMBEDDED_BACKUP_2026_09_06 } from "./embeddedBackupData.js";
+import { buildTenantSeed } from "./tenantSeed.js";
 import { storageGet, storageSet } from "../services/storage/localStore.js";
 import { PUMP_NAME, STATION_ID } from "../config/appConfig.js";
 
@@ -9,38 +9,15 @@ export const KEY = "petrolPumpData_BACKUP_2026_09_06_CLEAN";
 export const MASTER_DATA_VERSION = "2026-09-11-BACKUP-RESTORED-V1";
 export const CLOUD_STATION_ID = STATION_ID;
 
-export const HISTORICAL_DIP_MS_HSD_2026_08 = [
-  ["2026-08-01", 9356.00, 7500.00],
-  ["2026-08-02", 7955.00, 6306.00],
-  ["2026-08-03", 7059.00, 5283.00],
-  ["2026-08-04", 6140.00, 3556.00],
-  ["2026-08-05", 10294.00, 17036.00],
-  ["2026-08-06", 9411.00, 15398.00],
-  ["2026-08-07", 8555.00, 14428.00],
-  ["2026-08-08", 7632.00, 13427.00],
-  ["2026-08-09", 6382.00, 11672.00],
-  ["2026-08-10", 5468.00, 10483.00],
-  ["2026-08-11", 4680.00, 9175.00],
-  ["2026-08-12", 3784.00, 8428.00],
-  ["2026-08-13", 3044.00, 7069.00],
-  ["2026-08-14", 11845.00, 15699.00],
-  ["2026-08-15", 10940.00, 14385.00],
-  ["2026-08-16", 9528.00, 13594.00],
-  ["2026-08-17", 8302.00, 12232.00],
-  ["2026-08-18", 7520.00, 10553.00],
-  ["2026-08-19", 6572.00, 9795.00],
-  ["2026-08-20", 5625.00, 8883.00],
-  ["2026-08-21", 4704.00, 7381.00],
-  ["2026-08-22", 3822.00, 5677.00],
-  ["2026-08-23", 12620.00, 14643.00],
-  ["2026-08-24", 11809.00, 13391.00],
-  ["2026-08-25", 10722.00, 12251.00],
-  ["2026-08-26", 9861.00, 10770.00],
-  ["2026-08-27", 8807.00, 9698.00],
-  ["2026-08-28", 7721.00, 8948.00],
-  ["2026-08-29", 6514.00, 8179.00],
-  ["2026-08-30", 5083.00, 7197.00]
-];
+// --- Optional private station data (Phase 13 multi-tenancy) -----------------
+// Commercial/ISV builds ship WITHOUT any tenant business data. A private
+// single-station build may drop src/core/private/stationData.js (gitignored)
+// to embed its own backup + station constants. The glob resolves to an empty
+// map when the file is absent, so every value below falls back to a blank,
+// neutral commercial default. NO tenant data lives in tracked source code.
+const privData = import.meta.glob("./private/stationData.js", { eager: true })["./private/stationData.js"] ?? {};
+const privOr = (value, fallback) => (value === undefined || value === null ? fallback : value);
+export const HISTORICAL_DIP_MS_HSD_2026_08 = privOr(privData.HISTORICAL_DIP_MS_HSD_2026_08, []);
 
 export const USER_ROLES = {
   ADMIN: "Admin",
@@ -82,18 +59,7 @@ export const canAccess = (role, page) =>
   ROLE_PERMISSIONS[role]?.includes(page);
 
 
-export const OPENING = {
-  "MS-1": 346989.35,
-  "MS-2": 380468.55,
-  "MS-3": 82332.73,
-  "MS-4": 11715.73,
-  "HSD-1": 528851.15,
-  "HSD-2": 1232504.06,
-  "HSD-3": 1939.76,
-  "HSD-4": 128475.74,
-  "CNG-1": 135456.548,
-  "CNG-2": 87108.838
-};
+export const OPENING = privOr(privData.OPENING, {});
 
 export const NOZZLES = [
   ["MS-1", "MS"],
@@ -117,39 +83,11 @@ export const METHODS = [
   ["credit", "Party Receivable / Credit"]
 ];
 
-export const PARTY_NAMES = `
-aamir bhai|Annu bhai|Ashish Rotaila|Akhikesh Bhai|Adial Bhai|Abhay kyuera|
-Ashok padiyar|Amol Agarwal|Akhil Tiwari|Bhupi chufaal|bacchi Pradhan|
-Bansi Chandola|Baldev Singh|Babbu Bhist|Babbu nagi|Bablu mal|Bhart Sharma|
-Chandan Singh Nagi|Chanchal Karmyal|Deepu Pradhan|Deepu Bhist|dabbu Bhai|
-Digamber Bhist|Digamber Mehra|Daya pandya|Davi dutt Joshi|Furkhan Bhai|
-Gurvinder Singh|Ganesh Karmyal|Gopal Bhist|Girdhar Panerau|Hardesh Bhai|
-Hawaldar ji|Harbajan Singh|Hem Chandra Sharma|Ikraam Bahi|Imtiyaz Bhai|
-Joshi ji Chakki|Juneeb bhai|Kailash Pant|khima bhagat|kishor Bhist|
-Kuber bargali|kannu padiyar|kanchan bhai|Kanthu sisodiya|lelaadhar bahgat|
-Laxman dutt Joshi|Madan Mehra|Munaa kunyal|Mo. Nabi|Mahesh Bhatt|
-M.M Construction|Mukesh Negi|Mohan Sing Nagi|M.T.C|MAHESH SHARMA|M.R.L|
-MONU BHAI|MAHESH BHIST|MAAJID BHAI|MOSHIN KAHAN|NAJAKAT BHAI|
-NARENDER SINGH SANDHU|NIPPI BHAI|I.O.C|IRSHAAD BHAI|NAVIN TIWARI JI|
-NAVIN DAANI|NAWIN BACHKETI|NAFISH AHEMED|NARESH KAARKI|NAVEEN SHARMA|
-OM GURU|PRMOAD DARMWAL|PAPPU NAGI|PRAKASH BHIST|PANKAJ BHAI|
-Pummy Safi|Punit Sharma|Raju Kaamraan|Rajender Singh keyura|Rahul Nagi|
-Ramesh daani|Raju Pradhan|Rakh Wale|Raju Nagi|Raju NTC|SHIV DUTT BHATT|
-SANJAY BORA JI|SANTOSH DUMKA|SURESH JOSHI|S S Enterprise|Sanjay Pant|
-Suresh Daani|Sandeep Agarwal|Saawej NTC|SANTOSH SHARMA|SHADAAB BHAI|
-TRILOK SINGH MEHRA|UMESH PANDAY|VIJAY MAHERA JI|VINOD VAKIL|
-YOGESH TIWARI|YOGESH BAHUGUNA
-`.replace(/\s*\n\s*/g, "").split("|");
+export const PARTY_NAMES = privOr(privData.PARTY_NAMES, []);
 
-export { EMBEDDED_BACKUP_2026_09_06 };
-export const DEFAULT_PAYTM_TOTALS = [
-  { date: "2026-08-01", amount: 204661.00, paymentCount: 298 },
-  { date: "2026-08-02", amount: 211337.93, paymentCount: 278 },
-  { date: "2026-08-03", amount: 174221.67, paymentCount: 195 },
-  { date: "2026-08-04", amount: 181833.52, paymentCount: 228 },
-  { date: "2026-08-05", amount: 139158.94, paymentCount: 217 },
-  { date: "2026-08-06", amount: 176719.60, paymentCount: 214 }
-];
+export const DEFAULT_PAYTM_TOTALS = privOr(privData.DEFAULT_PAYTM_TOTALS, []);
+
+export const EMBEDDED_BACKUP_2026_09_06 = privOr(privData.EMBEDDED_BACKUP_2026_09_06, null);
 
 export const blankPay = () => ({
   cash: "",
@@ -1069,7 +1007,7 @@ export function recoverKnownAug29PaymentRow(payments, credits, paytmTotals) {
 export function initialData() {
   // The 11-09-2026 uploaded master backup is embedded so a fresh install opens with
   // the user's actual data instead of requiring a separate import.
-  const b = EMBEDDED_BACKUP_2026_09_06;
+  const b = EMBEDDED_BACKUP_2026_09_06 || buildTenantSeed();
   const purchases = Array.isArray(b.purchases) ? b.purchases.map(x => ({ ...x })) : [];
   const credits = Array.isArray(b.credits) ? b.credits.map(x => ({ ...x })) : [];
   const paytmTotals = Array.isArray(b.paytmTotals) ? b.paytmTotals.map(x => ({ ...x })) : [];
@@ -1085,11 +1023,11 @@ export function initialData() {
   );
   return {
     openingDate: b.openingDate || START_DATE,
-    openingStock: { MS: 9356, HSD: 7500, ...(b.openingStock || {}), LUBRICANT_QTY: n(b.openingStock?.LUBRICANT_QTY), LUBRICANT_VALUE: n(b.openingStock?.LUBRICANT_VALUE) },
-    rates: { ...(b.rates || { MS: 99.79, HSD: 95.32, CNG: 101 }) },
+    openingStock: { MS: 0, HSD: 0, ...(b.openingStock || {}), LUBRICANT_QTY: n(b.openingStock?.LUBRICANT_QTY), LUBRICANT_VALUE: n(b.openingStock?.LUBRICANT_VALUE) },
+    rates: { ...(b.rates || { MS: 0, HSD: 0, CNG: 0 }) },
     rateHistory: Array.isArray(b.rateHistory) && b.rateHistory.length
       ? b.rateHistory.map(x => ({ ...x }))
-      : [{ id: 1, date: START_DATE, MS: 99.79, HSD: 95.32, CNG: 101 }],
+      : [{ id: 1, date: START_DATE, MS: 0, HSD: 0, CNG: 0 }],
     sales,
     purchases,
     dailyPayments: syncCreditPayments(dailyPayments, credits),

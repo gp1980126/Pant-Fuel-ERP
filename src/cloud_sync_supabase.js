@@ -1,5 +1,6 @@
 // PumpPro cloud sync adapter (Supabase)
 import { createClient } from '@supabase/supabase-js';
+import { STATION_ID } from './config/appConfig.js';
 
 // The Supabase URL + anon key are client-side credentials and are safe to ship
 // in a browser build because RLS and Auth remain the security boundary -- BUT
@@ -100,7 +101,7 @@ export async function cloudGetStationId(userId) {
   return String(pump.station_id).trim() || null;
 }
 
-export async function cloudLoadState(stationId = 'SATAT-FILLING-STATION') {
+export async function cloudLoadState(stationId = STATION_ID) {
   if (!supabase) return null;
 
   const { data, error } = await supabase

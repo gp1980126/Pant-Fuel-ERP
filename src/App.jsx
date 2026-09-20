@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CLOUD_REQUIRED } from "./config/appConfig";
+import { STATION_NAME } from "./config/stationIdentity";
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudGetStationId, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
 import {
   START_DATE,
@@ -1283,7 +1284,7 @@ const importData = (event) => {
             const s={uid:String(u.id),username:u.username,email:u.email||u.username,role,name:u.name||u.username}; setSession(s); localStorage.setItem(KEY+'_session',JSON.stringify(s)); setPage('Dashboard');
           }}>
             <div className="login-brand">⛽ PumpPro</div>
-            <div className="login-sub">SATAT FILLING STATION · Standard Accounting</div>
+            <div className="login-sub">{STATION_NAME} · Standard Accounting</div>
             <div className="login-field"><label>Username / Email</label><input name="email" type="text" autoComplete="username" required /></div>
             <div className="login-field"><label>Password</label><input name="password" type="password" autoComplete="current-password" required /></div>
             <button className="login-btn" type="submit">LOGIN</button>

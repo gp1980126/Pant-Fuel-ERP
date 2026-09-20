@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "../cloud_sync_supabase";
+import { STATION_NAME, STATION_GSTIN, STATION_STATE_CODE, STATION_ADDR_LINE, STATION_DEALER_LINE, STATION_JURISDICTION, DEFAULT_SUPPLIER } from "../config/stationIdentity";
 import {
   START_DATE,
   PUMP_NAME,
@@ -616,7 +617,7 @@ export function CollectionDetail({ data, totals, setPage, update }) {
 
   function exportCollectionExcel() {
     const esc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
-    const rows = [["SATAT FILLING STATION"],["POS / Collection Detail - Day Wise"],
+    const rows = [[STATION_NAME],["POS / Collection Detail - Day Wise"],
       ["Date","Sales","Cash","Paytm + POS","ATM/Card","DT Plus","HP Pay","PhonePe","Other Digital","Credit MS","Credit HSD","Credit CNG","Total Credit","POS Actual","POS Excess","POS Short","Party Recovery","Pump Expense"]];
     allDates.forEach(d => { const q=modes(d), pos=n((data.paytmTotals||[]).find(x=>String(x.date)===String(d))?.amount); rows.push([d,saleTotal(d),q.cash,q.paytm,q.card,q.dtplus,q.hppay,q.phonepe,q.other,q.msCredit,q.hsdCredit,q.cngCredit,q.credit,pos,Math.max(0,pos-q.paytm-q.card-posPartyMatchForDate(data,d)),Math.max(0,q.paytm+q.card-pos),(data.ledgerPayments||[]).filter(x=>String(x.date)===String(d)).reduce((a,x)=>a+n(x.amount),0),q.pumpExpense]); });
     const blob=new Blob(["\uFEFF"+rows.map(r=>r.map(esc).join(',')).join('\n')],{type:'text/csv;charset=utf-8;'});
@@ -627,12 +628,12 @@ export function CollectionDetail({ data, totals, setPage, update }) {
     const body = allDates.map(d => { const q=modes(d), pos=n((data.paytmTotals||[]).find(x=>String(x.date)===String(d))?.amount); return `<tr><td>${d}</td><td>${money(saleTotal(d))}</td><td>${money(q.cash)}</td><td>${money(q.paytm)}</td><td>${money(q.card)}</td><td>${money(q.dtplus)}</td><td>${money(q.hppay)}</td><td>${money(q.phonepe)}</td><td>${money(q.other)}</td><td>${money(q.credit)}</td><td>${money(pos)}</td><td>${money(Math.max(0,pos-q.paytm-q.card-posPartyMatchForDate(data,d)))}</td><td>${money(Math.max(0,q.paytm+q.card-pos))}</td></tr>`; }).join('');
     const totalsRow = `<tr><th>TOTAL</th><th>${money(allDates.reduce((a,d)=>a+saleTotal(d),0))}</th><th>${money(allDates.reduce((a,d)=>a+modes(d).cash,0))}</th><th>${money(allDates.reduce((a,d)=>a+modes(d).paytm,0))}</th><th>${money(allDates.reduce((a,d)=>a+modes(d).card,0))}</th><th>${money(allDates.reduce((a,d)=>a+modes(d).dtplus,0))}</th><th>${money(allDates.reduce((a,d)=>a+modes(d).hppay,0))}</th><th>${money(allDates.reduce((a,d)=>a+modes(d).phonepe,0))}</th><th>${money(allDates.reduce((a,d)=>a+modes(d).other,0))}</th><th>${money(allDates.reduce((a,d)=>a+modes(d).credit,0))}</th><th>${money(allDates.reduce((a,d)=>a+n((data.paytmTotals||[]).find(x=>String(x.date)===String(d))?.amount),0))}</th><th colspan="2"></th></tr>`;
     const w=window.open('','_blank'); if(!w){alert('Print window blocked है. Browser में pop-up allow करें.');return;}
-    w.document.write(`<!doctype html><html><head><title>POS Collection Day Wise</title><style>body{font-family:Arial;margin:16px}h1,h2{text-align:center}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #555;padding:4px;text-align:right}th:first-child,td:first-child{text-align:left}th{background:#eee}</style></head><body><h1>SATAT FILLING STATION</h1><h2>POS / Collection Detail — Month & Day Wise</h2><table><thead><tr><th>Date</th><th>Sales</th><th>Cash</th><th>Paytm+POS</th><th>ATM/Card</th><th>DT Plus</th><th>HP Pay</th><th>PhonePe</th><th>Other Digital</th><th>Credit</th><th>POS Actual</th><th>POS Excess</th><th>POS Short</th></tr></thead><tbody>${body}${totalsRow}</tbody></table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`); w.document.close();
+    w.document.write(`<!doctype html><html><head><title>POS Collection Day Wise</title><style>body{font-family:Arial;margin:16px}h1,h2{text-align:center}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #555;padding:4px;text-align:right}th:first-child,td:first-child{text-align:left}th{background:#eee}</style></head><body><h1>${STATION_NAME}</h1><h2>POS / Collection Detail — Month & Day Wise</h2><table><thead><tr><th>Date</th><th>Sales</th><th>Cash</th><th>Paytm+POS</th><th>ATM/Card</th><th>DT Plus</th><th>HP Pay</th><th>PhonePe</th><th>Other Digital</th><th>Credit</th><th>POS Actual</th><th>POS Excess</th><th>POS Short</th></tr></thead><tbody>${body}${totalsRow}</tbody></table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`); w.document.close();
   }
 
   function shareCollectionWhatsApp() {
     const totalCredit=allDates.reduce((a,d)=>a+modes(d).credit,0);
-    const text=`*SATAT FILLING STATION*\n*POS / Collection Detail*\nMonth: ${month}\nDays: ${monthDates.length}\nCredit Sale: ${money(totalCredit)}\nSelected Date: ${date}\nSelected Day Credit: ${money(m.credit)}\nMS Credit: ${money(m.msCredit)}\nHSD Credit: ${money(m.hsdCredit)}\nCNG Credit: ${money(m.cngCredit)}\nPOS Actual: ${money(actualPOS)}\nPOS Excess: ${money(remainingPosExcess)}\nPOS Short: ${money(posShort)}`;
+    const text=`*${STATION_NAME}*\n*POS / Collection Detail*\nMonth: ${month}\nDays: ${monthDates.length}\nCredit Sale: ${money(totalCredit)}\nSelected Date: ${date}\nSelected Day Credit: ${money(m.credit)}\nMS Credit: ${money(m.msCredit)}\nHSD Credit: ${money(m.hsdCredit)}\nCNG Credit: ${money(m.cngCredit)}\nPOS Actual: ${money(actualPOS)}\nPOS Excess: ${money(remainingPosExcess)}\nPOS Short: ${money(posShort)}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank');
   }
 
@@ -2530,7 +2531,7 @@ export function CreditSale({
   function exportCreditExcel() {
     const esc = v => `"${String(v ?? "").replace(/"/g,'""')}"`;
     const lines = [
-      ["SATAT FILLING STATION"].map(esc).join(","),
+      [STATION_NAME].map(esc).join(","),
       ["Credit Sale Register"].map(esc).join(","),
       ["Date","Parchi No","Party","Vehicle","Fuel","Product","Qty","Rate","Amount"].map(esc).join(",")
     ];
@@ -2543,7 +2544,7 @@ export function CreditSale({
   function printCreditPdf() {
     const body=data.credits.slice().reverse().map(c=>`<tr><td>${c.date||""}</td><td>${c.parchiNo||""}</td><td>${c.party||""}</td><td>${c.vehicle||""}</td><td>${c.fuel||""}</td><td>${c.productName||"—"}</td><td>${n(c.qty).toFixed(c.fuel==="CNG"?3:2)}</td><td>${money(n(c.rate ?? (n(c.amount)/Math.max(n(c.qty),1))))}</td><td>${moneyRupee(c.amount)}</td></tr>`).join("");
     const w=window.open("","_blank"); if(!w){alert("Print window blocked है. Browser में pop-up allow करें.");return;}
-    w.document.write(`<!doctype html><html><head><title>Credit Sale Register</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:6px;font-size:11px}th{background:#eee}</style></head><body><h1>SATAT FILLING STATION</h1><h2>Credit Sale Register</h2><table><thead><tr><th>Date</th><th>Parchi No</th><th>Party</th><th>Vehicle</th><th>Fuel</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${body}</tbody></table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`); w.document.close();
+    w.document.write(`<!doctype html><html><head><title>Credit Sale Register</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:6px;font-size:11px}th{background:#eee}</style></head><body><h1>${STATION_NAME}</h1><h2>Credit Sale Register</h2><table><thead><tr><th>Date</th><th>Parchi No</th><th>Party</th><th>Vehicle</th><th>Fuel</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${body}</tbody></table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`); w.document.close();
   }
 
   function printLubricantSaleBill(c) {
@@ -2579,19 +2580,19 @@ export function CreditSale({
     </style></head><body>
     <div class="printbar"><button class="printbtn" onclick="window.focus();window.print()">🖨️ Print / Save PDF</button></div>
     <div class="invoice">
-      <div class="head"><div class="om">ॐ श्री गुरुवे नमः:</div><div><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05</div><h1>SATAT FILLING STATION</h1><div class="dealer">DEALER - HINDUSTAN PETROLEUM CORP. LTD.</div><div class="addr">Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div>
+      <div class="head"><div class="om">ॐ श्री गुरुवे नमः:</div>${(STATION_GSTIN||STATION_STATE_CODE)?`<div>${STATION_GSTIN?`<b>GSTIN: ${STATION_GSTIN}</b>`:""}${STATION_STATE_CODE?" &nbsp; | &nbsp; State Code: "+STATION_STATE_CODE:""}</div>`:""}<h1>${STATION_NAME}</h1>${STATION_DEALER_LINE?`<div class="dealer">${STATION_DEALER_LINE}</div>`:""}${STATION_ADDR_LINE?`<div class="addr">${STATION_ADDR_LINE}</div>`:""}</div>
       <div class="meta"><div><b>Bill To:</b><br>${escHtml(c.party)}<br>${c.vehicle ? "Vehicle No.: "+escHtml(c.vehicle) : ""}</div><div><b>Tax Invoice</b><br><b>Invoice No.:</b> ${escHtml(invoiceNo)}<br><b>Date:</b> ${escHtml(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
       <table class="items"><thead><tr><th>Date</th><th>Parchi No.</th><th>Vehicle No.</th><th>HSN Code</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
       <tbody><tr><td>${escHtml(c.date)}</td><td>${escHtml(c.parchiNo)}</td><td>${escHtml(c.vehicle)}</td><td>${escHtml(c.hsnCode || "")}</td><td>${escHtml(product)}</td><td class="num">${qty ? qty.toFixed(2) : "—"}</td><td class="num">${unitRate ? money(unitRate) : "—"}</td><td class="num">${money(total)}</td></tr></tbody></table>
       <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(c.amountInWords || "")}</div><div><div>Total Amount Before Tax: <b style="float:right">${money(taxable)}</b></div><div>Add: CGST: <b style="float:right">${money(cgst)}</b></div><div>Add: SGST: <b style="float:right">${money(sgst)}</b></div><div>Add: IGST: <b style="float:right">${money(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${money(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${money(total)}</b></div></div></div>
-      <div class="terms"><b>TERMS &amp; CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
+      <div class="terms"><b>TERMS &amp; CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• ${STATION_JURISDICTION?"All Jurisdiction Disputes will be settled at "+STATION_JURISDICTION+" Court.":"All Jurisdiction Disputes will be settled at the local Court."}<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - ${STATION_NAME}<br><br>Authorized Signatory</div></div>
     </div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
     try { w.document.open(); w.document.write(html); w.document.close(); w.focus(); } catch (e) { try { w.close(); } catch {} alert("Sale Bill print नहीं खुल पाया।"); }
   }
 
   function shareCreditWhatsApp() {
     const total=data.credits.reduce((a,c)=>a+n(c.amount),0);
-    const msg=`*SATAT FILLING STATION*\n*Credit Sale Register*\nEntries: ${data.credits.length}\nOutstanding Credit: ${money(total)}`;
+    const msg=`*${STATION_NAME}*\n*Credit Sale Register*\nEntries: ${data.credits.length}\nOutstanding Credit: ${money(total)}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`,"_blank");
   }
 
@@ -3262,7 +3263,7 @@ export function PartyLedger({ data, setPage, update }) {
     const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
     const lines = [
-      ["SATAT FILLING STATION"],
+      [STATION_NAME],
       ["ALL PARTY OUTSTANDING", from || "", to || ""],
       ["Opening Outstanding", allTotals.opening],
       ["Udhari Sale", allTotals.sales],
@@ -3339,7 +3340,7 @@ th{background:#eee}
 </style>
 </head>
 <body>
-<h1>SATAT FILLING STATION</h1>
+<h1>${STATION_NAME}</h1>
 <h2>All Party Outstanding</h2>
 <p>From: ${from || "—"} &nbsp; To: ${to || "—"}</p>
 <div class="cards">
@@ -3370,7 +3371,7 @@ th{background:#eee}
 
   function shareAllPartyWhatsApp() {
     const msg =
-      `*SATAT FILLING STATION*\n` +
+      `*${STATION_NAME}*\n` +
       `*ALL PARTY OUTSTANDING*\n` +
       `From: ${from || "—"} To: ${to || "—"}\n` +
       `Opening Outstanding: ${moneyRupee(allTotals.opening)}\n` +
@@ -3391,7 +3392,7 @@ th{background:#eee}
     const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
     const lines = [
-      ["SATAT FILLING STATION"],
+      [STATION_NAME],
       ["Party Ledger", party || "All Parties", from || "", to || ""],
       ["Opening Date", selectedOpening?.date || openingDate || START_DATE],
       ["Opening Type", selectedOpening?.type || openingType],
@@ -3477,7 +3478,7 @@ th{background:#eee}
 .cards{display:flex;gap:20px;margin:15px 0;flex-wrap:wrap}
 .box{border:1px solid #aaa;padding:10px}
 </style></head><body>
-<h1>SATAT FILLING STATION</h1>
+<h1>${STATION_NAME}</h1>
 <h2>Party Ledger - ${party || "All Parties"}</h2>
 <p>From: ${from || "—"} &nbsp; To: ${to || "—"}</p>
 <div class="cards">
@@ -3498,7 +3499,7 @@ th{background:#eee}
 
   function shareLedgerWhatsApp() {
     const msg =
-      `*SATAT FILLING STATION*\n` +
+      `*${STATION_NAME}*\n` +
       `*Party Ledger: ${party || "All Parties"}*\n` +
       `Opening Date: ${selectedOpening?.date || openingDate || START_DATE}\n` +
       `Opening Outstanding: ${moneyRupee(openingOutstanding)}\n` +
@@ -4298,7 +4299,7 @@ export function LubricantManagement({ data, update }) {
   const opening = data?.openingStock || {};
   const [openingQty, setOpeningQty] = useState(opening.LUBRICANT_QTY ?? "");
   const [openingValue, setOpeningValue] = useState(opening.LUBRICANT_VALUE ?? "");
-  const [purchase, setPurchase] = useState({date:today, invoiceNo:"", supplier:"HINDUSTAN PETROLEUM CORP. LTD.", productName:"Mobile Oil (HPCL)", quantity:"", rate:"", taxRate:"", taxAmount:"", totalAmount:""});
+  const [purchase, setPurchase] = useState({date:today, invoiceNo:"", supplier:DEFAULT_SUPPLIER, productName:"Mobile Oil (HPCL)", quantity:"", rate:"", taxRate:"", taxAmount:"", totalAmount:""});
   const [msg, setMsg] = useState("");
 
   useEffect(()=>{
@@ -4384,7 +4385,7 @@ export function LubricantManagement({ data, update }) {
 
   const resetPurchaseForm=()=>{
     setEditingPurchaseId(null);
-    setPurchase({date:today, invoiceNo:"", supplier:"HINDUSTAN PETROLEUM CORP. LTD.", productName:"Mobile Oil (HPCL)", quantity:"", rate:"", taxRate:"", taxAmount:"", totalAmount:""});
+    setPurchase({date:today, invoiceNo:"", supplier:DEFAULT_SUPPLIER, productName:"Mobile Oil (HPCL)", quantity:"", rate:"", taxRate:"", taxAmount:"", totalAmount:""});
   };
 
   const editPurchase=(row)=>{
@@ -4593,7 +4594,7 @@ export function LubricantManagement({ data, update }) {
         transactionId:`PURCHASE-LUBRICANT-${r.date}-${invoiceNo}`,
         date:r.date, invoiceNo, fuel:'LUBRICANT',
         productName:r.items.map(x=>x.description).join(' | ').slice(0,500),
-        supplier:String(r.supplier||'HINDUSTAN PETROLEUM CORP. LTD.').trim(), supplierGstin:String(r.gstin||'').trim(),
+        supplier:String(r.supplier||DEFAULT_SUPPLIER).trim(), supplierGstin:String(r.gstin||'').trim(),
         quantity:qty, unit:'L', rate:qty>0?total/qty:0, basicAmount:basic, taxAmount:tax, totalAmount:total, amount:total,
         source:'HPCL-LUBRICANT-PDF', billFileName:r.fileName, billFileType:r.fileType, billFileData:r.fileData, uploadedAt:new Date().toISOString(),
         items:r.items.map(x=>({...x}))
@@ -4631,7 +4632,7 @@ export function LubricantManagement({ data, update }) {
     const esc=v=>String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
     const w=window.open("","_blank"); if(!w){alert("Print window blocked है।");return;}
     const total=rupee(c.amount), qty=n(c.qty), rate=qty>0?total/qty:0;
-    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Lubricant Sale Bill ${esc(c.parchiNo)}</title><style>body{font-family:Arial;margin:18px;color:#111}.invoice{border:1px solid #111;max-width:900px;margin:auto}.head{text-align:center;border-bottom:1px solid #111;padding:12px}.head h1{margin:3px 0;font-size:25px}.meta{display:grid;grid-template-columns:1fr 1fr}.meta>div{padding:10px;border-bottom:1px solid #111}.meta>div+div{border-left:1px solid #111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #111;padding:8px}td.num{text-align:right}.bottom{display:grid;grid-template-columns:1fr 1fr}.bottom>div{padding:10px;min-height:130px}.bottom>div+div{border-left:1px solid #111}.terms{padding:10px;border-top:1px solid #111;font-size:10px}.sign{text-align:right;margin-top:28px;font-weight:bold}.bar{text-align:right;margin-bottom:10px}@media print{.bar{display:none}@page{size:A4 portrait;margin:10mm}}</style></head><body><div class="bar"><button onclick="window.print()">🖨️ Print / Save PDF</button></div><div class="invoice"><div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div><div class="meta"><div><b>M/s:</b> ${esc(c.party)}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(c.parchiNo)}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div><table><thead><tr><th>Date</th><th>Parchi No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(c.parchiNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${money(total)}</td></tr></tbody></table><div class="bottom"><div><b>Rupees in Words:</b><br>${esc(c.amountInWords||"")}</div><div><b>Total Amount Before Tax:</b><span style="float:right">${money(total)}</span><br><b>Add: CGST:</b><span style="float:right">₹0.00</span><br><b>Add: SGST:</b><span style="float:right">₹0.00</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${money(total)}</span></div></div><div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div></div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Lubricant Sale Bill ${esc(c.parchiNo)}</title><style>body{font-family:Arial;margin:18px;color:#111}.invoice{border:1px solid #111;max-width:900px;margin:auto}.head{text-align:center;border-bottom:1px solid #111;padding:12px}.head h1{margin:3px 0;font-size:25px}.meta{display:grid;grid-template-columns:1fr 1fr}.meta>div{padding:10px;border-bottom:1px solid #111}.meta>div+div{border-left:1px solid #111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #111;padding:8px}td.num{text-align:right}.bottom{display:grid;grid-template-columns:1fr 1fr}.bottom>div{padding:10px;min-height:130px}.bottom>div+div{border-left:1px solid #111}.terms{padding:10px;border-top:1px solid #111;font-size:10px}.sign{text-align:right;margin-top:28px;font-weight:bold}.bar{text-align:right;margin-bottom:10px}@media print{.bar{display:none}@page{size:A4 portrait;margin:10mm}}</style></head><body><div class="bar"><button onclick="window.print()">🖨️ Print / Save PDF</button></div><div class="invoice"><div class="head"><div>ॐ श्री गुरुवे नमः:</div>${(STATION_GSTIN||STATION_STATE_CODE)?`<b>${[STATION_GSTIN&&`GSTIN: ${STATION_GSTIN}`, STATION_STATE_CODE&&`State Code: ${STATION_STATE_CODE}`].filter(Boolean).join(" &nbsp; | &nbsp; ")}</b>`:""}<h1>${STATION_NAME}</h1>${STATION_DEALER_LINE?`<b>${STATION_DEALER_LINE}</b>`:""}${STATION_ADDR_LINE?`<div>${STATION_ADDR_LINE}</div>`:""}</div><div class="meta"><div><b>M/s:</b> ${esc(c.party)}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(c.parchiNo)}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div><table><thead><tr><th>Date</th><th>Parchi No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(c.parchiNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${money(total)}</td></tr></tbody></table><div class="bottom"><div><b>Rupees in Words:</b><br>${esc(c.amountInWords||"")}</div><div><b>Total Amount Before Tax:</b><span style="float:right">${money(total)}</span><br><b>Add: CGST:</b><span style="float:right">₹0.00</span><br><b>Add: SGST:</b><span style="float:right">₹0.00</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${money(total)}</span></div></div><div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• ${STATION_JURISDICTION?"All Jurisdiction Disputes will be settled at "+STATION_JURISDICTION+" Court.":"All Jurisdiction Disputes will be settled at the local Court."}<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - ${STATION_NAME}<br><br>Authorized Signatory</div></div></div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
     w.document.write(html);w.document.close();
   };
 
@@ -5442,7 +5443,7 @@ export function DailySaleSummary({ data }) {
 
   function exportExcel() {
     const lines = [];
-    lines.push(["SATAT FILLING STATION"].map(escapeCsv).join(","));
+    lines.push([STATION_NAME].map(escapeCsv).join(","));
     lines.push(["Daily Sale Summary", date].map(escapeCsv).join(","));
     lines.push("");
     lines.push([
@@ -5557,7 +5558,7 @@ export function DailySaleSummary({ data }) {
         .cards{display:flex;gap:10px;margin:10px 0}.card{border:1px solid #555;padding:10px;flex:1}.ok{padding:8px;border:1px solid #333;font-weight:bold}
         @media print{@page{size:A4 landscape;margin:10mm}button{display:none}}
       </style></head><body>
-      <h1>SATAT FILLING STATION</h1><p><b>Daily Sale Summary</b> — ${esc(date)}</p>
+      <h1>${STATION_NAME}</h1><p><b>Daily Sale Summary</b> — ${esc(date)}</p>
       <h2>1. Nozzle-wise Opening / Closing / Sale</h2>
       <table><thead><tr><th>Nozzle</th><th>Fuel</th><th>Opening</th><th>Closing</th><th>Meter Qty</th><th>Testing</th><th>Sale Qty</th><th>Rate</th><th>Total Sale</th></tr></thead><tbody>${nozzleRows}</tbody></table>
       <h2>2. Fuel-wise Total Sale</h2>
@@ -5590,7 +5591,7 @@ export function DailySaleSummary({ data }) {
   function shareWhatsApp() {
     const p = f => paymentsByFuel[f];
     const msg = [
-      `*SATAT FILLING STATION*`,
+      `*${STATION_NAME}*`,
       `*Daily Sale Summary - ${date}*`,
       ``,
       `MS Sale: ${money(fuelSummary.MS.amount)} | Payment: ${money(p("MS").total)} | Udhari: ${money(p("MS").credit)} | Pending: ${money(salesmanPendingToday.MS)}`,

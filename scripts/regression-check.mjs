@@ -82,6 +82,33 @@ check("14. Repo hygiene files present",
   fs.existsSync(path.join(ROOT, ".gitignore")) &&
   fs.existsSync(path.join(ROOT, ".env.example")));
 
+// --- Phase 13 multi-tenancy checks ---
+check("15. Embedded station data is optional-private (import.meta.glob wiring)",
+  /import\.meta\.glob\("\.\/private\/stationData\.js", \{ eager: true \}\)/.test(domain) &&
+  !/from "\.\/embeddedBackupData\.js"/.test(domain) &&
+  !fs.existsSync(path.join(ROOT, "src/core/embeddedBackupData.js")));
+
+{
+  const seed = read("src/core/tenantSeed.js");
+  check("16. Commercial tenant seed is blank and neutral",
+    /TENANT_SEED_VERSION/.test(seed) && /sales: \[\]/.test(seed) &&
+    /parties: \[\]/.test(seed) && /users: \[\]/.test(seed) &&
+    !/fp1-|TX-SALES/.test(seed));
+}
+
+{
+  const plans = read("src/config/plans.js");
+  check("17. Commercial plan catalogue with View-Only lockout",
+    /monthlyInr: 399/.test(plans) && /monthlyInr: 799/.test(plans) &&
+    /oneTimeInr: 29999/.test(plans) &&
+    /roleForSubscriptionStatus/.test(plans) && /"View Only"/.test(plans));
+}
+
+check("18. Supabase tenant-isolation SQL + provision scaffold versioned",
+  fs.existsSync(path.join(ROOT, "supabase/migrations/00001_phase13_multitenancy.sql")) &&
+  fs.existsSync(path.join(ROOT, "supabase/functions/station-provision/index.ts")) &&
+  /enable row level security/.test(fs.readFileSync(path.join(ROOT, "supabase/migrations/00001_phase13_multitenancy.sql"), "utf8")));
+
 console.log("");
 if (failures) { console.error(`regression-check: ${failures} FAILURE(S)`); process.exit(1); }
-console.log("regression-check: 14/14 PASS");
+console.log("regression-check: 18/18 PASS");
