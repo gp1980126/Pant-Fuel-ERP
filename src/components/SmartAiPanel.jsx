@@ -18,46 +18,28 @@ export default function SmartAiPanel({ data, session }) {
   const [busy, setBusy] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
 
-  function speak(text) {
+  async function browserSpeak(text) {
     if (!voiceOn || typeof window === "undefined" || !("speechSynthesis" in window)) return;
     const synth = window.speechSynthesis;
     synth.cancel();
-
-    const value = String(text || "").replace(/\s+/g, " ").trim();
+    const value = String(text || "").replace(/\\s+/g, " ").trim();
     if (!value) return;
 
-    // Prefer installed Indian voices. This gives much more natural Hindi/Hinglish
-    // pronunciation than forcing the entire answer through one language voice.
     const voices = synth.getVoices ? synth.getVoices() : [];
-    const hi = voices.find(v => /^hi-IN$/i.test(v.lang)) ||
-      voices.find(v => /^hi/i.test(v.lang));
-    const en = voices.find(v => /^en-IN$/i.test(v.lang)) ||
-      voices.find(v => /^en-GB$/i.test(v.lang)) ||
-      voices.find(v => /^en/i.test(v.lang));
-
-    // Speak Hindi-script and Latin-script portions separately so Hindi words
-    // use the Hindi engine while English product/technical terms stay natural.
-    const parts = value.match(/[\u0900-\u097F]+|[A-Za-z][A-Za-z0-9+./%-]*|[0-9]+(?:[.,][0-9]+)*/g) || [value];
+    const hi = voices.find(v => /^hi-IN$/i.test(v.lang)) || voices.find(v => /^hi/i.test(v.lang));
+    const en = voices.find(v => /^en-IN$/i.test(v.lang)) || voices.find(v => /^en-GB$/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang));
+    const parts = value.match(/[\\u0900-\\u097F]+|[A-Za-z][A-Za-z0-9+./%-]*|[0-9]+(?:[.,][0-9]+)*/g) || [value];
     const queue = [];
     let buffer = "";
-    let lastHindi = null;
-
+    let lastVoice = null;
     parts.forEach(part => {
-      const isHindi = /[\u0900-\u097F]/.test(part);
+      const isHindi = /[\\u0900-\\u097F]/.test(part);
       const voice = isHindi ? hi : en;
-      const sameVoice = voice === lastHindi;
-      if (sameVoice || lastHindi === null) {
-        buffer += (buffer ? " " : "") + part;
-      } else if (buffer) {
-        queue.push({ text: buffer, voice: lastHindi, hindi: /[\u0900-\u097F]/.test(buffer) });
-        buffer = part;
-      } else {
-        buffer = part;
-      }
-      lastHindi = voice;
+      if (lastVoice === null || voice === lastVoice) buffer += (buffer ? " " : "") + part;
+      else { queue.push({ text: buffer, voice: lastVoice, hindi: /[\\u0900-\\u097F]/.test(buffer) }); buffer = part; }
+      lastVoice = voice;
     });
-    if (buffer) queue.push({ text: buffer, voice: lastHindi, hindi: /[\u0900-\u097F]/.test(buffer) });
-
+    if (buffer) queue.push({ text: buffer, voice: lastVoice, hindi: /[\\u0900-\\u097F]/.test(buffer) });
     let index = 0;
     const playNext = () => {
       if (index >= queue.length) return;
@@ -73,6 +55,32 @@ export default function SmartAiPanel({ data, session }) {
       synth.speak(u);
     };
     playNext();
+  }
+
+  async function speak(text) {
+    if (!voiceOn || typeof window === "undefined") return;
+    const value = String(text || "").trim();
+    if (!value) return;
+
+    try {
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: value })
+      });
+
+      if (!response.ok) throw new Error("premium TTS unavailable");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.volume = 1;
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.onerror = () => { URL.revokeObjectURL(url); browserSpeak(value); };
+      await audio.play();
+    } catch {
+      // Safe fallback: Android/browser Hindi + Indian-English voices.
+      browserSpeak(value);
+    }
   }
 
   function submit(e) {
