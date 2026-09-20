@@ -1335,6 +1335,7 @@ const importData = (event) => {
               "Opening Setup",
               "Party Master",
               "Credit Sale",
+              "Cash Entry",
               "Party Ledger",
               "Collection Detail",
               "Reports",
