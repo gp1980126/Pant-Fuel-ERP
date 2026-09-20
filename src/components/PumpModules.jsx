@@ -2452,6 +2452,111 @@ export function PartyMaster({
 ========================================================= */
 
 
+export function CashEntry({ data, update }) {
+  const [f, setF] = useState({ parchiNo:"", party:"", driver:"", type:"GIVEN", amount:"", remark:"" });
+  const [msg, setMsg] = useState("");
+  const [editId, setEditId] = useState(null);
+
+  const reset = () => {
+    setF({ parchiNo:"", party:"", driver:"", type:"GIVEN", amount:"", remark:"" });
+    setEditId(null);
+  };
+
+  function save() {
+    const parchiNo = String(f.parchiNo || "").trim();
+    const party = String(f.party || "").trim();
+    const driver = String(f.driver || "").trim();
+    const amount = rupee(n(f.amount));
+    if (!parchiNo) return setMsg("Parchi No. जरूरी है। Salesman खुद पर्ची नंबर डालेगा।");
+    if (!party) return setMsg("Motor Owner / Party जरूरी है।");
+    if (!driver) return setMsg("Driver का नाम जरूरी है।");
+    if (amount <= 0) return setMsg("Amount ₹0 से अधिक होना चाहिए।");
+    const duplicate = (data.cashEntries || []).some(x =>
+      String(x?.parchiNo || "").trim().toLowerCase() === parchiNo.toLowerCase() && x.id !== editId
+    );
+    if (duplicate) return setMsg(`Parchi No. ${parchiNo} पहले से मौजूद है। Duplicate entry save नहीं की गई।`);
+
+    const record = {
+      date: todayDate(),
+      parchiNo,
+      party,
+      driver,
+      type: f.type === "RECEIVED" ? "RECEIVED" : "GIVEN",
+      amount,
+      remark: String(f.remark || "").trim()
+    };
+
+    if (editId !== null) {
+      update({ cashEntries: (data.cashEntries || []).map(x => x.id === editId ? { ...x, ...record } : x) });
+      setMsg("Cash Entry updated successfully.");
+    } else {
+      update({ cashEntries: [...(data.cashEntries || []), { id: Date.now(), ...record }] });
+      setMsg("Cash Entry saved successfully.");
+    }
+    reset();
+  }
+
+  const rows = [...(data.cashEntries || [])].reverse();
+  const received = rows.filter(x => x.type === "RECEIVED").reduce((a,x)=>a+n(x.amount),0);
+  const given = rows.filter(x => x.type === "GIVEN").reduce((a,x)=>a+n(x.amount),0);
+
+  return (
+    <div className="content">
+      <section className="panel">
+        <h2>💵 Cash Entry</h2>
+        <p><b>यह Fuel Sale नहीं है।</b> यह केवल cash के आने-जाने की पर्ची है। MS/HSD/CNG, Qty और Fuel Rate इसमें नहीं आएंगे।</p>
+        <div className="form">
+          <Field label="Parchi No. (Manual)">
+            <input value={f.parchiNo} onChange={e=>setF({...f,parchiNo:e.target.value})} />
+          </Field>
+          <Field label="Motor Owner / Party">
+            <input value={f.party} onChange={e=>setF({...f,party:e.target.value})} />
+          </Field>
+          <Field label="Driver">
+            <input value={f.driver} onChange={e=>setF({...f,driver:e.target.value})} />
+          </Field>
+          <Field label="Cash Type">
+            <select value={f.type} onChange={e=>setF({...f,type:e.target.value})}>
+              <option value="GIVEN">Cash Given — ड्राइवर को cash दिया</option>
+              <option value="RECEIVED">Cash Received — cash आया</option>
+            </select>
+          </Field>
+          <Field label="Amount">
+            <input type="number" step="0.01" min="0" value={f.amount} onChange={e=>setF({...f,amount:e.target.value})} placeholder="1000" />
+          </Field>
+          <Field label="Remark">
+            <input value={f.remark} onChange={e=>setF({...f,remark:e.target.value})} placeholder="मालिक के निर्देश पर ड्राइवर को cash दिया" />
+          </Field>
+        </div>
+        <div className="actions">
+          <button className="btn" onClick={save}>{editId !== null ? "✏️ Update Cash Entry" : "Save Cash Entry"}</button>
+          {editId !== null && <button type="button" className="btn gray" onClick={reset}>Cancel Edit</button>}
+        </div>
+        {msg && <div className="notice">{msg}</div>}
+      </section>
+
+      <section className="panel" style={{marginTop:18}}>
+        <h2>Cash Entry Register</h2>
+        <div className="collection-breakdown" style={{marginBottom:14}}>
+          <div><span>Cash Received</span><b>{moneyRupee(received)}</b></div>
+          <div><span>Cash Given</span><b>{moneyRupee(given)}</b></div>
+          <div className="total"><span>Net Cash Movement</span><b>{moneyRupee(received-given)}</b></div>
+        </div>
+        <Table
+          headers={["Parchi No","Motor Owner / Party","Driver","Type","Amount","Remark"]}
+          rows={rows.map(x=>[x.parchiNo,x.party,x.driver,x.type==="RECEIVED"?"CASH RECEIVED":"CASH GIVEN",moneyRupee(x.amount),x.remark||"—"])}
+          onEdit={(id)=>{
+            const x=(data.cashEntries||[]).find(r=>r.id===id); if(!x)return;
+            setEditId(x.id);
+            setF({parchiNo:String(x.parchiNo||""),party:String(x.party||""),driver:String(x.driver||""),type:x.type||"GIVEN",amount:String(x.amount||""),remark:String(x.remark||"")});
+            setMsg("Cash Entry edit mode में है.");
+          }}
+        />
+      </section>
+    </div>
+  );
+}
+
 export function CreditSale({
   data,
   update
