@@ -34,7 +34,8 @@ export default function SmartAiPanel({ data, session }) {
     if (!q || busy) return;
     assertAiReadOnlyAction("explain");
     setBusy(true);
-    const answer = analyzeStationData(data, q);\n    speak(answer);
+    const answer = analyzeStationData(data, q);
+    speak(answer);
     setMessages(m => [...m, { role: "user", text: q }, { role: "ai", text: answer }]);
     setQuestion("");
     window.setTimeout(() => setBusy(false), 120);
