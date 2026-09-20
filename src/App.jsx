@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import SmartAiPanel from "./components/SmartAiPanel";
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudGetStationId, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
 import {
   START_DATE,
@@ -1318,6 +1319,7 @@ const importData = (event) => {
 
             {[
               "Dashboard",
+              "Smart AI",
               "Accounts",
               "Tally / CA Export",
               "Fuel Sale",
@@ -1451,6 +1453,10 @@ const importData = (event) => {
               </button>
             ))}
           </nav>
+
+          {page === "Smart AI" && (
+            <SmartAiPanel data={data} session={session} />
+          )}
 
           {page === "User Management" && canAccess(session.role, "User Management") && (
             <UserManagement data={data} update={update} />
