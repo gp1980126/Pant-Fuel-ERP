@@ -20,12 +20,59 @@ export default function SmartAiPanel({ data, session }) {
 
   function speak(text) {
     if (!voiceOn || typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(String(text));
-    u.lang = /[\u0900-\u097F]/.test(String(text)) ? "hi-IN" : "en-IN";
-    u.rate = 0.95;
-    u.pitch = 1;
-    window.speechSynthesis.speak(u);
+    const synth = window.speechSynthesis;
+    synth.cancel();
+
+    const value = String(text || "").replace(/\s+/g, " ").trim();
+    if (!value) return;
+
+    // Prefer installed Indian voices. This gives much more natural Hindi/Hinglish
+    // pronunciation than forcing the entire answer through one language voice.
+    const voices = synth.getVoices ? synth.getVoices() : [];
+    const hi = voices.find(v => /^hi-IN$/i.test(v.lang)) ||
+      voices.find(v => /^hi/i.test(v.lang));
+    const en = voices.find(v => /^en-IN$/i.test(v.lang)) ||
+      voices.find(v => /^en-GB$/i.test(v.lang)) ||
+      voices.find(v => /^en/i.test(v.lang));
+
+    // Speak Hindi-script and Latin-script portions separately so Hindi words
+    // use the Hindi engine while English product/technical terms stay natural.
+    const parts = value.match(/[\u0900-\u097F]+|[A-Za-z][A-Za-z0-9+./%-]*|[0-9]+(?:[.,][0-9]+)*/g) || [value];
+    const queue = [];
+    let buffer = "";
+    let lastHindi = null;
+
+    parts.forEach(part => {
+      const isHindi = /[\u0900-\u097F]/.test(part);
+      const voice = isHindi ? hi : en;
+      const sameVoice = voice === lastHindi;
+      if (sameVoice || lastHindi === null) {
+        buffer += (buffer ? " " : "") + part;
+      } else if (buffer) {
+        queue.push({ text: buffer, voice: lastHindi, hindi: /[\u0900-\u097F]/.test(buffer) });
+        buffer = part;
+      } else {
+        buffer = part;
+      }
+      lastHindi = voice;
+    });
+    if (buffer) queue.push({ text: buffer, voice: lastHindi, hindi: /[\u0900-\u097F]/.test(buffer) });
+
+    let index = 0;
+    const playNext = () => {
+      if (index >= queue.length) return;
+      const item = queue[index++];
+      const u = new SpeechSynthesisUtterance(item.text);
+      u.lang = item.hindi ? "hi-IN" : "en-IN";
+      if (item.voice) u.voice = item.voice;
+      u.rate = item.hindi ? 0.92 : 0.96;
+      u.pitch = 1.02;
+      u.volume = 1;
+      u.onend = playNext;
+      u.onerror = playNext;
+      synth.speak(u);
+    };
+    playNext();
   }
 
   function submit(e) {
