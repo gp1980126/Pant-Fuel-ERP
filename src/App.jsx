@@ -127,7 +127,7 @@ function App() {
   const cloudSaveTimerRef = useRef(null);
   const cloudLastSavedHashRef = useRef("");
   const setPage = target => {
-    if (target === "Dashboard" || canAccess(session?.role, target)) setPageState(target);
+    if (target === "Dashboard" || target === "Smart AI" || canAccess(session?.role, target)) setPageState(target);
     else setPageState("Dashboard");
   };
   const [dark, setDark] = useState(false);
