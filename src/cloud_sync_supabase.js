@@ -1,19 +1,20 @@
 // PumpPro cloud sync adapter (Supabase)
 import { createClient } from '@supabase/supabase-js';
 
-// Vercel preview builds in this isolated test project may not have build-time
-// environment variables attached. The Supabase URL + anon key are client-side
-// credentials and are intentionally safe to ship in a browser build; RLS and
-// Auth remain the security boundary. Environment variables still take priority.
-const FALLBACK_SUPABASE_URL = 'https://vzfmhppgninuinvmwyjn.supabase.co';
-const FALLBACK_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6Zm1ocHBnbmludWludm13eWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyNTAzMzMsImV4cCI6MjEwNDgyNjMzM30.V2pl_mnWbbmYwYnvaIyCpk6pLWA7HVDts-bVlAVV3z0';
-
-const url = String(import.meta.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL).trim();
-const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY).trim();
+// The Supabase URL + anon key are client-side credentials and are safe to ship
+// in a browser build because RLS and Auth remain the security boundary -- BUT
+// they are environment-specific, so they must come ONLY from build-time
+// environment variables (see .env.example / VERCEL_DEPLOY.md). Hardcoded
+// fallback credentials were removed in the 2026-09-20 hardening: a missing
+// configuration now fails closed instead of silently connecting production to
+// the wrong (test) project.
+const url = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 const configured = Boolean(url && anonKey);
 
-// A deployed Vercel build is Cloud-first. The isolated test build also has a
-// browser-safe fallback so missing Vercel env configuration cannot disable Cloud.
+// A deployed Vercel build is Cloud-first. When env configuration is missing,
+// Cloud is disabled (and App.jsx blocks login entirely when the deployment sets
+// VITE_PUMPPRO_CLOUD_REQUIRED=true).
 export const CLOUD_ENABLED = configured;
 
 export const supabase = configured

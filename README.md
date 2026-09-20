@@ -17,11 +17,26 @@ This package is the commercial-architecture conversion of the working PumpPro V3
 - `src/config/appConfig.js` — commercial runtime configuration
 - `src/cloud_sync_supabase.js` — cloud/auth adapter
 
-See `COMMERCIAL_ARCHITECTURE.md` for the production roadmap.
+## Quality gates (restored 2026-09-20)
+
+- `npm run check` — static hygiene (imports, conflict markers, hardcoded-secret scan)
+- `npm run regression` — Phase 12 role-authorization invariants (14 checks)
+- `npm run release-check` — gates above + frozen-core file hashes from `RELEASE_MANIFEST.txt` + tracked-secret scan
+- CI: `.github/workflows/ci.yml` runs all gates + production build on `main`
+
+## Production deployment checklist
+
+1. Set Vercel env vars from `.env.example` (see `VERCEL_DEPLOY.md`).
+2. Set `VITE_PUMPPRO_CLOUD_REQUIRED=true` so a misconfigured build can never fall back to local login.
+3. Rotate the local fallback default passwords (`DEFAULT_USERS`) — treat the shipped ones as public knowledge.
+4. Version the Supabase backend DDL/RLS/RPC/Edge Functions into `supabase/` (see `supabase/README.md`).
+5. Run the pending live multi-role (Manager/Operator/View Only) destructive test noted in `PHASE12_RELEASE_REPORT_13-09-2026.md`.
+6. `COMMERCIAL_ARCHITECTURE.md` referenced by earlier docs is a planned roadmap doc and is not part of this package.
 
 ## Important
 
-Do not ship `.env.local`, `node_modules`, or development secrets inside a source archive.
+`.gitignore` now blocks `.env*`, `node_modules/`, and `dist/`. Still never ship `.env.local`
+or development secrets inside a source archive.
 
 
 ## 12-09-2026 Staff & Electricity Data Recovery Fix

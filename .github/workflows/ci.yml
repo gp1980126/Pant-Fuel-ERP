@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "arena/**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Static hygiene gate
+        run: npm run check
+
+      - name: Role-security regression gate
+        run: npm run regression
+
+      - name: Release gate (frozen hashes + secret scan)
+        run: npm run release-check
+
+      - name: Production build
+        run: npm run build
+
+      - name: Audit production dependencies (high severity fails the build)
+        run: npm audit --audit-level=high --omit=dev

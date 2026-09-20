@@ -16,3 +16,16 @@ Phase 12 intentionally changed role/security files:
 422fa9c1e47391c04fedf98b84c1137ea59c1da8ae3222fb0337b4bf12935a75  src/core/pumpDomain.js
 6763b05c9be511ddf3741164b68636a5f40db0941a73f83972f2e846f57ec9bf  src/App.jsx
 9e60aa476660517fe12b6dc314c17bd10afe5d1cee0a6ed0c077ec33bdceaf67  src/components/PumpModules.jsx
+
+=== HARDENING UPDATE 2026-09-20 (branch arena/01a0bc8f-pant-fuel-erp) ===
+- Removed hardcoded Supabase fallback credentials from src/cloud_sync_supabase.js (fail-closed env-only config).
+- Wired VITE_PUMPPRO_CLOUD_REQUIRED gate in src/App.jsx (local login blocked when cloud env missing and required).
+- Removed unused vulnerable xlsx dependency; restored scripts/ gates; added .gitignore, .env.example, main CI.
+- Accounting/business data and embedded master backup intentionally UNCHANGED.
+
+Current frozen core file hashes (verified by npm run release-check):
+FROZEN_HASHES_BEGIN
+5603be9e81a862c76ff85d1f07d05b4b8547cd12115558dfbedf2d6d1bd348cd  src/services/storage/localStore.js
+c2b32a2c761fc54543322ec2e76f27f26ea1968d740808e787b285c61b713a93  src/cloud_sync_supabase.js
+72d54a0a3ec297fc728bbf1d761b0197023b21d4d991b0fd1a26ea04a158e3a6  src/config/appConfig.js
+FROZEN_HASHES_END

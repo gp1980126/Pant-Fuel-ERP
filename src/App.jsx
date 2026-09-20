@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { CLOUD_REQUIRED } from "./config/appConfig";
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudGetStationId, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
 import {
   START_DATE,
@@ -212,6 +213,14 @@ function App() {
   useEffect(() => {
     if (!CLOUD_ENABLED) {
       setAuthReady(true);
+      if (CLOUD_REQUIRED) {
+        // Production hardening: a cloud-required deployment must never fall back
+        // to local/default-user login when the Supabase env config is missing.
+        setCloudReady(false);
+        setCloudStatus("error");
+        setLoginError("Cloud configuration missing: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY सेट किए बिना यह deployment login allow नहीं करता (VITE_PUMPPRO_CLOUD_REQUIRED=true)। Vercel env variables जोड़कर redeploy करें।");
+        return;
+      }
       const saved = localStorage.getItem(KEY + '_session');
       if (saved) {
         try { setSession(JSON.parse(saved)); } catch { localStorage.removeItem(KEY + '_session'); }
@@ -1261,6 +1270,7 @@ const importData = (event) => {
               }
               return;
             }
+            if (CLOUD_REQUIRED) { setLoginError("Cloud configuration missing: इस deployment पर local login बंद है (VITE_PUMPPRO_CLOUD_REQUIRED=true)। Supabase env variables जोड़कर redeploy करें।"); return; }
             const users=Array.isArray(data.users)&&data.users.length?data.users:DEFAULT_USERS;
             const candidate=users.find(x=>((String(x.username||"").trim().toLowerCase()===username.toLowerCase()) || (String(x.email||"").trim().toLowerCase()===username.toLowerCase())) && x.active!==false);
             if(!candidate){setLoginError("Username/Email या password गलत है।");return;}
