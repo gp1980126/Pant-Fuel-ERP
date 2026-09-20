@@ -5,7 +5,7 @@
 const ENV = import.meta.env || {};
 const clean = v => String(v ?? "").trim();
 
-export const STATION_NAME        = clean(ENV.VITE_PUMPPRO_PUMP_NAME) || "YOUR PUMP NAME";
+export const STATION_NAME        = clean(ENV.VITE_PUMPPRO_PUMP_NAME) || "Satat Filling Station";
 export const STATION_GSTIN       = clean(ENV.VITE_PUMPPRO_GSTIN);
 export const STATION_STATE_CODE  = clean(ENV.VITE_PUMPPRO_STATE_CODE);
 export const STATION_ADDR_LINE   = clean(ENV.VITE_PUMPPRO_ADDR);
