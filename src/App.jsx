@@ -1530,6 +1530,13 @@ const importData = (event) => {
             />
           )}
 
+          {page === "Cash Entry" && canAccess(session.role, "Cash Entry") && (
+            <CashEntry
+              data={data}
+              update={update}
+            />
+          )}
+
           {page === "Party Ledger" && canAccess(session.role, "Party Ledger") && (
             <PartyLedger
               data={data}
@@ -1596,6 +1603,7 @@ import {
   OpeningSetup,
   PartyMaster,
   CreditSale,
+  CashEntry,
   PartyLedger,
   Accounts,
   Reports,
