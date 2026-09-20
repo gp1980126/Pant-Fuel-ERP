@@ -4738,7 +4738,6 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
   let billingDocNo='';
   const billingMatch=joined.match(/BILLING\s+DOC(?:UMENT)?\s*(?:NO)?\s*[:\-]?\s*([A-Z0-9-]+)/i);
   if(billingMatch) billingDocNo=billingMatch[1];
-  const taxLines=[];
   let current=null;
   const productRe=/^\s*\d+\s+(.+?)\s+(\d{6,8})\s+([\d,]+(?:\.\d+)?)\s+(L|KG)\s+([\d,]+(?:\.\d+)?)\s+\/(KL|KG)\s+([\d,]+(?:\.\d+)?)\s*$/i;
   const products=[];
@@ -4747,49 +4746,38 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
     if(m){
       if(current) products.push(current);
       const productName=m[1].trim(), productCode=m[2], fuel=hpclFuel2(productName,'',productCode);
-      current={invoiceNo,billingDocNo,date,productCode,productName,productType:'',fuel,quantity:hpclNum2(m[3]),unit:m[4]|| (fuel==='CNG'?'KG':'L'),rate:hpclNum2(m[5])/(String(m[6]).toUpperCase()==='KL'?1000:1),basicAmount:hpclNum2(m[7]),taxAmount:0,taxBreakdown:[],totalAmount:0,source:'HPCL-PDF',fileName};
+      current={invoiceNo,billingDocNo,date,productCode,productName,productType:'',fuel,quantity:hpclNum2(m[3]),unit:m[4]|| (fuel==='CNG'?'KG':'L'),rate:hpclNum2(m[5])/(String(m[6]).toUpperCase()==='KL'?1000:1),basicAmount:Math.abs(hpclNum2(m[7])),taxAmount:0,taxBreakdown:[],totalAmount:0,source:'HPCL-PDF',fileName};
       continue;
     }
     if(!current) continue;
     const tm=line.match(/^(CST(?:\s+with\s+Form)?|GST|IGST|CGST|SGST|State\s+Tax|IN\s+A\/R\s+VAT|SSLF\s+Recovery)\b.*?([\d,]+(?:\.\d+)?)\s*$/i);
     if(tm){
-      const label=tm[1].replace(/\s+/g,' ').trim(), amount=hpclNum2(tm[2]);
+      const label=tm[1].replace(/\s+/g,' ').trim(), amount=Math.abs(hpclNum2(tm[2]));
       if(amount){ current.taxAmount += amount; current.taxBreakdown.push({label,amount}); }
     }
-    const totalM=line.match(/(?:TOTAL\s+VALUE|TOTAL\s+AMOUNT)\s*[:\-]?\s*([\d,]+(?:\.\d+)?)/i);
-    if(totalM && current) current.totalAmount=hpclNum2(totalM[1]);
+    const totalM=line.match(/(?:TOTAL\s+VALUE|TOTAL\s+AMOUNT)\s*[:\-]?\s*(-?[\d,]+(?:\.\d+)?)/i);
+    if(totalM && current) current.totalAmount=Math.abs(hpclNum2(totalM[1]));
   }
   if(current) products.push(current);
   if(!products.length){
     const fallback=/(CNG\s*\([^\n]+?\)|HSD[^\n]+|MS[^\n]+?)\s+(\d{6,8})\s+([\d,]+(?:\.\d+)?)\s+(L|KG)\s+([\d,]+(?:\.\d+)?)\s+\/(KL|KG)\s+([\d,]+(?:\.\d+)?)/i.exec(raw);
     if(fallback){
       const productName=fallback[1].trim(), fuel=hpclFuel2(productName,'',fallback[2]);
-      products.push({invoiceNo,billingDocNo,date,productCode:fallback[2],productName,productType:'',fuel,quantity:hpclNum2(fallback[3]),unit:fallback[4],rate:hpclNum2(fallback[5])/(String(fallback[6]).toUpperCase()==='KL'?1000:1),basicAmount:hpclNum2(fallback[7]),taxAmount:0,taxBreakdown:[],totalAmount:0,source:'HPCL-PDF',fileName});
+      products.push({invoiceNo,billingDocNo,date,productCode:fallback[2],productName,productType:'',fuel,quantity:hpclNum2(fallback[3]),unit:fallback[4],rate:hpclNum2(fallback[5])/(String(fallback[6]).toUpperCase()==='KL'?1000:1),basicAmount:Math.abs(hpclNum2(fallback[7])),taxAmount:0,taxBreakdown:[],totalAmount:0,source:'HPCL-PDF',fileName});
     }
   }
-  // HPCL single-product invoices commonly show tax lines followed by the invoice grand total.
-  const grandMatch=joined.match(/(?:TOTAL\s+VALUE|TOTAL\s+AMOUNT)\s+([\d,]+(?:\.\d+)?)/i);
-  const grand=grandMatch?hpclNum2(grandMatch[1]):0;
+  const grandMatch=joined.match(/(?:TOTAL\s+VALUE|TOTAL\s+AMOUNT)\s*[:\-]?\s*(-?[\d,]+(?:\.\d+)?)/i);
+  const grand=grandMatch?Math.abs(hpclNum2(grandMatch[1])):0;
   return products.map(p=>{
-    const assessable = n(p.basicAmount);
-    const tax = n(p.taxAmount);
-    const billTotal = n(p.totalAmount) || grand || (assessable + tax);
-    // Purchase rate = (Total Assessable Value + Tax) / Ltr (MS/HSD) or Kg (CNG).
-    // This is the landed purchase rate used by the Purchase section.
-    const landedRate = p.quantity > 0
-      ? ((assessable + tax) > 0 ? (assessable + tax) / p.quantity : billTotal / p.quantity)
+    const assessable=n(p.basicAmount);
+    const tax=n(p.taxAmount);
+    const billTotal=(assessable+tax)>0 ? (assessable+tax) : (n(p.totalAmount)||grand);
+    const effectiveRate=p.quantity>0
+      ? (billTotal>0 ? billTotal/p.quantity : ((assessable+tax)>0 ? (assessable+tax)/p.quantity : 0))
       : 0;
-    return {
-      ...p,
-      rate: landedRate,
-      totalAmount: billTotal,
-      amount: billTotal,
-      taxAmount: tax,
-      taxBreakdown:p.taxBreakdown||[]
-    };
-  }).filter(p=>p.fuel && p.quantity>0 && p.rate>0);
+    return {...p,rate:n(p.rate),effectiveRate,totalAmount:billTotal,amount:billTotal,taxAmount:tax,taxBreakdown:p.taxBreakdown||[]};
+  }).filter(p=>p.fuel&&p.quantity>0&&p.rate>0);
 }
-
 export function Purchase({data,update}){
   const [preview,setPreview]=useState([]), [msg,setMsg]=useState(''), [busy,setBusy]=useState(false);
   const [from,setFrom]=useState(START_DATE), [to,setTo]=useState(todayDate());
