@@ -145,16 +145,36 @@ export default function SmartAiPanel({ data, session }) {
     }
   }
 
-  function submitQuestion(rawQuestion) {
+  async function submitQuestion(rawQuestion) {
     const q = String(rawQuestion || "").trim();
     if (!q || busy) return;
     assertAiReadOnlyAction("explain");
     setBusy(true);
-    const answer = analyzeStationData(data, q);
-    speak(answer);
-    setMessages(m => [...m, { role: "user", text: q }, { role: "ai", text: answer }]);
+    setMessages(m => [...m, { role: "user", text: q }]);
     setQuestion("");
-    window.setTimeout(() => setBusy(false), 120);
+
+    // First calculate authoritative StationMitra facts. The conversational model
+    // may explain these facts, but it is never allowed to invent or write data.
+    const authoritativeAnswer = analyzeStationData(data, q);
+    let answer = authoritativeAnswer;
+
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, data, authoritativeAnswer })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && String(payload?.answer || "").trim()) {
+        answer = String(payload.answer).trim();
+      }
+    } catch {
+      // Deterministic authoritative answer remains the safe fallback.
+    }
+
+    setMessages(m => [...m, { role: "ai", text: answer }]);
+    await speak(answer);
+    setBusy(false);
   }
 
   function submit(e) {
