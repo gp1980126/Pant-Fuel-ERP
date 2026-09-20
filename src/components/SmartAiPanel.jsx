@@ -16,6 +16,17 @@ export default function SmartAiPanel({ data, session }) {
     { role: "ai", text: "नमस्ते! मैं StationMitra Smart AI हूँ। मैं आपके authorized station data को read-only तरीके से समझा सकता हूँ।" }
   ]);
   const [busy, setBusy] = useState(false);
+  const [voiceOn, setVoiceOn] = useState(true);
+
+  function speak(text) {
+    if (!voiceOn || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.lang = /[\u0900-\u097F]/.test(String(text)) ? "hi-IN" : "en-IN";
+    u.rate = 0.95;
+    u.pitch = 1;
+    window.speechSynthesis.speak(u);
+  }
 
   function submit(e) {
     e.preventDefault();
@@ -23,7 +34,7 @@ export default function SmartAiPanel({ data, session }) {
     if (!q || busy) return;
     assertAiReadOnlyAction("explain");
     setBusy(true);
-    const answer = analyzeStationData(data, q);
+    const answer = analyzeStationData(data, q);\n    speak(answer);
     setMessages(m => [...m, { role: "user", text: q }, { role: "ai", text: answer }]);
     setQuestion("");
     window.setTimeout(() => setBusy(false), 120);
@@ -66,7 +77,7 @@ export default function SmartAiPanel({ data, session }) {
           <input value={question} onChange={e => setQuestion(e.target.value)} placeholder="जैसे: आज की बिक्री बताओ" aria-label="Smart AI question" />
           <button type="submit">{busy ? "..." : "पूछें"}</button>
         </form>
-        <div className="smart-ai-note">AI accounting entries को खुद नहीं बदलता। Answers current authorized StationMitra data से calculate होते हैं।</div>
+        <div className="smart-ai-note">AI accounting entries को खुद नहीं बदलता। Answers authoritative StationMitra calculations से आते हैं। <button type="button" onClick={() => { setVoiceOn(v => !v); if (voiceOn && "speechSynthesis" in window) window.speechSynthesis.cancel(); }} style={{marginLeft:8,border:0,borderRadius:8,padding:"5px 9px",fontWeight:700}}>{voiceOn ? "🔊 आवाज़ ON" : "🔇 आवाज़ OFF"}</button></div>
       </div>
     </section>
   );
