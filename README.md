@@ -28,9 +28,10 @@ This package is the commercial-architecture conversion of the working PumpPro V3
 
 1. Set Vercel env vars from `.env.example` (see `VERCEL_DEPLOY.md`).
 2. Set `VITE_PUMPPRO_CLOUD_REQUIRED=true` so a misconfigured build can never fall back to local login.
-3. Rotate the local fallback default passwords (`DEFAULT_USERS`) — treat the shipped ones as public knowledge.
-4. Version the Supabase backend DDL/RLS/RPC/Edge Functions into `supabase/` (see `supabase/README.md`).
-5. Run the pending live multi-role (Manager/Operator/View Only) destructive test noted in `PHASE12_RELEASE_REPORT_13-09-2026.md`.
+3. ✅ Local fallback default passwords rotated on 2026-09-20 (hashes in `DEFAULT_USERS`; plaintext held by owner). Still change them once via User Management after first login.
+4. ✅ Embedded master backup moved verbatim to `src/core/embeddedBackupData.js` on 2026-09-20. Long-term: load it from a cloud seed / external backup instead of the JS bundle; also ensure this repository stays **private** while it contains business records.
+5. Version the Supabase backend DDL/RLS/RPC/Edge Functions into `supabase/` (see `supabase/README.md`). **[owner action — needs project access]**
+6. Run the pending live multi-role (Manager/Operator/View Only) destructive test noted in `PHASE12_RELEASE_REPORT_13-09-2026.md`. **[owner action — needs production test profiles]**
 6. `COMMERCIAL_ARCHITECTURE.md` referenced by earlier docs is a planned roadmap doc and is not part of this package.
 
 ## Important

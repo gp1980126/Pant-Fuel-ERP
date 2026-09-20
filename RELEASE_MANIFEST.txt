@@ -29,3 +29,11 @@ FROZEN_HASHES_BEGIN
 c2b32a2c761fc54543322ec2e76f27f26ea1968d740808e787b285c61b713a93  src/cloud_sync_supabase.js
 72d54a0a3ec297fc728bbf1d761b0197023b21d4d991b0fd1a26ea04a158e3a6  src/config/appConfig.js
 FROZEN_HASHES_END
+
+=== HARDENING UPDATE 2026-09-20 (contd, branch arena/01a0bc8f-pant-fuel-erp) ===
+- Rotated all 4 DEFAULT_USERS fallback passwords (old public defaults admin123/owner123/manager123/operator123
+  replaced with strong random credentials; plaintext handed to owner out-of-band, hashes only in source).
+- Moved EMBEDDED_BACKUP_2026_09_06 verbatim (sha256-verified, 918,219 bytes) from src/core/pumpDomain.js
+  into src/core/embeddedBackupData.js for reviewability. Data values unchanged; public export preserved.
+- pumpDomain.js is now 86,589 bytes of reviewable domain code.
+FROZEN_HASHES block below remains the current hash authority.
