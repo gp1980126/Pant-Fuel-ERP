@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createWorker } from "tesseract.js";
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "../cloud_sync_supabase";
 import { STATION_NAME, STATION_GSTIN, STATION_STATE_CODE, STATION_ADDR_LINE, STATION_DEALER_LINE, STATION_JURISDICTION, DEFAULT_SUPPLIER } from "../config/stationIdentity";
 import {
@@ -97,6 +98,92 @@ import {
 } from "../core/pumpDomain";
 
 /* =========================================================
+   ELECTRICITY BILL OCR — READ ONLY UNTIL USER SAVES
+========================================================= */
+const electricityDigits = value => String(value || "")
+  .replace(/[०-९]/g, ch => "0123456789"["०१२३४५६७८९".indexOf(ch)] || ch)
+  .replace(/[Oo]/g, "0")
+  .replace(/[Il]/g, "1");
+
+function electricityMonthFromText(text, fallback) {
+  const s = electricityDigits(text).replace(/\s+/g, " ");
+  const m = s.match(/(?:bill\s*month|बिल\s*माह|माह)[^\d]{0,20}(\d{1,2})\s*[-\/]\s*(20\d{2})/i)
+    || s.match(/\b(0?[1-9]|1[0-2])\s*[-\/]\s*(20\d{2})\b/);
+  if (!m) return fallback;
+  return String(m[2]).padStart(4,"0")+"-"+String(m[1]).padStart(2,"0");
+}
+
+function electricityDateFromText(text, labelRegex, fallback="") {
+  const s = electricityDigits(text).replace(/\s+/g, " ");
+  const m = s.match(labelRegex);
+  if (!m) return fallback;
+  const d = m[1], mo = m[2], y = m[3];
+  return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+}
+
+function electricityAmountFromText(text) {
+  const s = electricityDigits(text).replace(/,/g, "").replace(/\s+/g, " ");
+  const labelled = [
+    /(?:total\s*(?:amount|due)|amount\s*payable|payable|कुल\s*देय\s*राशि|कुल\s*देय|देय\s*राशि)[^\d]{0,40}(\d{2,7}(?:\.\d{1,2})?)/i,
+    /(?:current\s*bill|वर्तमान\s*योग|वर्तमान\s*मांग)[^\d]{0,40}(\d{2,7}(?:\.\d{1,2})?)/i
+  ];
+  for (const re of labelled) {
+    const m=s.match(re);
+    if(m) return Number(m[1]);
+  }
+  const rupees=[...s.matchAll(/(?:₹|rs\.?)[^\d]{0,8}(\d{2,7}(?:\.\d{1,2})?)/gi)].map(m=>Number(m[1])).filter(Number.isFinite);
+  return rupees.length ? Math.max(...rupees) : 0;
+}
+
+function electricityBillNoFromText(text) {
+  const s=electricityDigits(text);
+  const m=s.match(/(?:bill\s*(?:no|number)|बिल\s*संख्या|बिल\s*नं)[^A-Z0-9]{0,20}([A-Z0-9\/-]{4,30})/i);
+  return m ? m[1] : "";
+}
+
+function electricityParser(text, fallbackMonth) {
+  const normalized=electricityDigits(text);
+  const connection=(normalized.match(/(?:connection\s*(?:no|number)|कनेक्शन\s*संख्या)[^0-9]{0,25}(\d{8,20})/i)||[])[1] || "";
+  const meter=(normalized.match(/(?:meter\s*(?:no|number)|मीटर\s*संख्या)[^0-9]{0,25}(\d{6,15})/i)||[])[1] || "";
+  const currentReading=(normalized.match(/(?:current\s*(?:reading)|वर्तमान\s*रीडिंग)[^0-9]{0,30}(\d{4,8})/i)||[])[1] || "";
+  const previousReading=(normalized.match(/(?:previous\s*(?:reading)|पिछली\s*रीडिंग)[^0-9]{0,30}(\d{4,8})/i)||[])[1] || "";
+  const units=(normalized.match(/(?:consumption|उपभोग|उपयोग)[^0-9]{0,30}(\d+(?:\.\d{1,3})?)/i)||[])[1] || "";
+  const dueDate=electricityDateFromText(normalized, /(?:due\s*date|देय\s*तिथि)[^0-9]{0,20}(\d{1,2})[-\/]\s*(\d{1,2})[-\/]\s*(20\d{2})/i, "");
+  const billMonth=electricityMonthFromText(normalized, fallbackMonth);
+  return {
+    month:billMonth,
+    billNo:electricityBillNoFromText(normalized),
+    amount:electricityAmountFromText(normalized),
+    dueDate,
+    meterNo:meter,
+    connectionNo:connection,
+    currentReading,
+    previousReading,
+    units,
+    rawText:text
+  };
+}
+
+async function runElectricityOCR(file, setStatus) {
+  if (!file) throw new Error("File नहीं चुनी गई।");
+  if (file.type === "application/pdf") {
+    throw new Error("PDF का image OCR अभी इस सुरक्षित reader में नहीं है। PDF का text-layer वाला bill दें या JPG/PNG/WEBP upload करें।");
+  }
+  setStatus("बिल पढ़ा जा रहा है… पहली बार 1–2 मिनट लग सकते हैं।");
+  const worker=await createWorker(["eng","hin"], 1, {
+    logger:m => {
+      if (m?.status && Number.isFinite(m?.progress)) setStatus("बिल पढ़ा जा रहा है… "+Math.round(m.progress*100)+"%");
+    }
+  });
+  try {
+    const result=await worker.recognize(file);
+    return result?.data?.text || "";
+  } finally {
+    await worker.terminate();
+  }
+}
+
+/* =========================================================
    STAFF ATTENDANCE + ELECTRICITY BILL
 ========================================================= */
 export 
@@ -118,6 +205,9 @@ export function StaffElectricity({ data, update }) {
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [editingAttendanceId, setEditingAttendanceId] = useState(null);
   const [msg, setMsg] = useState("");
+  const [ocrStatus, setOcrStatus] = useState("");
+  const [pendingBillFile, setPendingBillFile] = useState(null);
+  const [pendingPaymentFile, setPendingPaymentFile] = useState(null);
 
   const staff = Array.isArray(data.staff) ? data.staff : [];
   const attendance = Array.isArray(data.attendance) ? data.attendance : [];
@@ -204,66 +294,103 @@ export function StaffElectricity({ data, update }) {
     setMsg("Attendance entry delete कर दी गई.");
   };
 
-  const uploadBill = e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!/^application\/(pdf)$|^image\/(jpeg|png|webp)$/i.test(file.type)) {
+  const uploadBill = async e => {
+    const file=e.target.files?.[0];
+    if(!file) return;
+    if(!/^application\\/(pdf)$|^image\\/(jpeg|png|webp)$/i.test(file.type)) {
       setMsg("Electricity bill के लिए PDF, JPG, PNG या WEBP file चुनें."); e.target.value=""; return;
     }
-    if (file.size > 4 * 1024 * 1024) { setMsg("Bill file 4 MB से छोटी रखें."); e.target.value=""; return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const common = { month:billForm.month || month, billNo:billForm.billNo.trim(), amount:n(billForm.amount), dueDate:billForm.dueDate || "", fileName:file.name, fileType:file.type, fileData:String(reader.result), uploadedAt:new Date().toISOString() };
-      if (editingBillId !== null) {
-        update({ electricityBills:bills.map(b => String(b.id) === String(editingBillId) ? { ...b, ...common } : b) });
-        setMsg(`Electricity bill ${file.name} update हो गया.`); setEditingBillId(null);
-      } else {
-        update({ electricityBills:[{ id:Date.now(), ...common },...bills] });
-        setMsg(`Electricity bill ${file.name} upload और save हो गया.`);
-      }
-      setBillForm(x => ({...x, billNo:"", amount:"", dueDate:""})); e.target.value="";
+    if(file.size > 4 * 1024 * 1024) { setMsg("Bill file 4 MB से छोटी रखें."); e.target.value=""; return; }
+    try {
+      const raw=await runElectricityOCR(file,setOcrStatus);
+      const parsed=electricityParser(raw,billForm.month || month);
+      setBillForm(x=>({
+        ...x,
+        month:parsed.month || x.month,
+        billNo:parsed.billNo || x.billNo,
+        amount:parsed.amount ? String(parsed.amount) : x.amount,
+        dueDate:parsed.dueDate || x.dueDate
+      }));
+      setPendingBillFile({file,raw,parsed});
+      setOcrStatus(parsed.amount || parsed.dueDate || parsed.billNo ? "✓ बिल पढ़ लिया गया। नीचे जानकारी जाँचकर Save करें।" : "⚠️ OCR चला, लेकिन मुख्य राशि नहीं मिली। जानकारी जाँचकर भरें।");
+      setMsg("बिल पढ़ लिया गया है; अभी कोई नया record save नहीं किया गया।");
+    } catch(err) {
+      console.error("Electricity bill OCR failed",err);
+      setPendingBillFile(null);
+      setOcrStatus("❌ "+(err?.message || "बिल पढ़ा नहीं जा सका।"));
+      setMsg("OCR असफल रहा। आप जानकारी manually भरकर भी bill save कर सकते हैं।");
+    } finally { e.target.value=""; }
+  };
+
+  const saveBill = async () => {
+    if(!pendingBillFile) return setMsg("पहले Electricity Bill की file चुनें और पढ़ने दें।");
+    const {file,parsed}=pendingBillFile;
+    const common={
+      month:billForm.month || month,
+      billNo:billForm.billNo.trim(),
+      amount:n(billForm.amount),
+      dueDate:billForm.dueDate || "",
+      meterNo:parsed?.meterNo || "",
+      connectionNo:parsed?.connectionNo || "",
+      currentReading:parsed?.currentReading || "",
+      previousReading:parsed?.previousReading || "",
+      units:parsed?.units || "",
+      ocrText:parsed?.rawText || "",
+      ocrRead:true,
+      fileName:file.name,fileType:file.type,fileData:await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=reject;r.readAsDataURL(file);}),
+      uploadedAt:new Date().toISOString()
     };
-    reader.onerror=()=>setMsg("Bill upload नहीं हो पाया."); reader.readAsDataURL(file);
+    if(editingBillId!==null) {
+      update({electricityBills:bills.map(b=>String(b.id)===String(editingBillId)?{...b,...common}:b)});
+      setMsg("Electricity bill update हो गया।");
+      setEditingBillId(null);
+    } else {
+      update({electricityBills:[{id:Date.now(),...common},...bills]});
+      setMsg("Electricity bill पढ़कर सुरक्षित कर दिया गया।");
+    }
+    setPendingBillFile(null); setOcrStatus("");
+    setBillForm(x=>({...x,billNo:"",amount:"",dueDate:""}));
   };
 
-  const editBill = bill => {
-    setEditingBillId(bill.id);
-    setBillForm({ month:String(bill.month || month).slice(0,7), billNo:bill.billNo || "", amount:String(bill.amount ?? ""), dueDate:bill.dueDate || "" });
-    setMsg("Electricity bill edit mode में है. नई file चुनकर Update करें.");
+  const uploadPayment = async e => {
+    const file=e.target.files?.[0]; if(!file) return;
+    if(!/^application\\/(pdf)$|^image\\/(jpeg|png|webp)$/i.test(file.type)) { setMsg("Payment receipt के लिए PDF, JPG, PNG या WEBP file चुनें."); e.target.value=""; return; }
+    if(file.size > 4 * 1024 * 1024) { setMsg("Payment receipt 4 MB से छोटी रखें."); e.target.value=""; return; }
+    try {
+      const raw=await runElectricityOCR(file,setOcrStatus);
+      const parsed=electricityParser(raw,paymentForm.month || month);
+      const amount=parsed.amount ? String(parsed.amount) : paymentForm.amount;
+      const dueOrPayment=parsed.dueDate || paymentForm.date;
+      setPaymentForm(x=>({...x,month:parsed.month || x.month,amount,date:dueOrPayment}));
+      setPendingPaymentFile({file,raw,parsed});
+      setOcrStatus(parsed.amount ? "✓ Payment receipt पढ़ लिया गया। नीचे जाँचकर Save करें।" : "⚠️ Receipt पढ़ी गई, राशि नहीं मिली। Amount जाँचें।");
+      setMsg("Payment receipt पढ़ ली गई है; अभी कोई नया payment record save नहीं किया गया।");
+    } catch(err) {
+      console.error("Electricity payment OCR failed",err);
+      setPendingPaymentFile(null);
+      setOcrStatus("❌ "+(err?.message || "receipt पढ़ी नहीं जा सकी।"));
+      setMsg("OCR असफल रहा। Amount manually भरकर receipt save कर सकते हैं।");
+    } finally { e.target.value=""; }
   };
 
-  const deleteBill = id => {
-    if (!window.confirm("क्या इस electricity bill को हटाना है?")) return;
-    update({ electricityBills:bills.filter(b => String(b.id) !== String(id)) });
-    if (String(editingBillId) === String(id)) setEditingBillId(null);
-    setMsg("Electricity bill हटाया गया.");
-  };
-
-  const uploadPayment = e => {
-    const file=e.target.files?.[0]; if (!file) return;
-    if (!/^application\/(pdf)$|^image\/(jpeg|png|webp)$/i.test(file.type)) { setMsg("Payment receipt के लिए PDF, JPG, PNG या WEBP file चुनें."); e.target.value=""; return; }
-    if (file.size > 4 * 1024 * 1024) { setMsg("Payment receipt 4 MB से छोटी रखें."); e.target.value=""; return; }
-    const reader=new FileReader();
-    reader.onload=()=>{
-      const common={ month:paymentForm.month || month, date:paymentForm.date || today, amount:n(paymentForm.amount), mode:paymentForm.mode || "Bank", reference:paymentForm.reference.trim(), note:paymentForm.note.trim(), fileName:file.name, fileType:file.type, fileData:String(reader.result), uploadedAt:new Date().toISOString() };
-      if (editingPaymentId !== null) { update({electricityPayments:electricityPayments.map(x=>String(x.id)===String(editingPaymentId)?{...x,...common}:x)}); setMsg(`Electricity payment ${file.name} update हो गया.`); setEditingPaymentId(null); }
-      else { update({electricityPayments:[{id:Date.now(),...common},...electricityPayments]}); setMsg(`Electricity payment ${file.name} upload और save हो गया.`); }
-      setPaymentForm({month:paymentForm.month || month,date:today,amount:"",mode:"Bank",reference:"",note:""}); e.target.value="";
+  const savePayment = async () => {
+    if(!pendingPaymentFile) return setMsg("पहले Payment Receipt की file चुनें और पढ़ने दें।");
+    const {file,parsed}=pendingPaymentFile;
+    const fileData=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=reject;r.readAsDataURL(file);});
+    const common={
+      month:paymentForm.month || month,date:paymentForm.date || today,amount:n(paymentForm.amount),
+      mode:paymentForm.mode || "Bank",reference:paymentForm.reference.trim(),note:paymentForm.note.trim(),
+      ocrText:parsed?.rawText || "",ocrRead:true,fileName:file.name,fileType:file.type,fileData,uploadedAt:new Date().toISOString()
     };
-    reader.onerror=()=>setMsg("Payment receipt upload नहीं हो पाया."); reader.readAsDataURL(file);
-  };
-
-  const editPayment = payment => {
-    setEditingPaymentId(payment.id);
-    setPaymentForm({month:String(payment.month || month).slice(0,7),date:payment.date || today,amount:String(payment.amount ?? ""),mode:payment.mode || "Bank",reference:payment.reference || "",note:payment.note || ""});
-    setMsg("Electricity payment edit mode में है. नई receipt चुनकर Update करें.");
-  };
-
-  const deletePayment = id => {
-    if (!window.confirm("क्या इस electricity payment को हटाना है?")) return;
-    update({electricityPayments:electricityPayments.filter(x=>String(x.id)!==String(id))});
-    if (String(editingPaymentId)===String(id)) setEditingPaymentId(null);
-    setMsg("Electricity payment हटाया गया.");
+    if(editingPaymentId!==null) {
+      update({electricityPayments:electricityPayments.map(x=>String(x.id)===String(editingPaymentId)?{...x,...common}:x)});
+      setMsg("Electricity payment update हो गया."); setEditingPaymentId(null);
+    } else {
+      update({electricityPayments:[{id:Date.now(),...common},...electricityPayments]});
+      setMsg("Electricity payment पढ़कर सुरक्षित कर दिया गया.");
+    }
+    setPendingPaymentFile(null); setOcrStatus("");
+    setPaymentForm({month:paymentForm.month || month,date:today,amount:"",mode:"Bank",reference:"",note:""});
   };
 
   const selectedBillMonth = billForm.month || month;
@@ -342,7 +469,7 @@ export function StaffElectricity({ data, update }) {
             <label>Bill No.<input value={billForm.billNo} onChange={e=>setBillForm({...billForm,billNo:e.target.value})} placeholder="Optional" /></label>
             <label>Bill Amount<input type="number" min="0" step="0.01" value={billForm.amount} onChange={e=>setBillForm({...billForm,amount:e.target.value})} placeholder="₹ Amount" /></label>
             <label>Due Date<input type="date" value={billForm.dueDate} onChange={e=>setBillForm({...billForm,dueDate:e.target.value})} /></label>
-            <div className="bill-upload"><b>📎 {editingBillId !== null ? "Update Electricity Bill File" : "Upload Electricity Bill"}</b><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={uploadBill} /></div>
+            <div className="bill-upload"><b>📎 {editingBillId !== null ? "Update Electricity Bill File" : "Upload Electricity Bill"}</b><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={uploadBill} />{ocrStatus && <div style={{marginTop:8,fontSize:11,fontWeight:700}}>{ocrStatus}</div>} {pendingBillFile && <button className="btn" type="button" style={{marginTop:8}} onClick={saveBill}>💾 पढ़ा हुआ Bill Save करें</button>}</div>
           </div>
 
           <div className="collection-total" style={{marginTop:14}}><span>{selectedBillMonth} Bills</span><strong>{money(monthBillTotal)}</strong><small>{monthBills.length} uploaded bill(s)</small></div>
@@ -359,7 +486,7 @@ export function StaffElectricity({ data, update }) {
              <label>Payment Mode<select value={paymentForm.mode} onChange={e=>setPaymentForm({...paymentForm,mode:e.target.value})}><option>Bank</option><option>UPI</option><option>Cash</option><option>Cheque</option><option>Other</option></select></label>
              <label>UTR / Reference<input value={paymentForm.reference} onChange={e=>setPaymentForm({...paymentForm,reference:e.target.value})} placeholder="Optional" /></label>
              <label>Note<input value={paymentForm.note} onChange={e=>setPaymentForm({...paymentForm,note:e.target.value})} placeholder="Optional" /></label>
-             <div className="bill-upload"><b>📎 {editingPaymentId !== null ? "Update Electricity Payment Receipt" : "Upload Electricity Payment Receipt"}</b><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={uploadPayment} /></div>
+             <div className="bill-upload"><b>📎 {editingPaymentId !== null ? "Update Electricity Payment Receipt" : "Upload Electricity Payment Receipt"}</b><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={uploadPayment} />{pendingPaymentFile && <button className="btn" type="button" style={{marginTop:8}} onClick={savePayment}>💾 पढ़ी हुई Receipt Save करें</button>}</div>
            </div>
            <div className="bill-list">
              {monthPayments.length ? monthPayments.map(x=><div className="bill-row" key={x.id}><div><b>{x.fileName || "Payment Receipt"}</b><small>{x.date || ""} · {x.mode || ""}{x.reference ? ` · Ref ${x.reference}` : ""}{x.note ? ` · ${x.note}` : ""}</small></div><div className="bill-actions"><strong>{moneyRupee(x.amount)}</strong>{x.fileData && <a href={x.fileData} target="_blank" rel="noreferrer">View</a>}<button className="btn small" type="button" onClick={()=>editPayment(x)}>✏️ Edit</button><button className="btn red small" type="button" onClick={()=>deletePayment(x.id)}>🗑️ Delete</button></div></div>) : <div className="empty-state">इस महीने का electricity payment receipt अभी upload नहीं हुआ है.</div>}
