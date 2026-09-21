@@ -297,7 +297,7 @@ export function StaffElectricity({ data, update }) {
   const uploadBill = async e => {
     const file=e.target.files?.[0];
     if(!file) return;
-    if(!/^application\\/(pdf)$|^image\\/(jpeg|png|webp)$/i.test(file.type)) {
+    if(!/^application\/(pdf)$|^image\/(jpeg|png|webp)$/i.test(file.type)) {
       setMsg("Electricity bill के लिए PDF, JPG, PNG या WEBP file चुनें."); e.target.value=""; return;
     }
     if(file.size > 4 * 1024 * 1024) { setMsg("Bill file 4 MB से छोटी रखें."); e.target.value=""; return; }
@@ -354,7 +354,7 @@ export function StaffElectricity({ data, update }) {
 
   const uploadPayment = async e => {
     const file=e.target.files?.[0]; if(!file) return;
-    if(!/^application\\/(pdf)$|^image\\/(jpeg|png|webp)$/i.test(file.type)) { setMsg("Payment receipt के लिए PDF, JPG, PNG या WEBP file चुनें."); e.target.value=""; return; }
+    if(!/^application\/(pdf)$|^image\/(jpeg|png|webp)$/i.test(file.type)) { setMsg("Payment receipt के लिए PDF, JPG, PNG या WEBP file चुनें."); e.target.value=""; return; }
     if(file.size > 4 * 1024 * 1024) { setMsg("Payment receipt 4 MB से छोटी रखें."); e.target.value=""; return; }
     try {
       const raw=await runElectricityOCR(file,setOcrStatus);
