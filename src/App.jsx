@@ -103,7 +103,37 @@ function safeInitialLoad(){
   }
 }
 
-export class BootErrorBoundary extends React.Component {
+
+function mergePendingCloudChanges(base, local, remote) {
+  const merged = { ...(remote || {}) };
+  const conflicts = [];
+  const arrayKeys = Array.from(new Set([
+    ...Object.keys(base || {}).filter(k => Array.isArray(base?.[k])),
+    ...Object.keys(local || {}).filter(k => Array.isArray(local?.[k]))
+  ]));
+  const identity = row => String(row?.transactionId || row?.id || row?.txId || "").trim();
+  for (const key of arrayKeys) {
+    const baseRows = Array.isArray(base?.[key]) ? base[key] : [];
+    const localRows = Array.isArray(local?.[key]) ? local[key] : [];
+    const remoteRows = Array.isArray(remote?.[key]) ? remote[key] : [];
+    const baseIds = new Set(baseRows.map(identity).filter(Boolean));
+    const remoteIds = new Set(remoteRows.map(identity).filter(Boolean));
+    const pendingLocal = localRows.filter(row => {
+      const id = identity(row);
+      return id && !baseIds.has(id) && !remoteIds.has(id);
+    });
+    if (pendingLocal.length) merged[key] = [...remoteRows, ...pendingLocal];
+    const locallyChangedExisting = localRows.filter(row => {
+      const id = identity(row);
+      if (!id || !baseIds.has(id)) return false;
+      const before = baseRows.find(x => identity(x) === id);
+      return JSON.stringify(before) !== JSON.stringify(row) && remoteIds.has(id);
+    });
+    if (locallyChangedExisting.length) conflicts.push({ key, count: locallyChangedExisting.length });
+  }
+  return { data: merged, conflicts };
+}
+\nexport class BootErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state={error:null}; }
   static getDerivedStateFromError(error){ return {error}; }
   componentDidCatch(error, info){ console.error("StationMitra UI boot error", error, info); }
@@ -125,6 +155,7 @@ function App() {
   const cloudApplyingRef = useRef(false);
   const cloudSaveTimerRef = useRef(null);
   const cloudLastSavedHashRef = useRef("");
+  const cloudBaseDataRef = useRef(null);
   const setPage = target => {
     if (target === "Dashboard" || canAccess(session?.role, target)) setPageState(target);
     else setPageState("Dashboard");
@@ -201,6 +232,7 @@ function App() {
     setData(nextData);
     cloudVersionRef.current = version;
     cloudLastSavedHashRef.current = stableHash(JSON.stringify(nextData));
+    cloudBaseDataRef.current = JSON.parse(JSON.stringify(nextData));
     cloudHydratedRef.current = true;
     setSession({ uid:String(authUser.id), username:profile.username || profile.email, email:profile.email || profile.username, role, name:profile.name || profile.username || profile.email });
     setCloudReady(true);
@@ -465,6 +497,7 @@ function App() {
         const result = await cloudSaveState(runtimeStationId, data, cloudVersionRef.current, session.uid);
         cloudVersionRef.current = Number(result?.new_version || cloudVersionRef.current + 1);
         cloudLastSavedHashRef.current = payloadHash;
+        cloudBaseDataRef.current = JSON.parse(JSON.stringify(data));
         setCloudStatus("online");
       } catch (error) {
         console.error("PumpPro cloud save failed:", error);
@@ -473,15 +506,31 @@ function App() {
           try {
             const latest = await cloudLoadState(runtimeStationId);
             if (latest?.data) {
-              const next = normalizeIntegrityData(repairLegacyAuditChain(latest.data));
+              const remote = normalizeIntegrityData(repairLegacyAuditChain(latest.data));
+              const base = cloudBaseDataRef.current || remote;
+              const mergedResult = mergePendingCloudChanges(base, data, remote);
+              const merged = normalizeIntegrityData(repairLegacyAuditChain(mergedResult.data));
+              const mergedScan = scanTransactionIntegrity(merged);
+              if (mergedScan.errors.length) throw new Error("Conflict merge blocked by integrity firewall: " + mergedScan.errors[0].reason);
+              const retry = await cloudSaveState(runtimeStationId, merged, Number(latest.version || 0), session.uid);
+              const mergedHash = stableHash(JSON.stringify(merged));
               cloudApplyingRef.current = true;
-              cloudVersionRef.current = Number(latest.version || 0);
-              cloudLastSavedHashRef.current = stableHash(JSON.stringify(next));
-              setData(next);
+              cloudVersionRef.current = Number(retry?.new_version || Number(latest.version || 0) + 1);
+              cloudLastSavedHashRef.current = mergedHash;
+              cloudBaseDataRef.current = JSON.parse(JSON.stringify(merged));
+              setData(merged);
+              setCloudStatus("online");
               setTimeout(() => { cloudApplyingRef.current = false; }, 0);
-              alert("⚠️ इस data को दूसरे device पर बदल दिया गया था। आपकी local conflicting change overwrite नहीं की गई; latest cloud data load कर दिया गया है।");
+              const conflictText = mergedResult.conflicts.length
+                ? " कुछ पुराने records पर दोनों devices ने बदलाव किए थे; ऐसे records में Cloud की current copy रखी गई है।"
+                : "";
+              alert("✅ Cloud conflict safely merged. आपकी नई local entries को Cloud में सुरक्षित कर दिया गया है।" + conflictText);
             }
-          } catch (reloadError) { console.error("Cloud conflict reload failed:", reloadError); }
+          } catch (reloadError) {
+            console.error("Cloud conflict merge failed:", reloadError);
+            setCloudStatus("error");
+            alert("❌ Cloud conflict merge नहीं हुआ। Existing Cloud data को overwrite नहीं किया गया। कृपया दोबारा Save करें।");
+          }
         } else {
           setCloudStatus("error");
           alert(`❌ Cloud save failed: ${error?.message || "Unknown error"}`);
