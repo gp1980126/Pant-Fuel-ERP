@@ -133,7 +133,8 @@ function mergePendingCloudChanges(base, local, remote) {
   }
   return { data: merged, conflicts };
 }
-\nexport class BootErrorBoundary extends React.Component {
+
+export class BootErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state={error:null}; }
   static getDerivedStateFromError(error){ return {error}; }
   componentDidCatch(error, info){ console.error("StationMitra UI boot error", error, info); }
