@@ -675,6 +675,7 @@ export function CollectionDetail({ data, totals, setPage, update }) {
 }
 
 export function Dashboard({ data, totals, setPage }) {
+  const [posDetailOpen, setPosDetailOpen] = useState(false);
   const today = todayDate();
   const latestDate=[...new Set([...(data.sales||[]).map(x=>x.date),...(data.dailyPayments||[]).map(x=>x.date),...(data.credits||[]).map(x=>x.date)])]
     .filter(d => d && String(d) <= today)
@@ -683,6 +684,18 @@ export function Dashboard({ data, totals, setPage }) {
   const totalDebit=tb.reduce((s,x)=>s+x.debit,0), totalCredit=tb.reduce((s,x)=>s+x.credit,0);
   const rows=[['MS','MS (Petrol)',totals.saleByFuel.MS,totals.qty.MS],['HSD','HSD (Diesel)',totals.saleByFuel.HSD,totals.qty.HSD],['CNG','CNG',totals.saleByFuel.CNG,totals.qty.CNG]];
   const quick=[['⛽','Fuel Sale','Fuel Sale'],['₹','Collection','Collection Detail'],['👥','Party Ledger','Party Ledger'],['🧾','Purchase','Purchase'],['📚','Accounts','Accounts'],['📊','Reports','Reports']];
+  const posDetailRows = [...new Set([
+    ...(data.dailyPayments || []).map(x => x.date),
+    ...(data.ledgerPayments || []).map(x => x.date)
+  ])].filter(Boolean).sort().reverse().map(date => {
+    const actual = actualPOSForDate(data, date);
+    const fuel = fuelPOSForDate(data, date);
+    const excess = Math.max(0, actual - fuel);
+    const matched = posPartyMatchForDate(data, date);
+    const unmatched = Math.max(0, excess - matched);
+    return { date, actual, fuel, excess, matched, unmatched };
+  }).filter(x => x.unmatched > 0);
+  const posDetailTotal = posDetailRows.reduce((s,x) => s + x.unmatched, 0);
   return <div className="content pro-dashboard premium-dashboard">
     <div className="dashboard-hero"><div className="hero-copy"><div className="pro-eyebrow">PUMPPRO · STANDARD ACCOUNTING</div><h2>Accounts Dashboard</h2><p>{PUMP_NAME} · Source data loaded through <b>{latestDate}</b> · Double-entry view</p></div><div className="hero-actions"><button className="hero-date">📅 {latestDate}</button><button className="pro-primary" onClick={()=>setPage('Accounts')}>📚 Accounts</button></div></div>
     <div className="pro-kpis premium-kpis">
@@ -694,7 +707,24 @@ export function Dashboard({ data, totals, setPage }) {
     <div className="premium-grid-top">
       <section className="pro-panel"><div className="pro-panel-head"><div><h3>Fuel Sales</h3><span>Meter-based revenue</span></div><button className="pro-link" onClick={()=>setPage('Daily Sale Summary')}>View →</button></div><div className="table pro-table premium-table"><table><thead><tr><th>Fuel</th><th>Qty</th><th>Sales</th></tr></thead><tbody>{rows.map(([f,label,s,q])=><tr key={f}><td><b>{label}</b></td><td>{f==='CNG'?q.toFixed(3)+' Kg':q.toFixed(2)+' L'}</td><td><b>{money(s)}</b></td></tr>)}<tr className="total-row"><td>TOTAL</td><td>—</td><td>{money(totals.sale)}</td></tr></tbody></table></div></section>
       <section className="pro-panel"><div className="pro-panel-head"><div><h3>Payment Receipts</h3><span>Actual recorded receipt modes</span></div><button className="pro-link" onClick={()=>setPage('Collection Detail')}>Detail →</button></div><div className="pro-summary-list">{[['Cash',totals.cash],['Paytm + ATM (POS)',totals.paytm],['DT Plus',totals.dtplus],['HP Pay',totals.hppay],['PhonePe',totals.phonepe],['Party Receipts',totals.partyRecovery],['Receivable Recovery',totals.salesmanRecovery]].map(([k,v])=><div key={k}><span>{k}</span><b>{money(v)}</b></div>)}<div><span><b>Total Receipts</b></span><b>{money(totals.collection)}</b></div></div></section>
-      <section className="pro-panel"><div className="pro-panel-head"><div><h3>Ledger Control</h3><span>Accounting checks</span></div></div><div className="attention-card ok"><span>Trial Balance</span><b>{money(totalDebit)} = {money(totalCredit)}</b><small>{Math.abs(totalDebit-totalCredit)<1?'Balanced':'Check entries'}</small></div><div className="attention-card"><span>Purchase Value</span><b>{money(totals.purchaseTotal)}</b><small>HPCL purchase register</small></div><div className="attention-card"><span>Unreconciled Sales Difference</span><b>{money(totals.unreconciledSalesDifference ?? totals.unallocatedSale)}</b><small>Sales − Credit − known receipts − pump expense</small></div><div className="attention-card"><span>POS Party Match</span><b>{money(totals.posPartyMatched)}</b><small>POS excess matched with Party Ledger</small></div><div className="attention-card"><span>POS Unmatched</span><b>{money(totals.posUnmatchedParty)}</b><small>Check Party Ledger / POS statement</small></div></section>
+      <section className="pro-panel"><div className="pro-panel-head"><div><h3>Ledger Control</h3><span>Accounting checks</span></div></div><div className="attention-card ok"><span>Trial Balance</span><b>{money(totalDebit)} = {money(totalCredit)}</b><small>{Math.abs(totalDebit-totalCredit)<1?'Balanced':'Check entries'}</small></div><button type="button" className="attention-card" onClick={()=>setPage('Purchase')} style={{width:'100%',textAlign:'left',cursor:'pointer'}}><span>Purchase Value</span><b>{money(totals.purchaseTotal)}</b><small>HPCL purchase register — क्लिक करके खोलें</small></button><button type="button" className="attention-card" onClick={()=>setPage('Collection Detail')} style={{width:'100%',textAlign:'left',cursor:'pointer'}}><span>Unreconciled Sales Difference</span><b>{money(totals.unreconciledSalesDifference ?? totals.unallocatedSale)}</b><small>Sales − Credit − known receipts − pump expense — क्लिक करके खोलें</small></button><button type="button" className="attention-card" onClick={()=>setPage('Party Ledger')} style={{width:'100%',textAlign:'left',cursor:'pointer'}}><span>POS Party Match</span><b>{money(totals.posPartyMatched)}</b><small>POS excess matched with Party Ledger — क्लिक करके खोलें</small></button><button type="button" className="attention-card" onClick={()=>setPosDetailOpen(true)} style={{width:'100%',textAlign:'left',cursor:'pointer'}}>
+        <span>POS Unmatched</span><b>{money(totals.posUnmatchedParty)}</b><small>Click करके date-wise details देखें</small>
+      </button></section>
+    {posDetailOpen && <div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,zIndex:9999,background:'rgba(0,0,0,.55)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setPosDetailOpen(false)}>
+      <div className="pro-panel" style={{width:'min(900px,100%)',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}} onClick={e=>e.stopPropagation()}>
+        <div className="pro-panel-head" style={{position:'sticky',top:0,background:'inherit',zIndex:1}}>
+          <div><h3>POS Unmatched — Date-wise Details</h3><span>POS excess जो Party Ledger से match नहीं हुआ</span></div>
+          <button className="btn gray small" onClick={()=>setPosDetailOpen(false)}>✕ बंद करें</button>
+        </div>
+        <div style={{padding:'10px 0',fontSize:13}}>कुल Unmatched: <b>{money(posDetailTotal)}</b></div>
+        {posDetailRows.length===0 ? <div className="attention-card ok"><span>कोई unmatched POS entry नहीं मिली</span></div> :
+          <div className="table pro-table" style={{overflowX:'auto'}}><table><thead><tr><th>तारीख</th><th>Actual POS</th><th>Fuel POS</th><th>POS Excess</th><th>Party Match</th><th>Unmatched</th></tr></thead>
+            <tbody>{posDetailRows.map(x=><tr key={x.date}><td>{x.date}</td><td>{money(x.actual)}</td><td>{money(x.fuel)}</td><td>{money(x.excess)}</td><td>{money(x.matched)}</td><td><b>{money(x.unmatched)}</b></td></tr>)}</tbody>
+            <tfoot><tr className="total-row"><td>TOTAL</td><td colSpan="4">—</td><td>{money(posDetailTotal)}</td></tr></tfoot>
+          </table></div>}
+        <small style={{display:'block',marginTop:10,color:'#64748b'}}>यह केवल reconciliation view है; इस स्क्रीन से Cloud data में कोई बदलाव नहीं होता।</small>
+      </div>
+    </div>}
     </div>
     <div className="premium-lower-grid"><section className="pro-panel"><div className="pro-panel-head"><div><h3>Standard Accounting Flow</h3><span>Every transaction is classified into an account</span></div></div><div className="pro-info-row"><div className="pro-info green"><b>Sales</b><span>Cash/Bank or Trade Receivables are debited; Sales is credited.</span></div><div className="pro-info orange"><b>Purchases</b><span>Fuel inventory and eligible input tax are debited; Supplier Payable is credited.</span></div><div className="pro-info red"><b>Expenses</b><span>Expense is debited and the payment account is credited.</span></div></div><div className="table pro-table premium-table"><table><thead><tr><th>Account</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>{tb.slice(0,12).map(x=><tr key={x.account}><td>{x.account}</td><td>{money(x.debit)}</td><td>{money(x.credit)}</td><td>{money(x.balance)}</td></tr>)}</tbody></table></div></section><div className="premium-side-stack"><section className="pro-panel"><div className="pro-panel-head"><div><h3>Quick Actions</h3><span>Open module</span></div></div><div className="pro-quick-grid premium-quick">{quick.map(([i,l,p])=><button key={l} onClick={()=>setPage(p)}><span>{i}</span><b>{l}</b></button>)}</div></section><section className="pro-panel"><div className="pro-panel-head"><div><h3>Stock Quantity</h3><span>Operational quantity view</span></div><button className="pro-link" onClick={()=>setPage('Stock')}>Open →</button></div><div className="stock-cards"><div><span>MS</span><b>{(n(data.openingStock?.MS)+totals.filling.MS-totals.qty.MS).toFixed(0)} L</b></div><div><span>HSD</span><b>{(n(data.openingStock?.HSD)+totals.filling.HSD-totals.qty.HSD).toFixed(0)} L</b></div></div></section></div></div>
   </div>;
