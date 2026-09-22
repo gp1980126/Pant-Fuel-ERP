@@ -1350,12 +1350,28 @@ export function accountedTotal(p) {
 
 export function canonicalDailyPayments(data) {
   const map = new Map();
+  const paymentScore = row => {
+    if (!row || typeof row !== 'object') return 0;
+    // Prefer the populated/complete copy when historical duplicate daily-payment
+    // rows exist. A later recovery row containing only zero/partial fields must
+    // not hide the original populated accounting row for the same date.
+    let score = n(row.total);
+    for (const fuel of ['MS','HSD','CNG']) {
+      const p = row[fuel] && typeof row[fuel] === 'object' ? row[fuel] : {};
+      for (const key of ['cash','paytm','card','dtplus','hppay','phonepe','credit','other','pumpExpense']) {
+        score += n(p[key]);
+      }
+    }
+    if (row.fingerprint) score += 0.001;
+    return score;
+  };
   for (const row of (Array.isArray(data?.dailyPayments) ? data.dailyPayments : [])) {
     const date = String(row?.date || '');
     if (!date) continue;
-    // The historical backup contains duplicate copies of some date records.
-    // One date = one accounting day; the last saved record is authoritative.
-    map.set(date, row);
+    const previous = map.get(date);
+    if (!previous || paymentScore(row) > paymentScore(previous)) {
+      map.set(date, row);
+    }
   }
   return Array.from(map.values()).sort((a,b) => String(a.date).localeCompare(String(b.date)));
 }
