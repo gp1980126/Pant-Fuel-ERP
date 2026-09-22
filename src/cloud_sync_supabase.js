@@ -115,28 +115,76 @@ export async function cloudLoadState(stationId = 'SATAT-FILLING-STATION') {
   return data || null;
 }
 
-export async function cloudSaveState(stationId, data, expectedVersion, userId) {
-  if (!supabase) return null;
-
+async function rpcSaveOnce(stationId, data, expectedVersion, userId) {
   const { data: rows, error } = await supabase.rpc('save_app_state', {
     p_station_id: stationId,
     p_data: data,
     p_expected_version: Number(expectedVersion || 0),
     p_user_id: userId,
   });
-
   if (error) throw error;
+  return Array.isArray(rows) ? rows[0] : rows;
+}
 
-  const row = Array.isArray(rows) ? rows[0] : rows;
+export async function cloudSaveState(stationId, data, expectedVersion, userId) {
+  if (!supabase) return null;
 
-  if (!row || row.ok === false) {
-    const e = new Error(row?.message || 'Cloud version conflict');
-    e.code = row?.code || 'CLOUD_CONFLICT';
-    e.currentVersion = row?.current_version ?? null;
-    throw e;
+  const expected = Number(expectedVersion || 0);
+  let lastError = null;
+
+  // Browser/network failures can happen transiently even when Supabase is healthy.
+  // Retry without changing the payload. Before retrying after an unknown outcome,
+  // read the version only; never overwrite Cloud blindly.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const row = await rpcSaveOnce(stationId, data, expected, userId);
+      if (!row || row.ok === false) {
+        const e = new Error(row?.message || 'Cloud version conflict');
+        e.code = row?.code || 'CLOUD_CONFLICT';
+        e.currentVersion = row?.current_version ?? null;
+        throw e;
+      }
+      return row;
+    } catch (error) {
+      lastError = error;
+
+      if (error?.code === 'CLOUD_CONFLICT' || error?.code === 'AUTH' ||
+          error?.code === 'PROFILE' || error?.code === 'STATION' ||
+          error?.code === 'ROLE' || error?.code === 'LOCKED') {
+        throw error;
+      }
+
+      // If the request reached Supabase but the browser lost the response,
+      // a read can prove that the requested save already advanced the version.
+      try {
+        const latest = await cloudLoadState(stationId);
+        const latestVersion = Number(latest?.version || 0);
+        if (latestVersion > expected) {
+          return {
+            ok: true,
+            code: 'OK',
+            message: 'Cloud save confirmed after network response loss',
+            new_version: latestVersion,
+            recovered_after_network_error: true,
+          };
+        }
+      } catch {}
+
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
   }
 
-  return row;
+  const message = lastError?.message || 'Cloud save failed';
+  const e = new Error(
+    message === 'Failed to fetch'
+      ? 'Supabase connection failed. Save was not confirmed; Cloud data was not overwritten.'
+      : message
+  );
+  e.code = lastError?.code || 'CLOUD_NETWORK';
+  e.stage = lastError?.stage || 'CLOUD_SAVE';
+  throw e;
 }
 
 export function subscribeState(stationId, onRemoteState) {
