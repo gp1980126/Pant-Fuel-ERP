@@ -2640,7 +2640,7 @@ export function CreditSale({
       if (x) parts.push(under1000(x));
       return parts.join(" ") + " Rupees Only";
     })();
-    const product = c.productName || "Mobile Oil (HPCL)";
+
     const invoiceNo = String(c.invoiceNo || "").trim();
     const challanNo = String(c.parchiNo || "").trim();
     // Render the invoice directly in the app. No popup, no about:blank, no iframe.
