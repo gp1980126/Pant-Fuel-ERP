@@ -4532,6 +4532,11 @@ export function LubricantManagement({ data, update }) {
       let attachment = {};
       if(purchaseBillFile) attachment = {billFileName:purchaseBillFile.name,billFileType:purchaseBillFile.type,billFileData:await readFileAsDataUrl(purchaseBillFile),uploadedAt:new Date().toISOString()};
       const row={...old,date:purchase.date,invoiceNo:purchase.invoiceNo.trim(),fuel:"LUBRICANT",productName:purchase.productName.trim(),supplier:purchase.supplier.trim(),quantity:qty,unit:old.unit||"L",rate,basicAmount:Math.max(0,total-tax),taxAmount:tax,totalAmount:total,amount:total,...attachment};
+      // Bill attachment is part of the purchase record, so re-sign the edited row.
+      // This keeps the integrity firewall consistent instead of treating a legitimate
+      // bill upload as tampering with the purchase.
+      row.fingerprint=transactionFingerprint('PURCHASE',row);
+      row.fingerprintVersion=2;
       const result=await update({purchases:(data.purchases||[]).map(x=>x.id===editingPurchaseId?row:x)});
       if(!result?.ok) return setMsg(`❌ Lubricant Purchase edit save नहीं हुआ: ${result?.reason||"Mutation rejected"}`);
       resetPurchaseForm();
