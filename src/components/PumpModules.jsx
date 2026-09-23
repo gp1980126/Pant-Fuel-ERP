@@ -2660,7 +2660,7 @@ export function CreditSale({
       <tbody><tr><td>${escHtml(c.date)}</td><td>${escHtml(c.parchiNo)}</td><td>${escHtml(c.vehicle)}</td><td>${escHtml(c.hsnCode || "")}</td><td>${escHtml(product)}</td><td class="num">${qty ? qty.toFixed(2) : "—"}</td><td class="num">${unitRate ? money(unitRate) : "—"}</td><td class="num">${money(total)}</td></tr></tbody></table>
       <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(amountInWords)}</div><div><div>Total Amount Before Tax: <b style="float:right">${money(taxable)}</b></div><div>Add: CGST (9%): <b style="float:right">${money(cgst)}</b></div><div>Add: SGST (9%): <b style="float:right">${money(sgst)}</b></div><div>Add: IGST: <b style="float:right">${money(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${money(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${money(total)}</b></div></div></div>
       <div class="terms"><b>TERMS &amp; CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
-    </div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
+    </div></body></html>`;
     try { w.document.open(); w.document.write(html); w.document.close(); w.focus(); } catch (e) { try { w.close(); } catch {} alert("Sale Bill print नहीं खुल पाया।"); }
   }
 
@@ -4877,7 +4877,8 @@ export function LubricantManagement({ data, update }) {
 
   const bill= c => {
     const esc=v=>String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
-    const w=window.open("about:blank","_blank"); if(!w){alert("Print window blocked है।");return;}
+    // Render the invoice inside a same-page iframe. This avoids Chrome/Edge
+    // blank about:blank/blob/data tabs and keeps printing under the current origin.
     const gstRate=n(c.gstRate)>0?n(c.gstRate):18;
     // Saved lubricant amount is the FINAL/GROSS invoice total.
     const total=rupee(c.amount), qty=n(c.qty);
@@ -4901,15 +4902,29 @@ export function LubricantManagement({ data, update }) {
     const challanNo=String(c.parchiNo||"").trim();
     const html=`<!doctype html><html><head><meta charset="utf-8"><title>Lubricant Sale Bill ${esc(c.parchiNo)}</title><style>body{font-family:Arial;margin:18px;color:#111}.invoice{border:1px solid #111;max-width:900px;margin:auto}.head{text-align:center;border-bottom:1px solid #111;padding:12px}.head h1{margin:3px 0;font-size:25px}.meta{display:grid;grid-template-columns:1fr 1fr}.meta>div{padding:10px;border-bottom:1px solid #111}.meta>div+div{border-left:1px solid #111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #111;padding:8px}td.num{text-align:right}.bottom{display:grid;grid-template-columns:1fr 1fr}.bottom>div{padding:10px;min-height:130px}.bottom>div+div{border-left:1px solid #111}.terms{padding:10px;border-top:1px solid #111;font-size:10px}.sign{text-align:right;margin-top:28px;font-weight:bold}.bar{text-align:right;margin-bottom:10px}@media print{.bar{display:none}@page{size:A4 portrait;margin:10mm}}</style></head><body><div class="bar"><button onclick="window.print()">🖨️ Print / Save PDF</button></div><div class="invoice"><div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div><div class="meta"><div><b>M/s:</b> ${esc(c.party)}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(invoiceNo||"—")}<br><b>Challan No.:</b> ${esc(challanNo||"—")}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div><table><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount (GST Incl.)</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(c.parchiNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${money(total)}</td></tr></tbody></table><div class="bottom"><div><b>Rupees in Words:</b><br>${esc(amountInWords)}</div><div><b>Assessable / Taxable Value:</b><span style="float:right">${money(taxable)}</span><br><b>Add: CGST (9%):</b><span style="float:right">${money(cgst)}</span><br><b>Add: SGST (9%):</b><span style="float:right">${money(sgst)}</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${money(total)}</span></div></div><div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div></div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
     try {
-      // Use a Blob URL for reliable rendering in Chrome/Edge.
-      // Keep the new tab alive first, then navigate it to the generated invoice.
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const billUrl = URL.createObjectURL(blob);
-      w.location.href = billUrl;
-      setTimeout(()=>{ try { w.focus(); w.print(); } catch(e) {} }, 1200);
-      setTimeout(()=>{ try { URL.revokeObjectURL(billUrl); } catch(e) {} }, 30000);
+      const frame = document.createElement("iframe");
+      frame.setAttribute("title","Lubricant Sale Invoice");
+      frame.style.position="fixed";
+      frame.style.right="0";
+      frame.style.bottom="0";
+      frame.style.width="0";
+      frame.style.height="0";
+      frame.style.border="0";
+      frame.style.opacity="0";
+      frame.style.pointerEvents="none";
+      document.body.appendChild(frame);
+      frame.onload=()=>{
+        try {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+        } catch(e) {
+          console.error("Lubricant invoice print error:", e);
+        }
+        setTimeout(()=>frame.remove(), 1500);
+      };
+      frame.srcdoc=html;
     } catch (e) {
-      try { w.document.body.innerHTML = "<h3>Invoice could not be rendered.</h3><pre>" + esc(e?.message || e) + "</pre>"; } catch (_) {}
+      alert("Invoice print error: " + (e?.message || e));
       console.error("Lubricant bill render error:", e);
     }
   };
