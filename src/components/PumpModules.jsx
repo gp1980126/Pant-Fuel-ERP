@@ -2510,8 +2510,8 @@ export function CreditSale({
   const creditRate = f.fuel === "LUBRICANT" ? 0 : getRate(data, f.fuel, f.date);
 
   const LUBRICANT_GST_RATE = 18;
-  const lubricantTaxablePreview = f.fuel === "LUBRICANT" ? rupee(n(f.manualAmount)) : 0;
-  const lubricantGstPreview = f.fuel === "LUBRICANT" ? rupee(lubricantTaxablePreview * LUBRICANT_GST_RATE / 100) : 0;
+  const lubricantTaxablePreview = f.fuel === "LUBRICANT" ? rupee(n(f.manualAmount) * 100 / 118) : 0;
+  const lubricantGstPreview = f.fuel === "LUBRICANT" ? rupee(n(f.manualAmount) - lubricantTaxablePreview) : 0;
   const amount = f.fuel === "LUBRICANT" ? rupee(lubricantTaxablePreview + lubricantGstPreview) : rupee(n(f.qty) * creditRate);
 
   function save() {
@@ -2777,7 +2777,7 @@ export function CreditSale({
 
           </Field>
 
-          <Field label={f.fuel === "LUBRICANT" ? "Taxable Amount (GST से पहले)" : "Amount"}>
+          <Field label={f.fuel === "LUBRICANT" ? "Bill Amount (GST सहित)" : "Amount"}>
 
             <input
               className={f.fuel === "LUBRICANT" ? "" : "readonly"}
@@ -2786,7 +2786,7 @@ export function CreditSale({
               readOnly={f.fuel !== "LUBRICANT"}
               value={f.fuel === "LUBRICANT" ? f.manualAmount : String(amount)}
               onChange={e => f.fuel === "LUBRICANT" && setF({ ...f, manualAmount: e.target.value })}
-              placeholder={f.fuel === "LUBRICANT" ? "6000 (Taxable)" : ""}
+              placeholder={f.fuel === "LUBRICANT" ? "6000 (GST सहित)" : ""}
             />
 
           </Field>
@@ -4437,8 +4437,8 @@ export function LubricantManagement({ data, update }) {
     setMsg("");
     if(!cashSale.date || !isValidISODate(cashSale.date) || cashSale.date<START_DATE || cashSale.date>today) return setMsg("Cash Sale Date valid period में नहीं है।");
     if(!String(cashSale.productName||"").trim()) return setMsg("Product / Brand जरूरी है।");
-    const qty=n(cashSale.qty), rate=n(cashSale.rate), taxableAmount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate);
-    const gstRate=18, gstAmount=rupee(taxableAmount*gstRate/100), amount=rupee(taxableAmount+gstAmount);
+    const qty=n(cashSale.qty), rate=n(cashSale.rate), inclusiveAmount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate), taxableAmount=rupee(inclusiveAmount*100/118);
+    const gstRate=18, gstAmount=rupee(inclusiveAmount-taxableAmount), amount=inclusiveAmount;
     if(qty<=0) return setMsg("Qty 0 से अधिक होना चाहिए।");
     if(rate<=0 && amount<=0) return setMsg("Rate या Amount भरें।");
     const finalRate=rate>0?rupee(rate):rupee(amount/qty);
@@ -4507,10 +4507,10 @@ export function LubricantManagement({ data, update }) {
     if(!parchi || !editingSale.party) return setMsg("Parchi No और Party जरूरी हैं।");
     if(!isValidISODate(editingSale.date) || editingSale.date<START_DATE || editingSale.date>today) return setMsg("Date valid period में नहीं है।");
     if(!String(editingSale.productName||"").trim()) return setMsg("Product Name जरूरी है।");
-    const taxableAmount=rupee(n(editingSale.amount));
+    const taxableAmount=rupee(n(editingSale.amount)*100/118);
     if(taxableAmount<=0) return setMsg("Taxable Amount ₹0 से अधिक होना चाहिए।");
     const gstRate=18;
-    const gstAmount=rupee(taxableAmount*gstRate/100);
+    const gstAmount=rupee(n(editingSale.amount)-taxableAmount);
     const amount=rupee(taxableAmount+gstAmount);
     const duplicate=(data.credits||[]).some(c=>String(c.id)!==String(editingSaleId) && String(c?.parchiNo||"").trim().toLowerCase()===parchi.toLowerCase());
     if(duplicate) return setMsg(`Parchi No. ${parchi} पहले से मौजूद है।`);
