@@ -2505,6 +2505,21 @@ export function CreditSale({
   const [msg, setMsg] =
     useState("");
 
+  // Lubricant products come from uploaded/saved purchase bills.
+  const lubricantProductOptions = useMemo(() => {
+    const map = new Map();
+    (data.purchases || []).filter(p => String(p?.fuel || "").toUpperCase() === "LUBRICANT").forEach(p => {
+      const items = Array.isArray(p.items) && p.items.length ? p.items : [{ description: p.productName || "Mobile Oil (HPCL)", hsn: p.hsn || "" }];
+      items.forEach(item => {
+        const name = String(item?.description || "").trim();
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (!map.has(key)) map.set(key, { name, hsn: String(item?.hsn || "").trim(), invoiceNo: String(p.invoiceNo || "").trim() });
+      });
+    });
+    return Array.from(map.values());
+  }, [data.purchases]);
+
   const [editId, setEditId] =
     useState(null);
 
@@ -2858,12 +2873,13 @@ export function CreditSale({
           </Field>
 
           {f.fuel === "LUBRICANT" && (
-            <Field label="Product / Brand">
-              <input
-                value={f.productName}
-                placeholder="जैसे Mobile Oil / Servo 20W-40"
-                onChange={e => setF({ ...f, productName: e.target.value })}
-              />
+            <Field label="Product (Uploaded Bill से Select करें)">
+              <select value={f.productName} onChange={e => setF({ ...f, productName: e.target.value })}>
+                <option value="">Select Product</option>
+                {f.productName && !lubricantProductOptions.some(x => x.name === f.productName) && <option value={f.productName}>{f.productName}</option>}
+                {lubricantProductOptions.map((x, i) => <option key={x.name + i} value={x.name}>{x.name}{x.hsn ? " · HSN " + x.hsn : ""}{x.invoiceNo ? " · Inv " + x.invoiceNo : ""}</option>)}
+              </select>
+              <small style={{display:"block",marginTop:4,color:"#64748b"}}>HPCL upload किए गए purchase bill के item products यहाँ से चुनें।</small>
             </Field>
           )}
 
@@ -4455,6 +4471,21 @@ export function LubricantManagement({ data, update }) {
   const [purchaseBillFile, setPurchaseBillFile] = useState(null);
   const [msg, setMsg] = useState("");
 
+  // Product options are taken from uploaded HPCL purchase bill item lines.
+  const lubricantProductOptions = useMemo(() => {
+    const map = new Map();
+    (data.purchases || []).filter(p => String(p?.fuel || "").toUpperCase() === "LUBRICANT").forEach(p => {
+      const items = Array.isArray(p.items) && p.items.length ? p.items : [{ description: p.productName || "Mobile Oil (HPCL)", hsn: p.hsn || "" }];
+      items.forEach(item => {
+        const name = String(item?.description || "").trim();
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (!map.has(key)) map.set(key, { name, hsn: String(item?.hsn || "").trim(), invoiceNo: String(p.invoiceNo || "").trim() });
+      });
+    });
+    return Array.from(map.values());
+  }, [data.purchases]);
+
   // FY-wise lubricant opening: if a FY opening is carried forward, it is authoritative.
   // Otherwise the previous FY closing is calculated from the configured base opening and transactions.
   const previousFYBounds = useMemo(()=>{
@@ -4548,7 +4579,7 @@ export function LubricantManagement({ data, update }) {
   const saveCashSale=async()=>{
     setMsg("");
     if(!cashSale.date || !isValidISODate(cashSale.date) || cashSale.date<START_DATE || cashSale.date>today) return setMsg("Cash Sale Date valid period में नहीं है।");
-    if(!String(cashSale.productName||"").trim()) return setMsg("Product / Brand जरूरी है।");
+    if(!String(cashSale.productName||"").trim()) return setMsg("Uploaded Bill से Product Select करना जरूरी है।");
     const qty=n(cashSale.qty), rate=n(cashSale.rate), inclusiveAmount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate), taxableAmount=rupee(inclusiveAmount*100/118);
     const gstRate=18, gstAmount=rupee(inclusiveAmount-taxableAmount), amount=inclusiveAmount;
     if(qty<=0) return setMsg("Qty 0 से अधिक होना चाहिए।");
@@ -4618,7 +4649,7 @@ export function LubricantManagement({ data, update }) {
     const parchi=String(editingSale.parchiNo||"").trim();
     if(!parchi || !editingSale.party) return setMsg("Parchi No और Party जरूरी हैं।");
     if(!isValidISODate(editingSale.date) || editingSale.date<START_DATE || editingSale.date>today) return setMsg("Date valid period में नहीं है।");
-    if(!String(editingSale.productName||"").trim()) return setMsg("Product Name जरूरी है।");
+    if(!String(editingSale.productName||"").trim()) return setMsg("Uploaded Bill से Product Select करना जरूरी है।");
     const taxableAmount=rupee(n(editingSale.amount)*100/118);
     if(taxableAmount<=0) return setMsg("Taxable Amount ₹0 से अधिक होना चाहिए।");
     const gstRate=18;
@@ -5025,7 +5056,7 @@ export function LubricantManagement({ data, update }) {
       <p style={{marginTop:0,color:'#6b7280'}}>Cash sale में Parchi No., Party या Vehicle नहीं होगा। केवल Product, Qty, Rate और Amount दर्ज होगा। Payment हमेशा Cash रहेगा।</p>
       <div className="form">
         <Field label="Date"><input type="date" min={START_DATE} max={today} value={cashSale.date} onChange={e=>setCashSale({...cashSale,date:e.target.value})}/></Field>
-        <Field label="Product / Brand"><input value={cashSale.productName} onChange={e=>setCashSale({...cashSale,productName:e.target.value})}/></Field>
+        <Field label="Product (Uploaded Bill से Select करें)"><select value={cashSale.productName} onChange={e=>setCashSale({...cashSale,productName:e.target.value})}><option value="">Select Product</option>{cashSale.productName&&!lubricantProductOptions.some(x=>x.name===cashSale.productName)&&<option value={cashSale.productName}>{cashSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select><small style={{display:"block",marginTop:4,color:"#64748b"}}>Uploaded HPCL purchase bill के product में से चुनें।</small></Field>
         <Field label="Qty (L)"><input type="number" min="0" step="0.01" value={cashSale.qty} onChange={e=>setCashSale({...cashSale,qty:e.target.value})}/></Field>
         <Field label="Rate / L"><input type="number" min="0" step="0.01" value={cashSale.rate} onChange={e=>setCashSale({...cashSale,rate:e.target.value})}/></Field>
         <Field label="Amount"><input type="number" min="0" step="0.01" value={cashSale.amount} onChange={e=>setCashSale({...cashSale,amount:e.target.value})} placeholder="Qty × Rate auto"/></Field>
@@ -5039,7 +5070,7 @@ export function LubricantManagement({ data, update }) {
       <Table headers={['Date','Product','Qty','Rate','Amount','Payment']} rows={cashSales.map(x=>[x.date,x.productName||'Mobile Oil (HPCL)',n(x.qty).toFixed(2)+' L',money(x.rate),money(x.amount),'CASH'])} rowIds={cashSales.map(x=>x.id)} onEdit={id=>editCashSale(cashSales.find(x=>x.id===id))} onDelete={id=>deleteCashSale(cashSales.find(x=>x.id===id))}/>
     </section>}
 
-    {editingSaleId!==null&&<section className="panel" style={{marginTop:18,border:'2px solid #f59e0b'}}><h3>✏️ Edit Lubricant Sale</h3><div className="form"><Field label="Date"><input type="date" min={START_DATE} max={today} value={editingSale.date} onChange={e=>setEditingSale({...editingSale,date:e.target.value})}/></Field><Field label="Parchi No."><input value={editingSale.parchiNo} onChange={e=>setEditingSale({...editingSale,parchiNo:e.target.value})}/></Field><Field label="Party"><select value={editingSale.party} onChange={e=>setEditingSale({...editingSale,party:e.target.value})}><option value="">Select</option>{(data.parties||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select></Field><Field label="Vehicle"><input value={editingSale.vehicle} onChange={e=>setEditingSale({...editingSale,vehicle:e.target.value.toUpperCase()})}/></Field><Field label="Product / Brand"><input value={editingSale.productName} onChange={e=>setEditingSale({...editingSale,productName:e.target.value})}/></Field><Field label="Qty (Optional)"><input type="number" min="0" step="0.01" value={editingSale.qty} onChange={e=>setEditingSale({...editingSale,qty:e.target.value})}/></Field><Field label="Amount"><input type="number" min="0" step="0.01" value={editingSale.amount} onChange={e=>setEditingSale({...editingSale,amount:e.target.value})}/></Field></div><div className="actions"><button type="button" className="btn" onClick={saveEditedSale}>💾 Update Lubricant Sale</button><button type="button" className="btn gray" onClick={resetSaleForm}>Cancel Edit</button></div></section>}
+    {editingSaleId!==null&&<section className="panel" style={{marginTop:18,border:'2px solid #f59e0b'}}><h3>✏️ Edit Lubricant Sale</h3><div className="form"><Field label="Date"><input type="date" min={START_DATE} max={today} value={editingSale.date} onChange={e=>setEditingSale({...editingSale,date:e.target.value})}/></Field><Field label="Parchi No."><input value={editingSale.parchiNo} onChange={e=>setEditingSale({...editingSale,parchiNo:e.target.value})}/></Field><Field label="Party"><select value={editingSale.party} onChange={e=>setEditingSale({...editingSale,party:e.target.value})}><option value="">Select</option>{(data.parties||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select></Field><Field label="Vehicle"><input value={editingSale.vehicle} onChange={e=>setEditingSale({...editingSale,vehicle:e.target.value.toUpperCase()})}/></Field><Field label="Product (Uploaded Bill से Select करें)"><select value={editingSale.productName} onChange={e=>setEditingSale({...editingSale,productName:e.target.value})}><option value="">Select Product</option>{editingSale.productName&&!lubricantProductOptions.some(x=>x.name===editingSale.productName)&&<option value={editingSale.productName}>{editingSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select></Field><Field label="Qty (Optional)"><input type="number" min="0" step="0.01" value={editingSale.qty} onChange={e=>setEditingSale({...editingSale,qty:e.target.value})}/></Field><Field label="Amount"><input type="number" min="0" step="0.01" value={editingSale.amount} onChange={e=>setEditingSale({...editingSale,amount:e.target.value})}/></Field></div><div className="actions"><button type="button" className="btn" onClick={saveEditedSale}>💾 Update Lubricant Sale</button><button type="button" className="btn gray" onClick={resetSaleForm}>Cancel Edit</button></div></section>}
     <section className="panel" style={{marginTop:18}}><h3>💳 Lubricant Credit Sale Register — Mobile Oil (HPCL)</h3><Table headers={['Date','Parchi No.','Party','Vehicle','Product','Qty','Amount']} rows={sales.map(c=>[c.date,c.parchiNo,c.party,c.vehicle,c.productName||'Mobile Oil (HPCL)',n(c.qty)>0?`${n(c.qty).toFixed(2)} L`:'Qty pending',money(c.amount)])} rowIds={sales.map(c=>c.id||`${c.date}|${c.parchiNo}`)} onEdit={id=>editSale(sales.find(c=>c.id===id))} onPrintBill={id=>bill(sales.find(c=>c.id===id))} showPrintBill={id=>!!sales.find(c=>c.id===id)} onDelete={id=>deleteSale(sales.find(c=>c.id===id))} />{sales.length===0&&<div className="warning" style={{marginTop:10}}>अभी कोई Lubricant Credit Sale नहीं मिली। Credit Sale में Lubricant / Mobile Oil चुनकर entry save करें।</div>}</section>
     <section className="panel" style={{marginTop:18}}><h3>📦 Lubricant Purchase Register</h3><p style={{marginTop:0,color:"#64748b"}}>यहाँ <b>Bill Date</b> ही transaction date है। Bill upload होने की तारीख/समय (uploadedAt) इस register में कभी नहीं दिखेगा।</p><Table headers={["Bill Date","Invoice No.","Supplier","Items","Qty","Assessable","Tax","Total","Bill"]} rows={purchases.map(p=>[lubricantBillDate(p),p.invoiceNo,p.supplier||"Hindustan Petroleum Corp. Ltd.",Array.isArray(p.items)?p.items.length:1,`${n(p.quantity).toFixed(2)} L`,money(p.basicAmount),money(p.taxAmount),money(purchaseLandedValue(p)),p.billFileData?<button type="button" className="btn small" onClick={()=>openPurchaseBill(p.billFileData)}>📎 View Bill</button>:"—"])} rowIds={purchases.map(p=>p.id||`${p.date}|${p.invoiceNo}`)} onEdit={(id)=>editPurchase(purchases.find(p=>p.id===id))} onDelete={(id)=>deletePurchase(purchases.find(p=>p.id===id))} /></section>
   </div>;
