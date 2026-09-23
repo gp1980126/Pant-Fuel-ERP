@@ -4817,8 +4817,8 @@ export function LubricantManagement({ data, update }) {
 
     // HPCL invoices often wrap the product description and Qty/Vol across
     // separate PDF text lines. Rebuild those fields from the item block so
-    // 8-digit HSNs (for example 31021000) and EA-pack products are imported
-    // with the real product name and inventory quantity.
+    // 8-digit HSNs and EA-pack products are imported with the real product
+    // name and inventory quantity.
     items.forEach(item=>{
       const hsnToken=String(item.hsn||'');
       const rowIndex=lines.findIndex(line=>new RegExp('^\\s*'+String(item.lineNo)+'\\s+').test(line) && line.includes(hsnToken));
@@ -4826,27 +4826,27 @@ export function LubricantManagement({ data, update }) {
       const block=[];
       for(let j=rowIndex;j<lines.length;j++){
         const s=lines[j];
-        if(j>rowIndex && /^\\s*\\d{1,3}\\s+/.test(s) && /\\b\\d{4,10}\\b/.test(s)) break;
-        if(j>rowIndex && /^(Total:|Net Amount|Declarations|PAN No\\.|Goods\\/Services)/i.test(s)) break;
+        if(j>rowIndex && /^\s*\d{1,3}\s+/.test(s) && /\b\d{4,10}\b/.test(s)) break;
+        if(j>rowIndex && /^(Total:|Net Amount|Declarations|PAN No\.|Goods\/Services)/i.test(s)) break;
         block.push(s);
       }
-      const qtyMatch=block.join(' ').match(/Qty\\s*\\/\\s*Vol\\s+([\\d,]+(?:\\.\\d+)?)\\s*L/i);
+      const qtyMatch=block.join(' ').match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
       if(qtyMatch) item.inventoryQty=hpclNum2(qtyMatch[1]);
 
-      const isMetaDescription=/^Locn\\s+Lot\\s+No\\.?$/i.test(String(item.description||'').trim());
+      const isMetaDescription=/^Locn\s+Lot\s+No\.?$/i.test(String(item.description||'').trim());
       if(isMetaDescription){
         const desc=[];
         for(let j=rowIndex-1;j>=0;j--){
           const s=String(lines[j]||'').trim();
           if(!s) continue;
-          if(/^\\s*\\d{1,3}\\s+/.test(s) && /\\b\\d{4,10}\\b/.test(s)) break;
-          if(/^(?:Locn\\s+Lot\\s+No\\.?|MRP[0-9A-Z-]+|Qty\\s*\\/\\s*Vol)/i.test(s)) continue;
-          if(/^(?:Taxable|SR\\s+Item|Description|HSN\\/|Total:|Net Amount|Declarations)/i.test(s)) break;
-          if(/^(?:GSTIN|Recipient|Delivery Address|Billing Doc No\\.|Invoice Number|Document Type|Date\\.)/i.test(s)) break;
+          if(/^\s*\d{1,3}\s+/.test(s) && /\b\d{4,10}\b/.test(s)) break;
+          if(/^(?:Locn\s+Lot\s+No\.?|MRP[0-9A-Z-]+|Qty\s*\/\s*Vol)/i.test(s)) continue;
+          if(/^(?:Taxable|SR\s+Item|Description|HSN\/|Total:|Net Amount|Declarations)/i.test(s)) break;
+          if(/^(?:GSTIN|Recipient|Delivery Address|Billing Doc No\.|Invoice Number|Document Type|Date\.)/i.test(s)) break;
           desc.unshift(s);
           if(desc.length>=3) break;
         }
-        if(desc.length) item.description=desc.join(' ').replace(/\\s+/g,' ').trim();
+        if(desc.length) item.description=desc.join(' ').replace(/\s+/g,' ').trim();
       }
     });
 
