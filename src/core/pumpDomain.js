@@ -3,7 +3,22 @@ import { PUMP_NAME, STATION_ID } from "../config/appConfig.js";
 
 export { PUMP_NAME };
 
-export const START_DATE = "2026-08-01";
+// Financial-year aware date window.
+// FY 2025-26: 01-Apr-2025 to 31-Mar-2026
+// FY 2026-27: 01-Apr-2026 to 31-Mar-2027
+// START_DATE is the earliest supported FY boundary, not a report-selection date.
+export const START_DATE = "2025-04-01";
+export const FINANCIAL_YEARS = [
+  { value:"2025-26", label:"FY 2025-26", start:"2025-04-01", end:"2026-03-31" },
+  { value:"2026-27", label:"FY 2026-27", start:"2026-04-01", end:"2027-03-31" }
+];
+export const DEFAULT_FINANCIAL_YEAR = "2026-27";
+export const financialYearBounds = (fy=DEFAULT_FINANCIAL_YEAR) =>
+  FINANCIAL_YEARS.find(x=>x.value===fy) || FINANCIAL_YEARS[FINANCIAL_YEARS.length-1];
+export const financialYearForDate = (date) => {
+  const d=String(date||"");
+  return FINANCIAL_YEARS.find(x=>d>=x.start&&d<=x.end)?.value || "";
+};
 export const KEY = "petrolPumpData_BACKUP_2026_09_06_CLEAN";
 export const MASTER_DATA_VERSION = "2026-09-11-BACKUP-RESTORED-V1";
 export const CLOUD_STATION_ID = STATION_ID;
