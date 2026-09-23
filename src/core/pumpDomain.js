@@ -3,7 +3,11 @@ import { PUMP_NAME, STATION_ID } from "../config/appConfig.js";
 
 export { PUMP_NAME };
 
-export const START_DATE = "2026-08-01";
+// Financial Year 2026-27: all reports, date filters and historical imports start from 01-Apr-2026.
+// Fuel physical dip history remains separately limited to the dates for which dip data exists.
+export const FINANCIAL_YEAR = "2026-27";
+export const FY_START_DATE = "2026-04-01";
+export const START_DATE = FY_START_DATE;
 export const KEY = "petrolPumpData_BACKUP_2026_09_06_CLEAN";
 export const MASTER_DATA_VERSION = "2026-09-11-BACKUP-RESTORED-V1";
 export const CLOUD_STATION_ID = STATION_ID;
