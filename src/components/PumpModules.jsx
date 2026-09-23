@@ -946,7 +946,8 @@ export function FuelSale({
   const totalSale =
     saleTotals.MS +
     saleTotals.HSD +
-    saleTotals.CNG;
+    saleTotals.CNG +
+    n(lubricantSummary.amount);
 
   const creditByFuel = {
     MS: creditTotalForFuel(data, date, "MS"),
@@ -971,7 +972,8 @@ export function FuelSale({
     rupee(
       paymentTotal("MS") +
       paymentTotal("HSD") +
-      paymentTotal("CNG")
+      paymentTotal("CNG") +
+      n(lubricantSummary.amount)
     );
 
   const totalPumpExpense = rupee(
