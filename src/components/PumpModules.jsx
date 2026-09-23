@@ -2609,7 +2609,7 @@ export function CreditSale({
     const escHtml = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[ch]));
     const total = rupee(n(c.amount));
     const product = c.productName || "Mobile Oil (HPCL)";
-    const qtyMatch = String(product).match(/(\\d+(?:\\.\\d+)?)\\s*(?:ltr|litre|liter|l)\\s*x\\s*(\\d+(?:\\.\\d+)?)/i);
+    const qtyMatch = String(product).match(/([0-9]+(?:[.][0-9]+)?)\s*(?:ltr|litre|liter|l)\s*x\s*([0-9]+(?:[.][0-9]+)?)/i);
     const parsedQty = qtyMatch ? n(qtyMatch[1]) * n(qtyMatch[2]) : 0;
     const qty = n(c.qty) > 0 ? n(c.qty) : parsedQty;
     const gstRate = n(c.gstRate) > 0 ? n(c.gstRate) : 18;
