@@ -112,6 +112,28 @@ function mergePendingCloudChanges(base, local, remote) {
     ...Object.keys(local || {}).filter(k => Array.isArray(local?.[k]))
   ]));
   const identity = row => String(row?.transactionId || row?.id || row?.txId || "").trim();
+  // Object maps that can receive independent FY/accounting keys must also be
+  // merged. Otherwise a cloud version conflict can discard a newly-added FY opening.
+  // Keep remote keys authoritative, while preserving local keys that were added/changed
+  // after the base snapshot. This is intentionally limited to known FY opening data.
+  for (const key of ["openingStockByFY"]) {
+    const baseObj = (base?.[key] && typeof base[key] === "object" && !Array.isArray(base[key])) ? base[key] : {};
+    const localObj = (local?.[key] && typeof local[key] === "object" && !Array.isArray(local[key])) ? local[key] : {};
+    const remoteObj = (remote?.[key] && typeof remote[key] === "object" && !Array.isArray(remote[key])) ? remote[key] : {};
+    const mergedObj = { ...remoteObj };
+    for (const objKey of new Set([...Object.keys(localObj), ...Object.keys(baseObj)])) {
+      const baseValue = baseObj[objKey];
+      const localValue = localObj[objKey];
+      const remoteValue = remoteObj[objKey];
+      const localChanged = JSON.stringify(baseValue) !== JSON.stringify(localValue);
+      const remoteChanged = JSON.stringify(baseValue) !== JSON.stringify(remoteValue);
+      if (localChanged && !remoteChanged) mergedObj[objKey] = localValue;
+      else if (localChanged && remoteChanged && JSON.stringify(localValue) !== JSON.stringify(remoteValue)) {
+        conflicts.push({ key: `${key}.${objKey}`, count: 1 });
+      }
+    }
+    merged[key] = mergedObj;
+  }
   for (const key of arrayKeys) {
     const baseRows = Array.isArray(base?.[key]) ? base[key] : [];
     const localRows = Array.isArray(local?.[key]) ? local[key] : [];
