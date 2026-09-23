@@ -5039,8 +5039,8 @@ export function Purchase({data,update}){
 }
 
 export function SalePurchaseProfitLoss({ data }) {
-  const [from,setFrom]=useState('2026-08-01');
-  const [to,setTo]=useState('2026-08-31');
+  const [from,setFrom]=useState(START_DATE);
+  const [to,setTo]=useState(todayISODate());
   const sales=authoritativeSalesRows(data);
   const purchases=Array.isArray(data?.purchases)?data.purchases:[];
   const dailyPayments=Array.isArray(data?.dailyPayments)?data.dailyPayments:[];
