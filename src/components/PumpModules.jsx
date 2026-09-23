@@ -4342,12 +4342,15 @@ export function LubricantManagement({ data, update }) {
   const purchases = useMemo(()=> (Array.isArray(data?.purchases)?data.purchases:[])
     .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT")
     .sort((a,b)=>String(b.date).localeCompare(String(a.date))),[data?.purchases]);
+  const cashSales = useMemo(()=> (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[])
+    .filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH")
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.lubricantCashSales]);
 
   const openingQ=n(opening.LUBRICANT_QTY), openingV=n(opening.LUBRICANT_VALUE);
   const purchaseQ=purchases.reduce((a,x)=>a+n(x.quantity),0);
   const purchaseV=purchases.reduce((a,x)=>a+purchaseLandedValue(x),0);
-  const saleQ=sales.reduce((a,x)=>a+n(x.qty),0);
-  const saleV=sales.reduce((a,x)=>a+n(x.amount),0);
+  const saleQ=sales.reduce((a,x)=>a+n(x.qty),0) + cashSales.reduce((a,x)=>a+n(x.qty),0);
+  const saleV=sales.reduce((a,x)=>a+n(x.amount),0) + cashSales.reduce((a,x)=>a+n(x.amount),0);
   const totalQty=openingQ+purchaseQ;
   const avgCost=totalQty>0?(openingV+purchaseV)/totalQty:0;
   const closingQty=totalQty-saleQ;
@@ -4363,8 +4366,64 @@ export function LubricantManagement({ data, update }) {
   };
 
   const [editingPurchaseId,setEditingPurchaseId]=useState(null);
+  const [editingCashSaleId,setEditingCashSaleId]=useState(null);
+  const [cashSale,setCashSale]=useState({date:today,productName:"Mobile Oil (HPCL)",qty:"",rate:"",amount:""});
   const [editingSaleId,setEditingSaleId]=useState(null);
   const [editingSale,setEditingSale]=useState({date:today,parchiNo:"",party:"",vehicle:"",productName:"Mobile Oil (HPCL)",qty:"",amount:""});
+
+
+  const resetCashSaleForm=()=>{
+    setEditingCashSaleId(null);
+    setCashSale({date:today,productName:"Mobile Oil (HPCL)",qty:"",rate:"",amount:""});
+  };
+
+  const saveCashSale=async()=>{
+    setMsg("");
+    if(!cashSale.date || !isValidISODate(cashSale.date) || cashSale.date<START_DATE || cashSale.date>today) return setMsg("Cash Sale Date valid period में नहीं है।");
+    if(!String(cashSale.productName||"").trim()) return setMsg("Product / Brand जरूरी है।");
+    const qty=n(cashSale.qty), rate=n(cashSale.rate), amount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate);
+    if(qty<=0) return setMsg("Qty 0 से अधिक होना चाहिए।");
+    if(rate<=0 && amount<=0) return setMsg("Rate या Amount भरें।");
+    const finalRate=rate>0?rupee(rate):rupee(amount/qty);
+    const finalAmount=rupee(amount>0?amount:qty*finalRate);
+    const lockedMonths=new Set(Array.isArray(data?.accountingLocks?.months)?data.accountingLocks.months.map(String):[]);
+    if(lockedMonths.has(String(cashSale.date).slice(0,7))) return setMsg("🔒 "+String(cashSale.date).slice(0,7)+" Accounting Month LOCKED है।");
+    if(editingCashSaleId!==null){
+      const next=(data.lubricantCashSales||[]).map(x=>String(x.id)===String(editingCashSaleId)?{
+        ...x,date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:finalRate,amount:finalAmount,paymentMode:"CASH"
+      }:x);
+      const result=await update({lubricantCashSales:next});
+      if(!result?.ok) return setMsg("❌ Lubricant Cash Sale update नहीं हुई: "+(result?.reason||"Mutation rejected"));
+      resetCashSaleForm();
+      return setMsg("✅ Lubricant Cash Sale updated: "+money(finalAmount));
+    }
+    const now=Date.now();
+    const row={
+      id:"LUB-CASH-"+cashSale.date+"-"+now+"-"+Math.random().toString(36).slice(2,7),
+      transactionId:"LUBRICANT-CASH-SALE-"+cashSale.date+"-"+now,
+      date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:finalRate,amount:finalAmount,paymentMode:"CASH",source:"MANUAL_LUBRICANT_CASH"
+    };
+    const result=await update({lubricantCashSales:[...(data.lubricantCashSales||[]),row]});
+    if(!result?.ok) return setMsg("❌ Lubricant Cash Sale save नहीं हुई: "+(result?.reason||"Mutation rejected"));
+    resetCashSaleForm();
+    setMsg("✅ Lubricant Cash Sale saved: "+money(finalAmount)+" · "+qty.toFixed(2)+" L · Cash");
+  };
+
+  const editCashSale=row=>{
+    if(!row) return;
+    setEditingCashSaleId(row.id);
+    setCashSale({date:row.date||today,productName:row.productName||"Mobile Oil (HPCL)",qty:row.qty??"",rate:row.rate??"",amount:row.amount??""});
+    setMsg("✏️ Lubricant Cash Sale edit mode में है।");
+  };
+
+  const deleteCashSale=async row=>{
+    if(!row) return;
+    if(!window.confirm("Lubricant Cash Sale "+(row.date||"—")+" · "+money(row.amount)+" delete करना है?")) return;
+    const result=await update({lubricantCashSales:(data.lubricantCashSales||[]).filter(x=>String(x.id)!==String(row.id))});
+    if(result?.ok===false) return setMsg("❌ Lubricant Cash Sale delete नहीं हुई: "+(result?.reason||"Mutation rejected"));
+    if(String(editingCashSaleId)===String(row.id)) resetCashSaleForm();
+    setMsg("🗑️ Lubricant Cash Sale delete हो गई।");
+  };
 
   const resetSaleForm=()=>{
     setEditingSaleId(null);
@@ -4693,8 +4752,28 @@ export function LubricantManagement({ data, update }) {
     </section>
 
     <section className="panel" style={{marginTop:18}}><h3>{editingPurchaseId?'✏️ Edit Lubricant Purchase':'🧾 Add Lubricant Purchase'}</h3><div className="form"><Field label="Bill Date"><input type="date" value={purchase.date} onChange={e=>setPurchase({...purchase,date:e.target.value})}/></Field><Field label="Invoice No"><input value={purchase.invoiceNo} onChange={e=>setPurchase({...purchase,invoiceNo:e.target.value})}/></Field><Field label="Supplier"><input value={purchase.supplier} onChange={e=>setPurchase({...purchase,supplier:e.target.value})}/></Field><Field label="Product"><input value={purchase.productName} onChange={e=>setPurchase({...purchase,productName:e.target.value})}/></Field><Field label="Qty (L)"><input type="number" min="0" step="0.01" value={purchase.quantity} onChange={e=>setPurchase({...purchase,quantity:e.target.value})}/></Field><Field label="Bill Rate"><input type="number" min="0" step="0.01" value={purchase.rate} onChange={e=>setPurchase({...purchase,rate:e.target.value})}/></Field><Field label="Tax Amount"><input type="number" min="0" step="0.01" value={purchase.taxAmount} onChange={e=>setPurchase({...purchase,taxAmount:e.target.value})}/></Field><Field label="Total Amount"><input type="number" min="0" step="0.01" value={purchase.totalAmount} onChange={e=>setPurchase({...purchase,totalAmount:e.target.value})}/></Field></div><div className="actions" style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="btn" onClick={addPurchase}>{editingPurchaseId?'💾 Update Lubricant Purchase':'➕ Save Lubricant Purchase'}</button>{editingPurchaseId&&<button type="button" className="btn" onClick={resetPurchaseForm}>✖ Cancel Edit</button>}</div>{msg&&<div className={msg.startsWith('❌')?'warning':'success'} style={{marginTop:10}}>{msg}</div>}</section>
+
+    <section className="panel" style={{marginTop:18,border:'2px solid #16a34a'}}>
+      <h3>💵 Lubricant Cash Sale — बिना पर्ची</h3>
+      <p style={{marginTop:0,color:'#6b7280'}}>Cash sale में Parchi No., Party या Vehicle नहीं होगा। केवल Product, Qty, Rate और Amount दर्ज होगा। Payment हमेशा Cash रहेगा।</p>
+      <div className="form">
+        <Field label="Date"><input type="date" min={START_DATE} max={today} value={cashSale.date} onChange={e=>setCashSale({...cashSale,date:e.target.value})}/></Field>
+        <Field label="Product / Brand"><input value={cashSale.productName} onChange={e=>setCashSale({...cashSale,productName:e.target.value})}/></Field>
+        <Field label="Qty (L)"><input type="number" min="0" step="0.01" value={cashSale.qty} onChange={e=>setCashSale({...cashSale,qty:e.target.value})}/></Field>
+        <Field label="Rate / L"><input type="number" min="0" step="0.01" value={cashSale.rate} onChange={e=>setCashSale({...cashSale,rate:e.target.value})}/></Field>
+        <Field label="Amount"><input type="number" min="0" step="0.01" value={cashSale.amount} onChange={e=>setCashSale({...cashSale,amount:e.target.value})} placeholder="Qty × Rate auto"/></Field>
+        <Field label="Payment"><input value="CASH" readOnly/></Field>
+      </div>
+      <div className="actions"><button type="button" className="btn" onClick={saveCashSale}>{editingCashSaleId!==null?'💾 Update Cash Sale':'💵 Save Cash Sale'}</button>{editingCashSaleId!==null&&<button type="button" className="btn gray" onClick={resetCashSaleForm}>Cancel Edit</button>}</div>
+    </section>
+
+    {cashSales.length>0&&<section className="panel" style={{marginTop:18}}>
+      <h3>💵 Lubricant Cash Sale Register</h3>
+      <Table headers={['Date','Product','Qty','Rate','Amount','Payment']} rows={cashSales.map(x=>[x.date,x.productName||'Mobile Oil (HPCL)',n(x.qty).toFixed(2)+' L',money(x.rate),money(x.amount),'CASH'])} rowIds={cashSales.map(x=>x.id)} onEdit={id=>editCashSale(cashSales.find(x=>x.id===id))} onDelete={id=>deleteCashSale(cashSales.find(x=>x.id===id))}/>
+    </section>}
+
     {editingSaleId!==null&&<section className="panel" style={{marginTop:18,border:'2px solid #f59e0b'}}><h3>✏️ Edit Lubricant Sale</h3><div className="form"><Field label="Date"><input type="date" min={START_DATE} max={today} value={editingSale.date} onChange={e=>setEditingSale({...editingSale,date:e.target.value})}/></Field><Field label="Parchi No."><input value={editingSale.parchiNo} onChange={e=>setEditingSale({...editingSale,parchiNo:e.target.value})}/></Field><Field label="Party"><select value={editingSale.party} onChange={e=>setEditingSale({...editingSale,party:e.target.value})}><option value="">Select</option>{(data.parties||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select></Field><Field label="Vehicle"><input value={editingSale.vehicle} onChange={e=>setEditingSale({...editingSale,vehicle:e.target.value.toUpperCase()})}/></Field><Field label="Product / Brand"><input value={editingSale.productName} onChange={e=>setEditingSale({...editingSale,productName:e.target.value})}/></Field><Field label="Qty (Optional)"><input type="number" min="0" step="0.01" value={editingSale.qty} onChange={e=>setEditingSale({...editingSale,qty:e.target.value})}/></Field><Field label="Amount"><input type="number" min="0" step="0.01" value={editingSale.amount} onChange={e=>setEditingSale({...editingSale,amount:e.target.value})}/></Field></div><div className="actions"><button type="button" className="btn" onClick={saveEditedSale}>💾 Update Lubricant Sale</button><button type="button" className="btn gray" onClick={resetSaleForm}>Cancel Edit</button></div></section>}
-    <section className="panel" style={{marginTop:18}}><h3>💳 Lubricant Sale Register — Mobile Oil (HPCL)</h3><Table headers={['Date','Parchi No.','Party','Vehicle','Product','Qty','Amount']} rows={sales.map(c=>[c.date,c.parchiNo,c.party,c.vehicle,c.productName||'Mobile Oil (HPCL)',n(c.qty)>0?`${n(c.qty).toFixed(2)} L`:'Qty pending',money(c.amount)])} rowIds={sales.map(c=>c.id||`${c.date}|${c.parchiNo}`)} onEdit={id=>editSale(sales.find(c=>c.id===id))} onPrintBill={id=>bill(sales.find(c=>c.id===id))} showPrintBill={id=>!!sales.find(c=>c.id===id)} onDelete={id=>deleteSale(sales.find(c=>c.id===id))} />{sales.length===0&&<div className="warning" style={{marginTop:10}}>अभी कोई Lubricant Credit Sale नहीं मिली। Credit Sale में Lubricant / Mobile Oil चुनकर entry save करें।</div>}</section>
+    <section className="panel" style={{marginTop:18}}><h3>💳 Lubricant Credit Sale Register — Mobile Oil (HPCL)</h3><Table headers={['Date','Parchi No.','Party','Vehicle','Product','Qty','Amount']} rows={sales.map(c=>[c.date,c.parchiNo,c.party,c.vehicle,c.productName||'Mobile Oil (HPCL)',n(c.qty)>0?`${n(c.qty).toFixed(2)} L`:'Qty pending',money(c.amount)])} rowIds={sales.map(c=>c.id||`${c.date}|${c.parchiNo}`)} onEdit={id=>editSale(sales.find(c=>c.id===id))} onPrintBill={id=>bill(sales.find(c=>c.id===id))} showPrintBill={id=>!!sales.find(c=>c.id===id)} onDelete={id=>deleteSale(sales.find(c=>c.id===id))} />{sales.length===0&&<div className="warning" style={{marginTop:10}}>अभी कोई Lubricant Credit Sale नहीं मिली। Credit Sale में Lubricant / Mobile Oil चुनकर entry save करें।</div>}</section>
     <section className="panel" style={{marginTop:18}}><h3>📦 Lubricant Purchase Register</h3><Table headers={['Date','Invoice No.','Supplier','Items','Qty','Assessable','Tax','Total','Bill']} rows={purchases.map(p=>[p.date,p.invoiceNo,p.supplier||'Hindustan Petroleum Corp. Ltd.',Array.isArray(p.items)?p.items.length:1,`${n(p.quantity).toFixed(2)} L`,money(p.basicAmount),money(p.taxAmount),money(purchaseLandedValue(p)),p.billFileData?<button className="btn small" onClick={()=>{const w=window.open();if(!w)return;const a=p.billFileData;w.document.write(`<html><body style="margin:0"><embed src="${a}" type="${p.billFileType||'application/pdf'}" width="100%" height="100%" /></body></html>`);w.document.close();}}>📎 View Bill</button>:'—'])} rowIds={purchases.map(p=>p.id||`${p.date}|${p.invoiceNo}`)} onEdit={(id)=>editPurchase(purchases.find(p=>p.id===id))} onDelete={(id)=>deletePurchase(purchases.find(p=>p.id===id))} /></section>
   </div>;
 }

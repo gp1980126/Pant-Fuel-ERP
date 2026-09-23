@@ -1106,6 +1106,7 @@ export function initialData() {
     attendance: Array.isArray(b.attendance) ? b.attendance.map(x => ({ ...x })) : [],
     electricityBills: Array.isArray(b.electricityBills) ? b.electricityBills.map(x => ({ ...x })) : [],
     electricityPayments: Array.isArray(b.electricityPayments) ? b.electricityPayments.map(x => ({ ...x })) : [],
+    lubricantCashSales: Array.isArray(b.lubricantCashSales) ? b.lubricantCashSales.map(x => ({ ...x })) : [],
     users: Array.isArray(b.users) && b.users.length ? b.users.map(x => ({ ...x })) : DEFAULT_USERS,
     auditLogs: Array.isArray(b.auditLogs) ? b.auditLogs.map(x => ({ ...x })) : [],
     partyMasterSchemaVersion: 2,
@@ -1527,13 +1528,22 @@ export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
   const fallback={MS:n(data?.rates?.MS??99.79),HSD:n(data?.rates?.HSD??95.32),CNG:n(data?.rates?.CNG??101),LUBRICANT:(n(data?.openingStock?.LUBRICANT_QTY)>0?n(data?.openingStock?.LUBRICANT_VALUE)/n(data?.openingStock?.LUBRICANT_QTY):0)};
   const before=(a,b)=>String(a).localeCompare(String(b))<0;
   const purchaseQty=(f,d=null)=>purchases.filter(p=>p.fuel===f&&(!d||before(p.date,d))).reduce((a,p)=>a+n(p.quantity),0);
-  const saleQtyBefore=(f,d)=>f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0):sales.filter(x=>x.fuel===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0);
+  const saleQtyBefore=(f,d)=>f==='LUBRICANT'?(
+    (Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0) +
+    (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[]).filter(x=>before(x.date,d)).reduce((a,x)=>a+n(x.qty),0)
+  ):sales.filter(x=>x.fuel===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0);
   const openingQty=(f,d)=>{if(f==='CNG')return null;const base=f==='MS'?n(data?.openingStock?.MS??9356):f==='HSD'?n(data?.openingStock?.HSD??7500):n(data?.openingStock?.LUBRICANT_QTY);return String(d)===START_DATE?base:base+purchaseQty(f,d)-saleQtyBefore(f,d);};
   const openingRate=(f,d)=>{if(f==='LUBRICANT' && n(data?.openingStock?.LUBRICANT_QTY)>0)return n(data?.openingStock?.LUBRICANT_VALUE)/n(data?.openingStock?.LUBRICANT_QTY);const prior=purchases.filter(p=>p.fuel===f&&before(p.date,d));if(prior.length){const q=prior.reduce((a,p)=>a+n(p.quantity),0),v=prior.reduce((a,p)=>a+purchaseLandedValue(p),0);if(q>0)return v/q;}return fallback[f]||0;};
   const fs=sales.filter(x=>x.date>=from&&x.date<=to), fp=purchases.filter(x=>x.date>=from&&x.date<=to), cng=cngSalePurchaseMatchingPure(data,from,to), out={};
   fuels.forEach(f=>{
     const oq=openingQty(f,from), pq=fp.filter(p=>p.fuel===f).reduce((a,p)=>a+n(p.quantity),0), pc=fp.filter(p=>p.fuel===f).reduce((a,p)=>a+purchaseLandedValue(p),0);
-    const sq=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&x.date>=from&&x.date<=to).reduce((a,x)=>a+n(x.qty),0):fs.filter(x=>x.fuel===f).reduce((a,x)=>a+n(x.qty),0), sa=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&x.date>=from&&x.date<=to).reduce((a,x)=>a+n(x.amount),0):fs.filter(x=>x.fuel===f).reduce((a,x)=>a+n(x.amount),0);
+    const sq=f==='LUBRICANT'?(
+      (Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&x.date>=from&&x.date<=to).reduce((a,x)=>a+n(x.qty),0) +
+      (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[]).filter(x=>x.date>=from&&x.date<=to).reduce((a,x)=>a+n(x.qty),0)
+    ):fs.filter(x=>x.fuel===f).reduce((a,x)=>a+n(x.qty),0), sa=f==='LUBRICANT'?(
+      (Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&x.date>=from&&x.date<=to).reduce((a,x)=>a+n(x.amount),0) +
+      (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[]).filter(x=>x.date>=from&&x.date<=to).reduce((a,x)=>a+n(x.amount),0)
+    ):fs.filter(x=>x.fuel===f).reduce((a,x)=>a+n(x.amount),0);
     const expense=canonicalDailyPayments(data).filter(p=>p.date>=from&&p.date<=to).reduce((a,p)=>a+n(p?.[f]?.pumpExpense)+(p?.[f]?.pumpExpense===undefined?n(p?.[f]?.other):0),0);
     const or=openingRate(f,from), cngTaxRate=Number.isFinite(Number(data?.cngStateTaxRate))?Number(data.cngStateTaxRate):0.05, tax=f==='CNG'?sa*cngTaxRate:0; let cq=null,ov=0,cv=0,cogs=0,avg=or,mq=0,mc=0,usq=0,usa=0,upq=0,upc=0;
     if(f!=='CNG'){cq=oq+pq-sq;ov=oq*or;const av=ov+pc,aq=oq+pq;avg=aq>0?av/aq:or;cv=cq*avg;cogs=Math.max(0,ov+pc-cv);}
@@ -1548,7 +1558,7 @@ export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
 export function standardJournal(data,from=START_DATE,to='9999-12-31'){
   to = resolveAccountingEndDate(data, to);
   const rows=[], add=(date,account,debit,credit,narration)=>{const d=rupee(debit),c=rupee(credit);if(Math.abs(d)+Math.abs(c)<1)return;rows.push({date,account,debit:d,credit:c,narration});};
-  const dates=[...new Set([...(data?.sales||[]),...(data?.credits||[]),...(data?.ledgerPayments||[]),...(data?.recoveries||[]),...(data?.purchases||[]),...(data?.paytmTotals||[]),...(data?.dailyPayments||[])].map(x=>x.date))].filter(d=>d>=from&&d<=to).sort();
+  const dates=[...new Set([...(data?.sales||[]),...(data?.credits||[]),...(data?.lubricantCashSales||[]),...(data?.ledgerPayments||[]),...(data?.recoveries||[]),...(data?.purchases||[]),...(data?.paytmTotals||[]),...(data?.dailyPayments||[])].map(x=>x.date))].filter(d=>d>=from&&d<=to).sort();
   const engine=calculateProfitLossEngine(data,from,to), c=engine.calc;
   // Opening inventory is brought into the selected period so the inventory/COGS chain is visible in Trial Balance.
   const openingInventory=n(c.MS.openingValue)+n(c.HSD.openingValue)+n(c.LUBRICANT.openingValue);
@@ -1559,6 +1569,14 @@ export function standardJournal(data,from=START_DATE,to='9999-12-31'){
   for(const date of dates){
     const daySales=authoritativeSalesRows(data).filter(x=>x.date===date), dayCredits=(data?.credits||[]).filter(x=>x.date===date), fuelPOS=fuelPOSForDate(data,date), actualPOS=actualPOSForDate(data,date), posBreakdownKnown=isFuelPOSBreakdownKnown(data,date), posExtra=posBreakdownKnown?Math.max(0,actualPOS-fuelPOS):Math.max(0,actualPOS), matchedPOSParty=Math.min(posExtra,digitalPartyRecoveryForDate(data,date));
     let daySale=0,dayCredit=0,dayNonPOS=0;
+    const lubricantCashSales = (data?.lubricantCashSales||[]).filter(x=>x.date===date);
+    for (const cs of lubricantCashSales) {
+      const amount = rupee(cs?.amount);
+      if (amount > 0) {
+        add(date,'Cash',amount,0,(cs.productName || 'Lubricant')+' cash sale');
+        add(date,'Lubricant / Other Sales',0,amount,(cs.productName || 'Lubricant')+' cash sale');
+      }
+    }
     const lubricantCredits = dayCredits.filter(x => String(x?.fuel || '').toUpperCase() === 'LUBRICANT');
     for (const lc of lubricantCredits) {
       const amount = rupee(lc?.amount);
@@ -1684,7 +1702,7 @@ export function getLockedMonths(data) {
 export const DATE_ARRAY_KEYS = [
   "sales", "credits", "dailyPayments", "ledgerPayments", "recoveries",
   "fillings", "purchases", "dipReadings", "rateHistory", "paytmTotals",
-  "attendance", "electricityBills", "electricityPayments"
+  "attendance", "electricityBills", "electricityPayments", "lubricantCashSales"
 ];
 
 export function changedMonthsForArray(before, after) {
