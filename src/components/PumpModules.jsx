@@ -2777,7 +2777,7 @@ export function CreditSale({
 
           </Field>
 
-          <Field label="Amount">
+          <Field label={f.fuel === "LUBRICANT" ? "Taxable Amount (GST से पहले)" : "Amount"}>
 
             <input
               className={f.fuel === "LUBRICANT" ? "" : "readonly"}
@@ -2786,7 +2786,7 @@ export function CreditSale({
               readOnly={f.fuel !== "LUBRICANT"}
               value={f.fuel === "LUBRICANT" ? f.manualAmount : String(amount)}
               onChange={e => f.fuel === "LUBRICANT" && setF({ ...f, manualAmount: e.target.value })}
-              placeholder={f.fuel === "LUBRICANT" ? "6000" : ""}
+              placeholder={f.fuel === "LUBRICANT" ? "6000 (Taxable)" : ""}
             />
 
           </Field>
