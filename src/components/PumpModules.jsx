@@ -4923,7 +4923,7 @@ export function LubricantManagement({ data, update }) {
     } catch(e) {
       alert("Invoice print error: "+(e?.message||e));
       console.error("Lubricant bill render error:",e);
-    }}
+    }
   };
 
   return <div className="content"><section className="panel" style={{marginBottom:12}}><div className="form"><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label></div><div style={{marginTop:6,color:"#64748b"}}>Selected: {fy.start} to {fy.end}</div></section>
