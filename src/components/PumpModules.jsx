@@ -4529,7 +4529,7 @@ export function LubricantManagement({ data, update }) {
   const addPurchase=async()=>{
     setMsg("");
     if(purchaseBillFile){
-      if(!/^(application\\/pdf|image\\/(jpeg|png|webp))$/i.test(purchaseBillFile.type)) return setMsg("❌ Bill के लिए PDF/JPG/PNG/WEBP file चुनें।");
+      if(!/^(application\/pdf|image\/(jpeg|png|webp))$/i.test(purchaseBillFile.type)) return setMsg("❌ Bill के लिए PDF/JPG/PNG/WEBP file चुनें।");
       if(purchaseBillFile.size>8*1024*1024) return setMsg("❌ Bill file 8 MB से छोटी रखें।");
     }
     if(!purchase.invoiceNo.trim()) return setMsg("Purchase Invoice No जरूरी है।");
