@@ -362,9 +362,9 @@ function App() {
     [USER_ROLES.OWNER]: { allow: ["*"], delete: true },
     [USER_ROLES.MANAGER]: { allow: [
       "sales","credits","dailyPayments","ledgerPayments","recoveries",
-      "dipReadings","attendance","electricityBills","electricityPayments","staff"
+      "dipReadings","attendance","electricityBills","electricityPayments","staff","lubricantCashSales"
     ], delete: false },
-    [USER_ROLES.OPERATOR]: { allow: ["sales","credits","dailyPayments"], delete: false },
+    [USER_ROLES.OPERATOR]: { allow: ["sales","credits","dailyPayments","lubricantCashSales"], delete: false },
     [USER_ROLES.VIEW_ONLY]: { allow: [], delete: false }
   };
 
