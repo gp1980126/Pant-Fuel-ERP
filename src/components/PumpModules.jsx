@@ -2606,7 +2606,7 @@ export function CreditSale({
     }
     const escHtml = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[ch]));
     const total = rupee(n(c.amount));
-    const qty = n(c.qty);
+    const qtyMatch = String(product).match(/(\\d+(?:\\.\\d+)?)\\s*(?:ltr|litre|liter|l)\\s*x\\s*(\\d+(?:\\.\\d+)?)/i);\n    const parsedQty = qtyMatch ? n(qtyMatch[1]) * n(qtyMatch[2]) : 0;\n    const qty = n(c.qty) > 0 ? n(c.qty) : parsedQty;
     const gstRate = n(c.gstRate) > 0 ? n(c.gstRate) : 18;
     // Always treat the saved amount as the final/gross invoice value.
     const taxable = rupee(total * 100 / (100 + gstRate));
@@ -2638,29 +2638,57 @@ export function CreditSale({
     const product = c.productName || "Mobile Oil (HPCL)";
     const invoiceNo = String(c.invoiceNo || "").trim();
     const challanNo = String(c.parchiNo || "").trim();
-    // Do not open a popup/new tab. Show the generated invoice in a visible
-    // in-app viewer so the Sale Bill button works reliably in Chrome/Edge.
+    // Render the invoice directly in the app. No popup, no about:blank, no iframe.
     const showInvoice = html => {
       const old = document.getElementById("stationmitra-lubricant-sale-viewer");
       if (old) old.remove();
+
       const overlay = document.createElement("div");
       overlay.id = "stationmitra-lubricant-sale-viewer";
-      overlay.style.cssText = "position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.55);display:flex;flex-direction:column;padding:10px;box-sizing:border-box";
-      const bar = document.createElement("div");
-      bar.style.cssText = "display:flex;justify-content:flex-end;gap:8px;padding-bottom:8px";
-      const close = document.createElement("button");
-      close.type = "button";
-      close.textContent = "✕ Close";
-      close.style.cssText = "padding:9px 18px;border:0;border-radius:6px;background:#111;color:#fff;font-weight:700;cursor:pointer";
-      close.onclick = () => overlay.remove();
-      const frame = document.createElement("iframe");
-      frame.title = "Lubricant Tax Invoice";
-      frame.style.cssText = "width:100%;flex:1;border:0;border-radius:6px;background:#fff";
-      bar.appendChild(close);
-      overlay.appendChild(bar);
-      overlay.appendChild(frame);
+      overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#fff;overflow:auto;padding:12px;box-sizing:border-box";
+
+      const parsed = new DOMParser().parseFromString(html, "text/html");
+      const toolbar = document.createElement("div");
+      toolbar.className = "sm-bill-toolbar";
+      toolbar.style.cssText = "position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;gap:8px;padding:6px 0 10px;background:#fff";
+
+      const printBtn = document.createElement("button");
+      printBtn.type = "button";
+      printBtn.textContent = "🖨️ Print / Save PDF";
+      printBtn.style.cssText = "padding:9px 16px;border:0;border-radius:6px;background:#111;color:#fff;font-weight:700;cursor:pointer";
+
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.textContent = "✕ Close Bill";
+      closeBtn.style.cssText = "padding:9px 16px;border:0;border-radius:6px;background:#666;color:#fff;font-weight:700;cursor:pointer";
+
+      toolbar.appendChild(printBtn);
+      toolbar.appendChild(closeBtn);
+      overlay.appendChild(toolbar);
+
+      const paper = document.createElement("div");
+      paper.className = "sm-bill-paper";
+      paper.innerHTML = parsed.body.innerHTML;
+      overlay.appendChild(paper);
       document.body.appendChild(overlay);
-      frame.srcdoc = html;
+
+      closeBtn.onclick = () => overlay.remove();
+      printBtn.onclick = () => {
+        const style = document.createElement("style");
+        style.id = "stationmitra-bill-print-style";
+        style.textContent = `
+          @media print {
+            body > *:not(#stationmitra-lubricant-sale-viewer) { display:none !important; }
+            #stationmitra-lubricant-sale-viewer { position:static !important; padding:0 !important; overflow:visible !important; }
+            #stationmitra-lubricant-sale-viewer .sm-bill-toolbar { display:none !important; }
+            #stationmitra-lubricant-sale-viewer .sm-bill-paper { max-width:none !important; }
+            @page { size:A4 portrait; margin:10mm; }
+          }
+        `;
+        document.head.appendChild(style);
+        window.print();
+        setTimeout(() => style.remove(), 1000);
+      };
     };
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${escHtml(invoiceNo)}</title>
     <style>
@@ -2834,7 +2862,7 @@ export function CreditSale({
             </Field>
           )}
 
-          <Field label={f.fuel === "LUBRICANT" ? "Qty (Optional)" : "Qty"}>
+          <Field label={f.fuel === "LUBRICANT" ? "Qty (Litre)" : "Qty"}>
 
             <input
               type="number"
