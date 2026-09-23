@@ -4791,13 +4791,13 @@ export function LubricantManagement({ data, update }) {
     const lines=raw.split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
     const joined=lines.join(' ');
     const invoice=(joined.match(/INVOICE\s+NUMBER\s*[:.\-]?\s*([A-Z0-9-]+)/i)||joined.match(/INVOICE\s+NO\.?\s*[:.\-]?\s*([A-Z0-9-]+)/i)||[])[1]||'';
-    const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE)\s*[:.\-]?\s*((?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})|(?:\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{4})|(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2}\s+\d{4}))/i)||[])[1]||'';
+    const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE)\s*[:.\-]?\s*((?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})|(?:\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{4})|(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+\d{4}))/i)||[])[1]||'';
     const billDate=hpclDate2(dateRaw);
     const gstMatches=[...joined.matchAll(/GSTIN\s*[:.\-]?\s*([0-9A-Z]{15})/gi)].map(m=>m[1]);
     const gst=gstMatches.find(x=>x!=='05ABWFS5610D1Z4')||gstMatches[0]||'';
     const supplier='HINDUSTAN PETROLEUM CORP. LTD.';
     const items=[];
-    const rowRe=/^(\d{1,3})\s+(.+?)\s+(\d{6})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i;
+    const rowRe=/^(\d{1,3})\s+(.+?)\s+(\d{4,10})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i;
     const parseTail=tail=>{
       const nums=tail.trim().split(/\s+/).filter(Boolean).map(hpclNum2);
       if(nums.length>=8) return {totalValue:nums[0],discount:nums[1],taxableValue:nums[2],igstRate:0,igstAmount:nums[4]+nums[6],netAmount:nums[7]};
@@ -4814,8 +4814,44 @@ export function LubricantManagement({ data, update }) {
       items.push({lineNo,description,hsn,billedQty,unit,packSize:pack?pack[1]+' × '+pack[2]+' L':'',inventoryQty,...parsed});
     };
     for(const line of lines){ const m=line.match(rowRe); if(m) addRow(m); }
+
+    // HPCL invoices often wrap the product description and Qty/Vol across
+    // separate PDF text lines. Rebuild those fields from the item block so
+    // 8-digit HSNs (for example 31021000) and EA-pack products are imported
+    // with the real product name and inventory quantity.
+    items.forEach(item=>{
+      const hsnToken=String(item.hsn||'');
+      const rowIndex=lines.findIndex(line=>new RegExp('^\\s*'+String(item.lineNo)+'\\s+').test(line) && line.includes(hsnToken));
+      if(rowIndex<0) return;
+      const block=[];
+      for(let j=rowIndex;j<lines.length;j++){
+        const s=lines[j];
+        if(j>rowIndex && /^\\s*\\d{1,3}\\s+/.test(s) && /\\b\\d{4,10}\\b/.test(s)) break;
+        if(j>rowIndex && /^(Total:|Net Amount|Declarations|PAN No\\.|Goods\\/Services)/i.test(s)) break;
+        block.push(s);
+      }
+      const qtyMatch=block.join(' ').match(/Qty\\s*\\/\\s*Vol\\s+([\\d,]+(?:\\.\\d+)?)\\s*L/i);
+      if(qtyMatch) item.inventoryQty=hpclNum2(qtyMatch[1]);
+
+      const isMetaDescription=/^Locn\\s+Lot\\s+No\\.?$/i.test(String(item.description||'').trim());
+      if(isMetaDescription){
+        const desc=[];
+        for(let j=rowIndex-1;j>=0;j--){
+          const s=String(lines[j]||'').trim();
+          if(!s) continue;
+          if(/^\\s*\\d{1,3}\\s+/.test(s) && /\\b\\d{4,10}\\b/.test(s)) break;
+          if(/^(?:Locn\\s+Lot\\s+No\\.?|MRP[0-9A-Z-]+|Qty\\s*\\/\\s*Vol)/i.test(s)) continue;
+          if(/^(?:Taxable|SR\\s+Item|Description|HSN\\/|Total:|Net Amount|Declarations)/i.test(s)) break;
+          if(/^(?:GSTIN|Recipient|Delivery Address|Billing Doc No\\.|Invoice Number|Document Type|Date\\.)/i.test(s)) break;
+          desc.unshift(s);
+          if(desc.length>=3) break;
+        }
+        if(desc.length) item.description=desc.join(' ').replace(/\\s+/g,' ').trim();
+      }
+    });
+
     if(!items.length){
-      const m=joined.match(/\b(\d{1,3})\s+(.+?)\s+(\d{6})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+([\d,]+(?:\.\d+)?(?:\s+[\d,]+(?:\.\d+)?){5,7})/i);
+      const m=joined.match(/\b(\d{1,3})\s+(.+?)\s+(\d{4,10})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+([\d,]+(?:\.\d+)?(?:\s+[\d,]+(?:\.\d+)?){5,7})/i);
       if(m) addRow(m);
     }
     const totalInventoryQty=items.reduce((a,x)=>a+n(x.inventoryQty),0);
