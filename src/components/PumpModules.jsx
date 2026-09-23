@@ -4367,6 +4367,13 @@ export function LubricantManagement({ data, update }) {
   const qtyMissingSales=sales.filter(x=>n(x.qty)<=0 && n(x.amount)>0).length;
   const reconciliationStatus=closingQty>=0 && qtyMissingSales===0 ? "OK" : (qtyMissingSales>0 ? "QTY PENDING" : "CHECK");
 
+  // Register हमेशा transaction/bill date से चलेगा। uploadedAt केवल attachment metadata है;
+  // उसे कभी accounting/stock transaction date की तरह display या filter नहीं किया जाता।
+  const lubricantBillDate = p => {
+    const d=String(p?.date||"").trim();
+    return isValidISODate(d) ? d : "—";
+  };
+
   const saveOpening=()=>{
     const q=n(openingQty), v=n(openingValue);
     if(q<0||v<0) return setMsg("Opening Stock quantity/value negative नहीं हो सकता।");
@@ -4769,6 +4776,17 @@ export function LubricantManagement({ data, update }) {
       <section className="panel"><h3>Current Reconciliation</h3><div className="cards" style={{gridTemplateColumns:'repeat(2,1fr)'}}><div className="card"><span>Opening</span><strong>{openingQ.toFixed(2)} L</strong><small>{money(openingV)}</small></div><div className="card"><span>Purchase</span><strong>{purchaseQ.toFixed(2)} L</strong><small>{money(purchaseV)}</small></div><div className="card"><span>Sale</span><strong>{saleQ.toFixed(2)} L</strong><small>{money(saleV)}</small></div><div className="card"><span>Closing Book Stock</span><strong>{closingQty.toFixed(2)} L</strong><small>Avg Cost {money(avgCost)}/L</small></div></div><div className={reconciliationStatus==='OK'?'success':'warning'} style={{marginTop:12}}><b>Status: {reconciliationStatus}</b>{qtyMissingSales>0&&<div>{qtyMissingSales} lubricant sale(s) में Qty नहीं है; amount accounting में है लेकिन physical stock reconciliation के लिए Qty बाद में भरनी होगी।</div>}</div></section></div>
     </section>
     <section className="panel" style={{marginTop:18}}>
+      <h3>📊 Lubricant Stock — कहाँ दिखेगा</h3>
+      <p style={{marginTop:0,color:"#64748b"}}>इसी Lubricant screen पर stock दिखेगा। Closing Book Stock = Opening + Purchase − Credit Sale − Cash Sale.</p>
+      <div className="table" style={{overflowX:"auto"}}><table><thead><tr><th>Stock Head</th><th>Qty (L)</th><th>Value</th></tr></thead><tbody>
+        <tr><td>Opening Stock</td><td>{openingQ.toFixed(2)}</td><td>{money(openingV)}</td></tr>
+        <tr><td>Lubricant Purchase / Received</td><td>{purchaseQ.toFixed(2)}</td><td>{money(purchaseV)}</td></tr>
+        <tr><td>Credit Sale</td><td>{sales.reduce((a,x)=>a+n(x.qty),0).toFixed(2)}</td><td>{money(sales.reduce((a,x)=>a+n(x.amount),0))}</td></tr>
+        <tr><td>Cash Sale</td><td>{cashSales.reduce((a,x)=>a+n(x.qty),0).toFixed(2)}</td><td>{money(cashSales.reduce((a,x)=>a+n(x.amount),0))}</td></tr>
+        <tr className="total-row"><td><b>Closing Book Stock</b></td><td><b>{closingQty.toFixed(2)} L</b></td><td><b>{money(closingValue)}</b></td></tr>
+      </tbody></table></div>
+    </section>
+    <section className="panel" style={{marginTop:18}}>
       <h3>📄 HPCL Lubricant Purchase Bill — Full Auto Reading</h3>
       <p style={{marginTop:0,color:'#6b7280'}}>पूरा HPCL invoice upload करें। एक invoice की सभी item lines, EA quantity, pack size, litre conversion, HSN, taxable value, IGST और net amount पढ़े जाएंगे।</p>
       <label className="btn" style={{display:'inline-block'}}>📤 Upload HPCL Lubricant Bill
@@ -4813,7 +4831,7 @@ export function LubricantManagement({ data, update }) {
 
     {editingSaleId!==null&&<section className="panel" style={{marginTop:18,border:'2px solid #f59e0b'}}><h3>✏️ Edit Lubricant Sale</h3><div className="form"><Field label="Date"><input type="date" min={START_DATE} max={today} value={editingSale.date} onChange={e=>setEditingSale({...editingSale,date:e.target.value})}/></Field><Field label="Parchi No."><input value={editingSale.parchiNo} onChange={e=>setEditingSale({...editingSale,parchiNo:e.target.value})}/></Field><Field label="Party"><select value={editingSale.party} onChange={e=>setEditingSale({...editingSale,party:e.target.value})}><option value="">Select</option>{(data.parties||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select></Field><Field label="Vehicle"><input value={editingSale.vehicle} onChange={e=>setEditingSale({...editingSale,vehicle:e.target.value.toUpperCase()})}/></Field><Field label="Product / Brand"><input value={editingSale.productName} onChange={e=>setEditingSale({...editingSale,productName:e.target.value})}/></Field><Field label="Qty (Optional)"><input type="number" min="0" step="0.01" value={editingSale.qty} onChange={e=>setEditingSale({...editingSale,qty:e.target.value})}/></Field><Field label="Amount"><input type="number" min="0" step="0.01" value={editingSale.amount} onChange={e=>setEditingSale({...editingSale,amount:e.target.value})}/></Field></div><div className="actions"><button type="button" className="btn" onClick={saveEditedSale}>💾 Update Lubricant Sale</button><button type="button" className="btn gray" onClick={resetSaleForm}>Cancel Edit</button></div></section>}
     <section className="panel" style={{marginTop:18}}><h3>💳 Lubricant Credit Sale Register — Mobile Oil (HPCL)</h3><Table headers={['Date','Parchi No.','Party','Vehicle','Product','Qty','Amount']} rows={sales.map(c=>[c.date,c.parchiNo,c.party,c.vehicle,c.productName||'Mobile Oil (HPCL)',n(c.qty)>0?`${n(c.qty).toFixed(2)} L`:'Qty pending',money(c.amount)])} rowIds={sales.map(c=>c.id||`${c.date}|${c.parchiNo}`)} onEdit={id=>editSale(sales.find(c=>c.id===id))} onPrintBill={id=>bill(sales.find(c=>c.id===id))} showPrintBill={id=>!!sales.find(c=>c.id===id)} onDelete={id=>deleteSale(sales.find(c=>c.id===id))} />{sales.length===0&&<div className="warning" style={{marginTop:10}}>अभी कोई Lubricant Credit Sale नहीं मिली। Credit Sale में Lubricant / Mobile Oil चुनकर entry save करें।</div>}</section>
-    <section className="panel" style={{marginTop:18}}><h3>📦 Lubricant Purchase Register</h3><Table headers={['Date','Invoice No.','Supplier','Items','Qty','Assessable','Tax','Total','Bill']} rows={purchases.map(p=>[p.date,p.invoiceNo,p.supplier||'Hindustan Petroleum Corp. Ltd.',Array.isArray(p.items)?p.items.length:1,`${n(p.quantity).toFixed(2)} L`,money(p.basicAmount),money(p.taxAmount),money(purchaseLandedValue(p)),p.billFileData?<button type="button" className="btn small" onClick={()=>openPurchaseBill(p.billFileData)}>📎 View Bill</button>:'—'])} rowIds={purchases.map(p=>p.id||`${p.date}|${p.invoiceNo}`)} onEdit={(id)=>editPurchase(purchases.find(p=>p.id===id))} onDelete={(id)=>deletePurchase(purchases.find(p=>p.id===id))} /></section>
+    <section className="panel" style={{marginTop:18}}><h3>📦 Lubricant Purchase Register</h3><p style={{marginTop:0,color:"#64748b"}}>यहाँ <b>Bill Date</b> ही transaction date है। Bill upload होने की तारीख/समय (uploadedAt) इस register में कभी नहीं दिखेगा।</p><Table headers={["Bill Date","Invoice No.","Supplier","Items","Qty","Assessable","Tax","Total","Bill"]} rows={purchases.map(p=>[lubricantBillDate(p),p.invoiceNo,p.supplier||"Hindustan Petroleum Corp. Ltd.",Array.isArray(p.items)?p.items.length:1,`${n(p.quantity).toFixed(2)} L`,money(p.basicAmount),money(p.taxAmount),money(purchaseLandedValue(p)),p.billFileData?<button type="button" className="btn small" onClick={()=>openPurchaseBill(p.billFileData)}>📎 View Bill</button>:"—"])} rowIds={purchases.map(p=>p.id||`${p.date}|${p.invoiceNo}`)} onEdit={(id)=>editPurchase(purchases.find(p=>p.id===id))} onDelete={(id)=>deletePurchase(purchases.find(p=>p.id===id))} /></section>
   </div>;
 }
 
