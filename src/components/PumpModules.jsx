@@ -4838,7 +4838,8 @@ export function LubricantManagement({ data, update }) {
       // Prefer Qty/Vol for inventory litres; use pack conversion only as fallback.
       const main=blockText.match(/^(?:\d{1,3}\s+)?(.+?)\s+(\d{6})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
       if(main){
-        const [,rawDesc,hsn,bqty,uom,tail]=main;\n        const parsedTail=parseRowTail(tail); if(!parsedTail) continue;\n        const totalValue=parsedTail.totalValue, disc=parsedTail.discount, taxable=parsedTail.taxable, igstRate=parsedTail.igstRate, igstAmount=parsedTail.igstAmount, netAmount=parsedTail.netAmount;
+        const [,rawDesc,hsn,bqty,uom,tail]=main;
+        const parsedTail=parseRowTail(tail); if(!parsedTail) continue;\n        const totalValue=parsedTail.totalValue, disc=parsedTail.discount, taxable=parsedTail.taxable, igstRate=parsedTail.igstRate, igstAmount=parsedTail.igstAmount, netAmount=parsedTail.netAmount;
         const desc=rawDesc.replace(/\s+Locn\s+Lot\s+No\.\s*\d*.*$/i,'').replace(/\s+MRP\w*\d*\b.*$/i,'').trim();
         const qtyVol=blockText.match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
         const pack=desc.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
