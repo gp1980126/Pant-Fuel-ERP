@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "../cloud_sync_supabase";
 import {
   START_DATE,
+  FINANCIAL_YEARS,
+  DEFAULT_FINANCIAL_YEAR,
+  financialYearBounds,
   PUMP_NAME,
   KEY,
   CLOUD_STATION_ID,
@@ -4094,14 +4097,17 @@ th{background:#eee}
    STANDARD ACCOUNTING
 ========================================================= */
 export function Accounts({data}){
-  const [from,setFrom]=useState(START_DATE); const [to,setTo]=useState('2026-08-31');
+  const [selectedFY,setSelectedFY]=useState(DEFAULT_FINANCIAL_YEAR);
+  const fy=financialYearBounds(selectedFY);
+  const [from,setFrom]=useState(fy.start); const [to,setTo]=useState(todayISODate()<fy.end?todayISODate():fy.end);
+  useEffect(()=>{setFrom(fy.start);setTo(todayISODate()<fy.end?todayISODate():fy.end);},[selectedFY]);
   const [tab,setTab]=useState('trial');
   const snap=useMemo(()=>accountingSnapshot(data,from,to),[data,from,to]);
   const tb=useMemo(()=>trialBalance(data,from,to),[data,from,to]);
   const journal=useMemo(()=>standardJournal(data,from,to).slice().reverse(),[data,from,to]);
   const totalD=tb.reduce((s,x)=>s+x.debit,0), totalC=tb.reduce((s,x)=>s+x.credit,0);
   const exportCsv=()=>{ const rows=tab==='trial'?[['Account','Debit','Credit','Balance'],...tb.map(x=>[x.account,x.debit,x.credit,x.balance])]:[['Date','Account','Debit','Credit','Narration'],...journal.map(x=>[x.date,x.account,x.debit,x.credit,x.narration])]; const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n'); const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`PumpPro_${tab}_${from}_to_${to}.csv`; a.click(); URL.revokeObjectURL(url); };
-  return <div className="content"><section className="panel"><div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',alignItems:'end'}}><div><h2>📚 Accounts</h2><p style={{margin:0,color:'#64748b'}}>Standard double-entry accounting view. Historical operational data is preserved; no special-case collection rule is used. CNG/MS/HSD Sales in Accounts are taken from the same sales register as the Sale Report; for a like-for-like comparison use the same date range.</p></div><button className="btn" onClick={exportCsv}>⬇ Export CSV</button></div><div className="form" style={{marginTop:16}}><label>From Date<input type="date" min={START_DATE} value={from} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'From Date')) setFrom(v);}}/></label><label>To Date<input type="date" min={START_DATE} value={to} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'To Date')) setTo(v);}}/></label></div></section>
+  return <div className="content"><section className="panel"><div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',alignItems:'end'}}><div><h2>📚 Accounts</h2><p style={{margin:0,color:'#64748b'}}>Standard double-entry accounting view. Historical operational data is preserved; no special-case collection rule is used. CNG/MS/HSD Sales in Accounts are taken from the same sales register as the Sale Report; for a like-for-like comparison use the same date range.</p></div><button className="btn" onClick={exportCsv}>⬇ Export CSV</button></div><div className="form" style={{marginTop:16}}><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label><label>From Date<input type="date" min={START_DATE} value={from} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'From Date')) setFrom(v);}}/></label><label>To Date<input type="date" min={START_DATE} value={to} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'To Date')) setTo(v);}}/></label></div></section>
   <div className="cards" style={{marginTop:16}}><div className="card"><span>Total Sales</span><strong>{money(snap.totalSales)}</strong></div><div className="card"><span>Fuel Receipts</span><strong>{money(snap.fuelReceipt)}</strong></div><div className="card"><span>Trade Receivables</span><strong>{money(snap.receivable)}</strong></div><div className="card"><span>Purchase Value</span><strong>{money(snap.purchaseTotal)}</strong></div></div>
   <div className="tabs" style={{display:'flex',gap:8,margin:'16px 0'}}><button className="btn" onClick={()=>setTab('trial')}>Trial Balance</button><button className="btn gray" onClick={()=>setTab('journal')}>Journal</button></div>
   {tab==='trial'?<section className="panel"><h3>Trial Balance</h3><div className="table"><table><thead><tr><th>Account</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>{tb.map(x=><tr key={x.account}><td>{x.account}</td><td>{money(x.debit)}</td><td>{money(x.credit)}</td><td>{money(x.balance)}</td></tr>)}<tr className="total-row"><td>TOTAL</td><td>{money(totalD)}</td><td>{money(totalC)}</td><td>{money(totalD-totalC)}</td></tr></tbody></table></div><div className={`collection-note ${Math.abs(totalD-totalC)<1?'green-note':'red-note'}`}><b>{Math.abs(totalD-totalC)<1?'Balanced':'Check'}</b> — Debits and credits are {Math.abs(totalD-totalC)<1?'equal':'not equal'} for the selected period.</div></section>:<section className="panel"><h3>Journal</h3><div className="table"><table><thead><tr><th>Date</th><th>Account</th><th>Debit</th><th>Credit</th><th>Narration</th></tr></thead><tbody>{journal.map((x,i)=><tr key={i}><td>{x.date}</td><td>{x.account}</td><td>{money(x.debit)}</td><td>{money(x.credit)}</td><td>{x.narration}</td></tr>)}</tbody></table></div></section>}
@@ -4324,6 +4330,8 @@ export function Reports({ data, totals }) {
    already stored with fuel=LUBRICANT are the authoritative lubricant sales.
 ========================================================= */
 export function LubricantManagement({ data, update }) {
+  const [selectedFY,setSelectedFY]=useState(DEFAULT_FINANCIAL_YEAR);
+  const fy=financialYearBounds(selectedFY);
   const today = todayDate();
   const opening = data?.openingStock || {};
   const [openingQty, setOpeningQty] = useState(opening.LUBRICANT_QTY ?? "");
@@ -4337,14 +4345,14 @@ export function LubricantManagement({ data, update }) {
   },[data?.openingStock?.LUBRICANT_QTY, data?.openingStock?.LUBRICANT_VALUE]);
 
   const sales = useMemo(()=>ledgerCreditRows(Array.isArray(data?.credits)?data.credits:[])
-    .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT")
-    .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.credits]);
+    .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT" && x.date>=fy.start && x.date<=fy.end)
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.credits,selectedFY]);
   const purchases = useMemo(()=> (Array.isArray(data?.purchases)?data.purchases:[])
-    .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT")
-    .sort((a,b)=>String(b.date).localeCompare(String(a.date))),[data?.purchases]);
+    .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT" && x.date>=fy.start && x.date<=fy.end)
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date))),[data?.purchases,selectedFY]);
   const cashSales = useMemo(()=> (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[])
-    .filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH")
-    .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.lubricantCashSales]);
+    .filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH" && x.date>=fy.start && x.date<=fy.end)
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.lubricantCashSales,selectedFY]);
 
   const openingQ=n(opening.LUBRICANT_QTY), openingV=n(opening.LUBRICANT_VALUE);
   const purchaseQ=purchases.reduce((a,x)=>a+n(x.quantity),0);
@@ -4724,7 +4732,7 @@ export function LubricantManagement({ data, update }) {
     w.document.write(html);w.document.close();
   };
 
-  return <div className="content">
+  return <div className="content"><section className="panel" style={{marginBottom:12}}><div className="form"><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label></div><div style={{marginTop:6,color:"#64748b"}}>Selected: {fy.start} to {fy.end}</div></section>
     <section className="panel"><h2>🛢️ Lubricant / Mobile Oil — Inventory & Reconciliation</h2><p style={{marginTop:0,color:'#6b7280'}}>Mobile Oil (HPCL) को MS / HSD / CNG से अलग रखा गया है। Opening Stock अभी 0/blank रह सकता है और बाद में भरा जा सकता है।</p>
       <div className="grid"><section className="panel"><h3>Opening Stock — Optional</h3><div className="form"><Field label="Opening Qty"><input type="number" min="0" step="0.01" value={openingQty} onChange={e=>setOpeningQty(e.target.value)} placeholder="बाद में भरें" /></Field><Field label="Opening Value"><input type="number" min="0" step="0.01" value={openingValue} onChange={e=>setOpeningValue(e.target.value)} placeholder="बाद में भरें" /></Field></div><button className="btn" onClick={saveOpening}>💾 Save Lubricant Opening</button></section>
       <section className="panel"><h3>Current Reconciliation</h3><div className="cards" style={{gridTemplateColumns:'repeat(2,1fr)'}}><div className="card"><span>Opening</span><strong>{openingQ.toFixed(2)} L</strong><small>{money(openingV)}</small></div><div className="card"><span>Purchase</span><strong>{purchaseQ.toFixed(2)} L</strong><small>{money(purchaseV)}</small></div><div className="card"><span>Sale</span><strong>{saleQ.toFixed(2)} L</strong><small>{money(saleV)}</small></div><div className="card"><span>Closing Book Stock</span><strong>{closingQty.toFixed(2)} L</strong><small>Avg Cost {money(avgCost)}/L</small></div></div><div className={reconciliationStatus==='OK'?'success':'warning'} style={{marginTop:12}}><b>Status: {reconciliationStatus}</b>{qtyMissingSales>0&&<div>{qtyMissingSales} lubricant sale(s) में Qty नहीं है; amount accounting में है लेकिन physical stock reconciliation के लिए Qty बाद में भरनी होगी।</div>}</div></section></div>
@@ -4900,7 +4908,10 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
 
 export function Purchase({data,update}){
   const [preview,setPreview]=useState([]), [msg,setMsg]=useState(''), [busy,setBusy]=useState(false);
-  const [from,setFrom]=useState(START_DATE), [to,setTo]=useState(todayDate());
+  const [selectedFY,setSelectedFY]=useState(DEFAULT_FINANCIAL_YEAR);
+  const fy=financialYearBounds(selectedFY);
+  const [from,setFrom]=useState(fy.start), [to,setTo]=useState(todayDate()<fy.end?todayDate():fy.end);
+  useEffect(()=>{setFrom(fy.start);setTo(todayDate()<fy.end?todayDate():fy.end);},[selectedFY]);
   const existing=Array.isArray(data.purchases)?data.purchases:[];
   const importPdf=async e=>{
     const file=e.target.files?.[0]; if(!file)return;
@@ -5039,8 +5050,11 @@ export function Purchase({data,update}){
 }
 
 export function SalePurchaseProfitLoss({ data }) {
-  const [from,setFrom]=useState('2026-08-01');
-  const [to,setTo]=useState('2026-08-31');
+  const [selectedFY,setSelectedFY]=useState(DEFAULT_FINANCIAL_YEAR);
+  const fy=financialYearBounds(selectedFY);
+  const [from,setFrom]=useState(fy.start);
+  const [to,setTo]=useState(todayISODate()<fy.end?todayISODate():fy.end);
+  useEffect(()=>{setFrom(fy.start);setTo(todayISODate()<fy.end?todayISODate():fy.end);},[selectedFY]);
   const sales=authoritativeSalesRows(data);
   const purchases=Array.isArray(data?.purchases)?data.purchases:[];
   const dailyPayments=Array.isArray(data?.dailyPayments)?data.dailyPayments:[];
@@ -5233,7 +5247,7 @@ export function SalePurchaseProfitLoss({ data }) {
     <section className="panel">
       <h2>📊 Sale ↔ Purchase P&L</h2>
       <p style={{marginTop:0,color:'#6b7280'}}>MS/HSD/Lubricant stock-based P&L और CNG bill-after-sale matched COGS. CNG में Physical Opening/Closing Stock नहीं है। CNG purchase bill बाद में बनने पर भी earlier sale से FIFO basis पर match होगा। DSR Difference P&L में शामिल नहीं है। CNG Sale Amount पर configured State Tax अलग से घटाया जाता है।</p>
-      <div className="form"><label>From Date<input type="date" min={START_DATE} value={from} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'From Date')) setFrom(v);}}/></label><label>To Date<input type="date" min={START_DATE} value={to} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'To Date')) setTo(v);}}/></label></div>
+      <div className="form"><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label><label>From Date<input type="date" min={START_DATE} value={from} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'From Date')) setFrom(v);}}/></label><label>To Date<input type="date" min={START_DATE} value={to} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'To Date')) setTo(v);}}/></label></div>
       <div style={{display:'flex',gap:10,marginTop:14}}><button className="btn" onClick={exportExcel}>📊 Excel</button><button className="btn" onClick={printReport}>🖨️ Print / PDF</button></div>
     </section>
     <section className="panel" style={{marginTop:18,border:'2px solid #2563eb',background:'#f8fbff'}}>
@@ -5964,7 +5978,7 @@ export function DataQualityBadge({ data }) {
   const sales = Array.isArray(data?.sales) ? data.sales : [];
   const payments = Array.isArray(data?.dailyPayments) ? data.dailyPayments : [];
   const dips = Array.isArray(data?.dipReadings) ? data.dipReadings : [];
-  const start = '2026-08-01';
+  const start = START_DATE;
   const end = '2026-08-31';
   const issues = [];
   const d = new Date(`${start}T12:00:00`);
