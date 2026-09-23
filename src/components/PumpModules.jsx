@@ -4512,7 +4512,7 @@ export function LubricantManagement({ data, update }) {
     setMsg("");
     if(!purchase.invoiceNo.trim()) return setMsg("Purchase Invoice No जरूरी है।");
     if(!purchase.productName.trim()) return setMsg("Product Name जरूरी है।");
-    if(!purchase.date || purchase.date<START_DATE || purchase.date>today) return setMsg("Purchase Date 01-08-2026 से आज तक होनी चाहिए।");
+    if(!purchase.date || purchase.date<START_DATE || purchase.date>today) return setMsg("Purchase Date selected Financial Year में होनी चाहिए।");
     if(n(purchase.quantity)<=0 || n(purchase.totalAmount)<=0) return setMsg("Quantity और Total Amount दोनों भरें।");
     const key=`LUBRICANT|${purchase.date}|${purchase.invoiceNo.trim().toUpperCase()}`;
     const dup=purchases.some(x=>x.id!==editingPurchaseId && `LUBRICANT|${x.date}|${String(x.invoiceNo||"").trim().toUpperCase()}`===key);
@@ -5252,7 +5252,7 @@ export function SalePurchaseProfitLoss({ data }) {
     </section>
     <section className="panel" style={{marginTop:18,border:'2px solid #2563eb',background:'#f8fbff'}}>
       <h3 style={{marginTop:0}}>📌 FINAL P&L — Salary + Electricity Adjustment</h3>
-      <p style={{margin:'4px 0 12px',fontSize:12,color:'#475569'}}>Default period: <b>01-08-2026 से 31-08-2026</b>. Purchase Value हमेशा <b>Assessable Value + Tax Amount</b> होगी। Salary और Electricity Expense सीधे Final Net Profit से घटते हैं। DSR Difference का P&L profit पर कोई असर नहीं है।</p>
+      <p style={{margin:'4px 0 12px',fontSize:12,color:'#475569'}}>Default period: <b>{fy.start} से 31-08-2026</b>. Purchase Value हमेशा <b>Assessable Value + Tax Amount</b> होगी। Salary और Electricity Expense सीधे Final Net Profit से घटते हैं। DSR Difference का P&L profit पर कोई असर नहीं है।</p>
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12,marginTop:12}}>
         <div className="mini"><span>MS + HSD ACTUAL PURCHASE</span><strong>{money(actualMSHSDPurchaseTotal)}</strong><small>Actual HPCL invoice Total Amount for selected period</small></div>
         <div className="mini"><span>SALARY EXPENSE</span><strong>{money(salaryExpenseForPeriod)}</strong><small>Selected period staff salary</small></div>
