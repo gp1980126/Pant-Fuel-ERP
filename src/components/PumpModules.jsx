@@ -4444,7 +4444,7 @@ export function LubricantManagement({ data, update }) {
 
   const saveEditedSale=async()=>{
     if(editingSaleId===null) return;
-    const row=(data.credits||[]).find(x=>x.id===editingSaleId);
+    const row=(data.credits||[]).find(x=>String(x.id)===String(editingSaleId));
     if(!row) return setMsg("❌ Lubricant Sale edit record नहीं मिला।");
     const parchi=String(editingSale.parchiNo||"").trim();
     if(!parchi || !editingSale.party) return setMsg("Parchi No और Party जरूरी हैं।");
@@ -4452,11 +4452,11 @@ export function LubricantManagement({ data, update }) {
     if(!String(editingSale.productName||"").trim()) return setMsg("Product Name जरूरी है।");
     const amount=rupee(n(editingSale.amount));
     if(amount<=0) return setMsg("Amount ₹0 से अधिक होना चाहिए।");
-    const duplicate=(data.credits||[]).some(c=>c.id!==editingSaleId && String(c?.parchiNo||"").trim().toLowerCase()===parchi.toLowerCase());
+    const duplicate=(data.credits||[]).some(c=>String(c.id)!==String(editingSaleId) && String(c?.parchiNo||"").trim().toLowerCase()===parchi.toLowerCase());
     if(duplicate) return setMsg(`Parchi No. ${parchi} पहले से मौजूद है।`);
     const qty=n(editingSale.qty);
     const nextRow={...row,date:editingSale.date,parchiNo:parchi,party:String(editingSale.party).trim(),vehicle:String(editingSale.vehicle||"").toUpperCase(),fuel:"LUBRICANT",productName:String(editingSale.productName).trim(),qty,rate:qty>0?rupee(amount/qty):0,amount};
-    const result=await update({credits:(data.credits||[]).map(c=>c.id===editingSaleId?nextRow:c)});
+    const result=await update({credits:(data.credits||[]).map(c=>String(c.id)===String(editingSaleId)?nextRow:c)});
     if(!result?.ok) return setMsg(`❌ Lubricant Sale update नहीं हुआ: ${result?.reason||"Mutation rejected"}`);
     resetSaleForm();
     setMsg(`✅ Lubricant Sale updated: Parchi ${parchi} · ${money(amount)}`);
@@ -4465,7 +4465,7 @@ export function LubricantManagement({ data, update }) {
   const deleteSale=(row)=>{
     if(!row) return;
     if(!window.confirm(`Lubricant Sale Parchi ${row.parchiNo||"—"} (${row.date||"—"}) delete करना है?\n\nयह action accounting mutation/lock checks के बाद ही save होगा।`)) return;
-    update({credits:(data.credits||[]).filter(c=>c.id!==row.id)}).then?.(result=>{
+    update({credits:(data.credits||[]).filter(c=>String(c.id)!==String(row.id))}).then?.(result=>{
       if(result?.ok===false) setMsg(`❌ Lubricant Sale delete नहीं हुई: ${result.reason||"Mutation rejected"}`);
       else { if(editingSaleId===row.id) resetSaleForm(); setMsg(`🗑️ Lubricant Sale Parchi ${row.parchiNo||""} delete हो गई।`); }
     });
@@ -5303,8 +5303,12 @@ export function DailySaleSummary({ data }) {
       if (c.date >= START_DATE) set.add(c.date);
     });
 
+    (data.lubricantCashSales || []).forEach(c => {
+      if (c.date >= START_DATE) set.add(c.date);
+    });
+
     return Array.from(set).sort().reverse();
-  }, [data.sales, data.dailyPayments, data.recoveries, data.credits]);
+  }, [data.sales, data.dailyPayments, data.recoveries, data.credits, data.lubricantCashSales]);
 
   const rows = NOZZLES.map(([nozzle, fuel]) => {
     const savedCandidates = (data.sales || []).filter(
@@ -5339,13 +5343,22 @@ export function DailySaleSummary({ data }) {
     };
   });
 
-  const lubricantSales = (data.credits || []).filter(c =>
+  const lubricantCreditSales = (data.credits || []).filter(c =>
     c.date === date && String(c.fuel || '').toUpperCase() === 'LUBRICANT'
   );
+  const lubricantCashSales = (data.lubricantCashSales || []).filter(c =>
+    c.date === date && String(c.paymentMode || '').toUpperCase() === 'CASH'
+  );
+  const lubricantSales = [
+    ...lubricantCreditSales.map(c => ({...c, _paymentType:'CREDIT'})),
+    ...lubricantCashSales.map(c => ({...c, _paymentType:'CASH'}))
+  ];
   const lubricantSummary = {
     qty: lubricantSales.reduce((a, c) => a + n(c.qty), 0),
     amount: lubricantSales.reduce((a, c) => a + n(c.amount), 0),
-    entries: lubricantSales.length
+    entries: lubricantSales.length,
+    creditAmount: lubricantCreditSales.reduce((a,c)=>a+n(c.amount),0),
+    cashAmount: lubricantCashSales.reduce((a,c)=>a+n(c.amount),0)
   };
 
   const fuelSummary = {
@@ -5808,7 +5821,7 @@ export function DailySaleSummary({ data }) {
         <h3>Lubricant / Mobile Oil — Daily Sale</h3>
         <div className="table">
           <table>
-            <thead><tr><th>Product</th><th>Entries</th><th>Sale Qty (Ltr)</th><th>Sale Amount</th><th>Credit / Udhari</th></tr></thead>
+            <thead><tr><th>Product</th><th>Entries</th><th>Sale Qty (Ltr)</th><th>Sale Amount</th><th>Payment</th></tr></thead>
             <tbody>
               {lubricantSales.length ? lubricantSales.map(c => (
                 <tr key={c.id || `${c.date}|${c.parchiNo}`}>
@@ -5816,14 +5829,14 @@ export function DailySaleSummary({ data }) {
                   <td>1</td>
                   <td>{n(c.qty) > 0 ? n(c.qty).toFixed(2) : 'Qty pending'}</td>
                   <td>{money(c.amount)}</td>
-                  <td>{money(c.amount)}</td>
+                  <td><b>{c._paymentType === 'CASH' ? 'CASH' : 'CREDIT / UDHARI'}</b></td>
                 </tr>
               )) : <tr><td colSpan="5">आज कोई Lubricant sale नहीं है।</td></tr>}
               <tr className="total-row">
                 <td><b>TOTAL LUBRICANT</b></td><td><b>{lubricantSummary.entries}</b></td>
                 <td><b>{lubricantSummary.qty.toFixed(2)} Ltr</b></td>
                 <td><b>{money(lubricantSummary.amount)}</b></td>
-                <td><b>{money(lubricantSummary.amount)}</b></td>
+                <td><b>CASH {money(lubricantSummary.cashAmount)} · CREDIT {money(lubricantSummary.creditAmount)}</b></td>
               </tr>
             </tbody>
           </table>
