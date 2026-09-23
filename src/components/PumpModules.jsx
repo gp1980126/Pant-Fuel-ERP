@@ -4902,31 +4902,28 @@ export function LubricantManagement({ data, update }) {
     const challanNo=String(c.parchiNo||"").trim();
     const html=`<!doctype html><html><head><meta charset="utf-8"><title>Lubricant Sale Bill ${esc(c.parchiNo)}</title><style>body{font-family:Arial;margin:18px;color:#111}.invoice{border:1px solid #111;max-width:900px;margin:auto}.head{text-align:center;border-bottom:1px solid #111;padding:12px}.head h1{margin:3px 0;font-size:25px}.meta{display:grid;grid-template-columns:1fr 1fr}.meta>div{padding:10px;border-bottom:1px solid #111}.meta>div+div{border-left:1px solid #111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #111;padding:8px}td.num{text-align:right}.bottom{display:grid;grid-template-columns:1fr 1fr}.bottom>div{padding:10px;min-height:130px}.bottom>div+div{border-left:1px solid #111}.terms{padding:10px;border-top:1px solid #111;font-size:10px}.sign{text-align:right;margin-top:28px;font-weight:bold}.bar{text-align:right;margin-bottom:10px}@media print{.bar{display:none}@page{size:A4 portrait;margin:10mm}}</style></head><body><div class="bar"><button onclick="window.print()">🖨️ Print / Save PDF</button></div><div class="invoice"><div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div><div class="meta"><div><b>M/s:</b> ${esc(c.party)}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(invoiceNo||"—")}<br><b>Challan No.:</b> ${esc(challanNo||"—")}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div><table><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount (GST Incl.)</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(c.parchiNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${money(total)}</td></tr></tbody></table><div class="bottom"><div><b>Rupees in Words:</b><br>${esc(amountInWords)}</div><div><b>Assessable / Taxable Value:</b><span style="float:right">${money(taxable)}</span><br><b>Add: CGST (9%):</b><span style="float:right">${money(cgst)}</span><br><b>Add: SGST (9%):</b><span style="float:right">${money(sgst)}</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${money(total)}</span></div></div><div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div></div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
     try {
-      const frame = document.createElement("iframe");
-      frame.setAttribute("title","Lubricant Sale Invoice");
-      frame.style.position="fixed";
-      frame.style.right="0";
-      frame.style.bottom="0";
-      frame.style.width="0";
-      frame.style.height="0";
-      frame.style.border="0";
-      frame.style.opacity="0";
-      frame.style.pointerEvents="none";
-      document.body.appendChild(frame);
-      frame.onload=()=>{
-        try {
-          frame.contentWindow.focus();
-          frame.contentWindow.print();
-        } catch(e) {
-          console.error("Lubricant invoice print error:", e);
-        }
-        setTimeout(()=>frame.remove(), 1500);
-      };
+      // Show the invoice in a visible full-screen overlay. The invoice itself
+      // has a Print / Save PDF button, so printing remains a real user action
+      // and Chrome/Edge will not block it as a hidden iframe print.
+      const overlay=document.createElement("div");
+      overlay.id="stationmitra-lubricant-bill-overlay";
+      overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999999;display:flex;flex-direction:column;padding:10px;box-sizing:border-box";
+      const close=document.createElement("button");
+      close.type="button";
+      close.textContent="✕ Close Bill";
+      close.style.cssText="align-self:flex-end;margin-bottom:8px;padding:10px 18px;border:0;border-radius:6px;background:#111;color:#fff;font-weight:700;cursor:pointer";
+      const frame=document.createElement("iframe");
+      frame.title="Lubricant Sale Invoice";
+      frame.style.cssText="width:100%;height:calc(100% - 48px);border:0;border-radius:6px;background:#fff";
+      close.onclick=()=>overlay.remove();
+      overlay.appendChild(close);
+      overlay.appendChild(frame);
+      document.body.appendChild(overlay);
       frame.srcdoc=html;
-    } catch (e) {
-      alert("Invoice print error: " + (e?.message || e));
-      console.error("Lubricant bill render error:", e);
-    }
+    } catch(e) {
+      alert("Invoice print error: "+(e?.message||e));
+      console.error("Lubricant bill render error:",e);
+    }}
   };
 
   return <div className="content"><section className="panel" style={{marginBottom:12}}><div className="form"><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label></div><div style={{marginTop:6,color:"#64748b"}}>Selected: {fy.start} to {fy.end}</div></section>
