@@ -2524,6 +2524,8 @@ export function CreditSale({
       return setMsg("Manual Parchi No और Party जरूरी हैं.");
     }
     if (f.fuel === "LUBRICANT") {
+      if (!f.invoiceNo.trim()) return setMsg("Lubricant Sale में Invoice No. जरूरी है.");
+      if (n(f.qty) <= 0) return setMsg("Lubricant Sale में Qty जरूरी है.");
       if (!f.productName.trim()) return setMsg("Lubricant / Product Name जरूरी है.");
       if (n(f.manualAmount) <= 0) return setMsg("Lubricant Credit Sale में Amount ₹0 से अधिक होना चाहिए.");
     } else if (n(f.qty) <= 0) {
@@ -2606,7 +2608,10 @@ export function CreditSale({
     }
     const escHtml = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[ch]));
     const total = rupee(n(c.amount));
-    const qtyMatch = String(product).match(/(\\d+(?:\\.\\d+)?)\\s*(?:ltr|litre|liter|l)\\s*x\\s*(\\d+(?:\\.\\d+)?)/i);\n    const parsedQty = qtyMatch ? n(qtyMatch[1]) * n(qtyMatch[2]) : 0;\n    const qty = n(c.qty) > 0 ? n(c.qty) : parsedQty;
+    const product = c.productName || "Mobile Oil (HPCL)";
+    const qtyMatch = String(product).match(/(\\d+(?:\\.\\d+)?)\\s*(?:ltr|litre|liter|l)\\s*x\\s*(\\d+(?:\\.\\d+)?)/i);
+    const parsedQty = qtyMatch ? n(qtyMatch[1]) * n(qtyMatch[2]) : 0;
+    const qty = n(c.qty) > 0 ? n(c.qty) : parsedQty;
     const gstRate = n(c.gstRate) > 0 ? n(c.gstRate) : 18;
     // Always treat the saved amount as the final/gross invoice value.
     const taxable = rupee(total * 100 / (100 + gstRate));
