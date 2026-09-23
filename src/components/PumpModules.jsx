@@ -4902,18 +4902,19 @@ export function LubricantManagement({ data, update }) {
     }
   };
 
-  const bill= c => {
+  const bill = c => {
+    if (!c || String(c.fuel || "").toUpperCase() !== "LUBRICANT") {
+      alert("यह Sale Bill केवल Lubricant / Mobile Oil के लिए है।");
+      return;
+    }
     const esc=v=>String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
-    // Render the invoice inside a same-page iframe. This avoids Chrome/Edge
-    // blank about:blank/blob/data tabs and keeps printing under the current origin.
     const gstRate=n(c.gstRate)>0?n(c.gstRate):18;
-    // Saved lubricant amount is the FINAL/GROSS invoice total.
-    const total=rupee(c.amount), qty=n(c.qty);
+    const total=rupee(c.amount);
+    const qty=n(c.qty);
     const taxable=rupee(total*100/(100+gstRate));
     const tax=rupee(total-taxable);
     const cgst=rupee(Math.floor((tax/2)*100)/100);
     const sgst=rupee(tax-cgst);
-    // Rate is GST-inclusive: 20 L × ₹300 = ₹6,000.
     const rate=qty>0?rupee(total/qty):0;
     const amountInWords=(()=>{
       const ones=["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
@@ -4921,36 +4922,59 @@ export function LubricantManagement({ data, update }) {
       const two=x=>x<20?ones[x]:tens[Math.floor(x/10)]+(x%10?" "+ones[x%10]:"");
       const u=x=>{const h=Math.floor(x/100),r=x%100;return (h?ones[h]+" Hundred":"")+(h&&r?" ":"")+(r?two(r):"");};
       let x=Math.round(total); if(!x)return "Zero Rupees Only";
-      const p=[],cr=Math.floor(x/10000000);x%=10000000,la=Math.floor(x/100000);x%=100000,th=Math.floor(x/1000);x%=1000;
+      const p=[],cr=Math.floor(x/10000000);x%=10000000;const la=Math.floor(x/100000);x%=100000;const th=Math.floor(x/1000);x%=1000;
       if(cr)p.push(u(cr)+" Crore"); if(la)p.push(u(la)+" Lakh"); if(th)p.push(u(th)+" Thousand"); if(x)p.push(u(x));
       return p.join(" ")+" Rupees Only";
     })();
     const invoiceNo=String(c.invoiceNo||"").trim();
     const challanNo=String(c.parchiNo||"").trim();
-    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Lubricant Sale Bill ${esc(c.parchiNo)}</title><style>body{font-family:Arial;margin:18px;color:#111}.invoice{border:1px solid #111;max-width:900px;margin:auto}.head{text-align:center;border-bottom:1px solid #111;padding:12px}.head h1{margin:3px 0;font-size:25px}.meta{display:grid;grid-template-columns:1fr 1fr}.meta>div{padding:10px;border-bottom:1px solid #111}.meta>div+div{border-left:1px solid #111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #111;padding:8px}td.num{text-align:right}.bottom{display:grid;grid-template-columns:1fr 1fr}.bottom>div{padding:10px;min-height:130px}.bottom>div+div{border-left:1px solid #111}.terms{padding:10px;border-top:1px solid #111;font-size:10px}.sign{text-align:right;margin-top:28px;font-weight:bold}.bar{text-align:right;margin-bottom:10px}@media print{.bar{display:none}@page{size:A4 portrait;margin:10mm}}</style></head><body><div class="bar"><button onclick="window.print()">🖨️ Print / Save PDF</button></div><div class="invoice"><div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div><div class="meta"><div><b>M/s:</b> ${esc(c.party)}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(invoiceNo||"—")}<br><b>Challan No.:</b> ${esc(challanNo||"—")}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div><table><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount (GST Incl.)</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(c.parchiNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${money(total)}</td></tr></tbody></table><div class="bottom"><div><b>Rupees in Words:</b><br>${esc(amountInWords)}</div><div><b>Assessable / Taxable Value:</b><span style="float:right">${money(taxable)}</span><br><b>Add: CGST (9%):</b><span style="float:right">${money(cgst)}</span><br><b>Add: SGST (9%):</b><span style="float:right">${money(sgst)}</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${money(total)}</span></div></div><div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div></div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
-    try {
-      // Show the invoice in a visible full-screen overlay. The invoice itself
-      // has a Print / Save PDF button, so printing remains a real user action
-      // and Chrome/Edge will not block it as a hidden iframe print.
-      const overlay=document.createElement("div");
-      overlay.id="stationmitra-lubricant-bill-overlay";
-      overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999999;display:flex;flex-direction:column;padding:10px;box-sizing:border-box";
-      const close=document.createElement("button");
-      close.type="button";
-      close.textContent="✕ Close Bill";
-      close.style.cssText="align-self:flex-end;margin-bottom:8px;padding:10px 18px;border:0;border-radius:6px;background:#111;color:#fff;font-weight:700;cursor:pointer";
-      const frame=document.createElement("iframe");
-      frame.title="Lubricant Sale Invoice";
-      frame.style.cssText="width:100%;height:calc(100% - 48px);border:0;border-radius:6px;background:#fff";
-      close.onclick=()=>overlay.remove();
-      overlay.appendChild(close);
-      overlay.appendChild(frame);
-      document.body.appendChild(overlay);
-      frame.srcdoc=html;
-    } catch(e) {
-      alert("Invoice print error: "+(e?.message||e));
-      console.error("Lubricant bill render error:",e);
-    }
+    const old=document.getElementById("stationmitra-lubricant-bill-overlay");
+    if(old) old.remove();
+
+    const overlay=document.createElement("div");
+    overlay.id="stationmitra-lubricant-bill-overlay";
+    overlay.innerHTML=`
+      <style>
+        #stationmitra-lubricant-bill-overlay{position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.65);overflow:auto;padding:12px;box-sizing:border-box}
+        #stationmitra-lubricant-bill-overlay .bill-toolbar{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;gap:8px;padding:0 0 10px}
+        #stationmitra-lubricant-bill-overlay button{padding:9px 16px;border:0;border-radius:6px;background:#111;color:#fff;font-weight:700;cursor:pointer}
+        #stationmitra-lubricant-bill-overlay .bill-paper{background:#fff;color:#111;max-width:900px;margin:0 auto;padding:18px;box-sizing:border-box;font-family:Arial,sans-serif}
+        #stationmitra-lubricant-bill-overlay .head{text-align:center;border-bottom:1px solid #111;padding-bottom:12px}
+        #stationmitra-lubricant-bill-overlay .head h1{margin:4px 0;font-size:25px}
+        #stationmitra-lubricant-bill-overlay .meta{display:grid;grid-template-columns:1fr 1fr}
+        #stationmitra-lubricant-bill-overlay .meta>div{padding:10px;border-bottom:1px solid #111}
+        #stationmitra-lubricant-bill-overlay .meta>div+div{border-left:1px solid #111}
+        #stationmitra-lubricant-bill-overlay table{width:100%;border-collapse:collapse}
+        #stationmitra-lubricant-bill-overlay th,#stationmitra-lubricant-bill-overlay td{border:1px solid #111;padding:8px}
+        #stationmitra-lubricant-bill-overlay td.num{text-align:right}
+        #stationmitra-lubricant-bill-overlay .bottom{display:grid;grid-template-columns:1fr 1fr}
+        #stationmitra-lubricant-bill-overlay .bottom>div{padding:10px;min-height:130px}
+        #stationmitra-lubricant-bill-overlay .bottom>div+div{border-left:1px solid #111}
+        #stationmitra-lubricant-bill-overlay .terms{padding:10px;border-top:1px solid #111;font-size:10px}
+        #stationmitra-lubricant-bill-overlay .sign{text-align:right;margin-top:28px;font-weight:bold}
+        @media(max-width:700px){#stationmitra-lubricant-bill-overlay .meta,#stationmitra-lubricant-bill-overlay .bottom{grid-template-columns:1fr}#stationmitra-lubricant-bill-overlay .meta>div+div,#stationmitra-lubricant-bill-overlay .bottom>div+div{border-left:0}}
+        @media print{
+          body>*:not(#stationmitra-lubricant-bill-overlay){display:none!important}
+          #stationmitra-lubricant-bill-overlay{position:static!important;background:#fff!important;padding:0!important;overflow:visible!important}
+          #stationmitra-lubricant-bill-overlay .bill-toolbar{display:none!important}
+          #stationmitra-lubricant-bill-overlay .bill-paper{max-width:none!important;margin:0!important;padding:0!important}
+          @page{size:A4 portrait;margin:10mm}
+        }
+      </style>
+      <div class="bill-toolbar">
+        <button type="button" data-action="print">🖨️ Print / Save PDF</button>
+        <button type="button" data-action="close">✕ Close Bill</button>
+      </div>
+      <div class="bill-paper">
+        <div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div>
+        <div class="meta"><div><b>M/s:</b> ${esc(c.party)}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(invoiceNo||"—")}<br><b>Challan No.:</b> ${esc(challanNo||"—")}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
+        <table><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount (GST Incl.)</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(challanNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${money(total)}</td></tr></tbody></table>
+        <div class="bottom"><div><b>Rupees in Words:</b><br>${esc(amountInWords)}</div><div><b>Assessable / Taxable Value:</b><span style="float:right">${money(taxable)}</span><br><b>Add: CGST (9%):</b><span style="float:right">${money(cgst)}</span><br><b>Add: SGST (9%):</b><span style="float:right">${money(sgst)}</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${money(total)}</span></div></div>
+        <div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-action="close"]').onclick=()=>overlay.remove();
+    overlay.querySelector('[data-action="print"]').onclick=()=>window.print();
   };
 
   return <div className="content"><section className="panel" style={{marginBottom:12}}><div className="form"><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label></div><div style={{marginTop:6,color:"#64748b"}}>Selected: {fy.start} to {fy.end}</div></section>
