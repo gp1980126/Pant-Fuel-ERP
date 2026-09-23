@@ -4334,16 +4334,54 @@ export function LubricantManagement({ data, update }) {
   const fy=financialYearBounds(selectedFY);
   const today = todayDate();
   const opening = data?.openingStock || {};
+  const openingByFY = data?.openingStockByFY || {};
   const [openingQty, setOpeningQty] = useState(opening.LUBRICANT_QTY ?? "");
   const [openingValue, setOpeningValue] = useState(opening.LUBRICANT_VALUE ?? "");
   const [purchase, setPurchase] = useState({date:today, invoiceNo:"", supplier:"HINDUSTAN PETROLEUM CORP. LTD.", productName:"Mobile Oil (HPCL)", quantity:"", rate:"", taxRate:"", taxAmount:"", totalAmount:""});
   const [purchaseBillFile, setPurchaseBillFile] = useState(null);
   const [msg, setMsg] = useState("");
 
+  // FY-wise lubricant opening: if a FY opening is carried forward, it is authoritative.
+  // Otherwise the previous FY closing is calculated from the configured base opening and transactions.
+  const previousFYBounds = useMemo(()=>{
+    const y=Number(String(selectedFY).slice(0,4));
+    if(!Number.isFinite(y)) return null;
+    return {start:`${y-1}-04-01`, end:`${y}-03-31`};
+  },[selectedFY]);
+
+  const baseOpeningQ=n(data?.openingStock?.LUBRICANT_QTY);
+  const baseOpeningV=n(data?.openingStock?.LUBRICANT_VALUE);
+  const allLubPurchases=Array.isArray(data?.purchases)?data.purchases:[];
+  const allLubCredits=Array.isArray(data?.credits)?data.credits:[];
+  const allLubCash=Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[];
+
+  const calculatedPreviousClosing=useMemo(()=>{
+    if(!previousFYBounds) return {qty:baseOpeningQ,value:baseOpeningV};
+    const inPrev=x=>String(x?.date||"")>=previousFYBounds.start && String(x?.date||"")<=previousFYBounds.end;
+    const pq=allLubPurchases.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)).reduce((a,x)=>a+n(x.quantity),0);
+    const pv=allLubPurchases.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)).reduce((a,x)=>a+purchaseLandedValue(x),0);
+    const cq=allLubCredits.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)).reduce((a,x)=>a+n(x.qty),0);
+    const cashq=allLubCash.filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)).reduce((a,x)=>a+n(x.qty),0);
+    const qty=baseOpeningQ+pq-cq-cashq;
+    const totalQ=baseOpeningQ+pq;
+    const avg=totalQ>0?(baseOpeningV+pv)/totalQ:0;
+    return {qty,value:Math.max(0,qty*avg)};
+  },[previousFYBounds,baseOpeningQ,baseOpeningV,allLubPurchases,allLubCredits,allLubCash]);
+
+  const effectiveOpening=openingByFY[selectedFY] || (String(selectedFY).startsWith("2026-") ? calculatedPreviousClosing : {qty:baseOpeningQ,value:baseOpeningV});
+
   useEffect(()=>{
-    setOpeningQty(data?.openingStock?.LUBRICANT_QTY ?? "");
-    setOpeningValue(data?.openingStock?.LUBRICANT_VALUE ?? "");
-  },[data?.openingStock?.LUBRICANT_QTY, data?.openingStock?.LUBRICANT_VALUE]);
+    setOpeningQty(effectiveOpening?.qty ?? effectiveOpening?.LUBRICANT_QTY ?? "");
+    setOpeningValue(effectiveOpening?.value ?? effectiveOpening?.LUBRICANT_VALUE ?? "");
+  },[selectedFY,effectiveOpening?.qty,effectiveOpening?.value,effectiveOpening?.LUBRICANT_QTY,effectiveOpening?.LUBRICANT_VALUE]);
+
+  const carryForwardOpening=()=>{
+    const q=n(calculatedPreviousClosing.qty), v=n(calculatedPreviousClosing.value);
+    if(q<0||v<0) return setMsg("❌ Previous FY closing stock invalid है।");
+    update({openingStockByFY:{...(data?.openingStockByFY||{}),[selectedFY]:{qty:q,value:v,source:"CARRY_FORWARD",fromFY:`${Number(String(selectedFY).slice(0,4))-1}-${String(selectedFY).slice(0,4).slice(0,2)}`}}});
+    setOpeningQty(q); setOpeningValue(v);
+    setMsg(`✅ Previous FY closing stock carry-forward हो गया: ${q.toFixed(2)} L · ${money(v)}`);
+  };
 
   const sales = useMemo(()=>ledgerCreditRows(Array.isArray(data?.credits)?data.credits:[])
     .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT" && x.date>=fy.start && x.date<=fy.end)
@@ -4355,7 +4393,7 @@ export function LubricantManagement({ data, update }) {
     .filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH" && x.date>=fy.start && x.date<=fy.end)
     .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.lubricantCashSales,selectedFY]);
 
-  const openingQ=n(opening.LUBRICANT_QTY), openingV=n(opening.LUBRICANT_VALUE);
+  const openingQ=n(openingQty), openingV=n(openingValue);
   const purchaseQ=purchases.reduce((a,x)=>a+n(x.quantity),0);
   const purchaseV=purchases.reduce((a,x)=>a+purchaseLandedValue(x),0);
   const saleQ=sales.reduce((a,x)=>a+n(x.qty),0) + cashSales.reduce((a,x)=>a+n(x.qty),0);
@@ -4377,7 +4415,7 @@ export function LubricantManagement({ data, update }) {
   const saveOpening=()=>{
     const q=n(openingQty), v=n(openingValue);
     if(q<0||v<0) return setMsg("Opening Stock quantity/value negative नहीं हो सकता।");
-    update({openingStock:{...(data.openingStock||{}),LUBRICANT_QTY:q,LUBRICANT_VALUE:v}});
+    update({openingStockByFY:{...(data?.openingStockByFY||{}),[selectedFY]:{qty:q,value:v,source:"MANUAL"}}});
     setMsg(`✅ Lubricant Opening Stock saved: ${q.toFixed(2)} Qty · ${money(v)}. इसे बाद में भी edit किया जा सकता है।`);
   };
 
@@ -4771,7 +4809,15 @@ export function LubricantManagement({ data, update }) {
   };
 
   return <div className="content"><section className="panel" style={{marginBottom:12}}><div className="form"><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label></div><div style={{marginTop:6,color:"#64748b"}}>Selected: {fy.start} to {fy.end}</div></section>
-    <section className="panel"><h2>🛢️ Lubricant / Mobile Oil — Inventory & Reconciliation</h2><p style={{marginTop:0,color:'#6b7280'}}>Mobile Oil (HPCL) को MS / HSD / CNG से अलग रखा गया है। Opening Stock अभी 0/blank रह सकता है और बाद में भरा जा सकता है।</p>
+    <section className="panel"><h2>🛢️ Lubricant / Mobile Oil — Inventory & Reconciliation</h2>
+      <div className="cards" style={{marginTop:12}}>
+        <div className="card"><span>FY Opening Stock</span><strong>{openingQ.toFixed(2)} L</strong></div>
+        <div className="card"><span>Previous FY Closing</span><strong>{n(calculatedPreviousClosing.qty).toFixed(2)} L</strong></div>
+      </div>
+      <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button type="button" className="btn" onClick={carryForwardOpening}>↪️ Previous FY Closing → Carry Forward</button>
+        <span style={{color:"#64748b",alignSelf:"center"}}>FY {selectedFY} का opening stock अलग रहेगा; 25-26 का closing 26-27 में opening बनेगा।</span>
+      </div><p style={{marginTop:0,color:'#6b7280'}}>Mobile Oil (HPCL) को MS / HSD / CNG से अलग रखा गया है। Opening Stock अभी 0/blank रह सकता है और बाद में भरा जा सकता है।</p>
       <div className="grid"><section className="panel"><h3>Opening Stock — Optional</h3><div className="form"><Field label="Opening Qty"><input type="number" min="0" step="0.01" value={openingQty} onChange={e=>setOpeningQty(e.target.value)} placeholder="बाद में भरें" /></Field><Field label="Opening Value"><input type="number" min="0" step="0.01" value={openingValue} onChange={e=>setOpeningValue(e.target.value)} placeholder="बाद में भरें" /></Field></div><button className="btn" onClick={saveOpening}>💾 Save Lubricant Opening</button></section>
       <section className="panel"><h3>Current Reconciliation</h3><div className="cards" style={{gridTemplateColumns:'repeat(2,1fr)'}}><div className="card"><span>Opening</span><strong>{openingQ.toFixed(2)} L</strong><small>{money(openingV)}</small></div><div className="card"><span>Purchase</span><strong>{purchaseQ.toFixed(2)} L</strong><small>{money(purchaseV)}</small></div><div className="card"><span>Sale</span><strong>{saleQ.toFixed(2)} L</strong><small>{money(saleV)}</small></div><div className="card"><span>Closing Book Stock</span><strong>{closingQty.toFixed(2)} L</strong><small>Avg Cost {money(avgCost)}/L</small></div></div><div className={reconciliationStatus==='OK'?'success':'warning'} style={{marginTop:12}}><b>Status: {reconciliationStatus}</b>{qtyMissingSales>0&&<div>{qtyMissingSales} lubricant sale(s) में Qty नहीं है; amount accounting में है लेकिन physical stock reconciliation के लिए Qty बाद में भरनी होगी।</div>}</div></section></div>
     </section>
