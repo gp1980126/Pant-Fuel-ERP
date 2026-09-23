@@ -2509,9 +2509,10 @@ export function CreditSale({
 
   const creditRate = f.fuel === "LUBRICANT" ? 0 : getRate(data, f.fuel, f.date);
 
-  const amount = f.fuel === "LUBRICANT"
-    ? rupee(n(f.manualAmount))
-    : rupee(n(f.qty) * creditRate);
+  const LUBRICANT_GST_RATE = 18;
+  const lubricantTaxablePreview = f.fuel === "LUBRICANT" ? rupee(n(f.manualAmount)) : 0;
+  const lubricantGstPreview = f.fuel === "LUBRICANT" ? rupee(lubricantTaxablePreview * LUBRICANT_GST_RATE / 100) : 0;
+  const amount = f.fuel === "LUBRICANT" ? rupee(lubricantTaxablePreview + lubricantGstPreview) : rupee(n(f.qty) * creditRate);
 
   function save() {
 
@@ -2544,8 +2545,9 @@ export function CreditSale({
       fuel: f.fuel,
       productName: f.fuel === "LUBRICANT" ? f.productName.trim() : "",
       qty: n(f.qty),
-      rate: f.fuel === "LUBRICANT" ? (n(f.qty) > 0 ? rupee(n(f.manualAmount) / n(f.qty)) : 0) : creditRate,
-      amount
+      rate: f.fuel === "LUBRICANT" ? (n(f.qty) > 0 ? rupee(lubricantTaxablePreview / n(f.qty)) : 0) : creditRate,
+      amount,
+      ...(f.fuel === "LUBRICANT" ? { taxableAmount:lubricantTaxablePreview, gstRate:LUBRICANT_GST_RATE, gstAmount:lubricantGstPreview } : {})
     };
 
     if (editId !== null) {
@@ -2876,7 +2878,7 @@ export function CreditSale({
       fuel: c.fuel ?? "MS",
       productName: c.productName ?? "",
       qty: String(c.qty ?? ""),
-      manualAmount: String(c.fuel === "LUBRICANT" ? (c.amount ?? "") : "")
+      manualAmount: String(c.fuel === "LUBRICANT" ? (c.taxableAmount ?? (n(c.gstAmount) > 0 ? n(c.amount)-n(c.gstAmount) : n(c.amount)/1.18)) : "")
     });
     setMsg("Credit Sale edit mode में है.");
   }}
@@ -4435,7 +4437,8 @@ export function LubricantManagement({ data, update }) {
     setMsg("");
     if(!cashSale.date || !isValidISODate(cashSale.date) || cashSale.date<START_DATE || cashSale.date>today) return setMsg("Cash Sale Date valid period में नहीं है।");
     if(!String(cashSale.productName||"").trim()) return setMsg("Product / Brand जरूरी है।");
-    const qty=n(cashSale.qty), rate=n(cashSale.rate), amount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate);
+    const qty=n(cashSale.qty), rate=n(cashSale.rate), taxableAmount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate);
+    const gstRate=18, gstAmount=rupee(taxableAmount*gstRate/100), amount=rupee(taxableAmount+gstAmount);
     if(qty<=0) return setMsg("Qty 0 से अधिक होना चाहिए।");
     if(rate<=0 && amount<=0) return setMsg("Rate या Amount भरें।");
     const finalRate=rate>0?rupee(rate):rupee(amount/qty);
@@ -4455,7 +4458,7 @@ export function LubricantManagement({ data, update }) {
     const row={
       id:"LUB-CASH-"+cashSale.date+"-"+now+"-"+Math.random().toString(36).slice(2,7),
       transactionId:"LUBRICANT-CASH-SALE-"+cashSale.date+"-"+now,
-      date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:finalRate,amount:finalAmount,paymentMode:"CASH",source:"MANUAL_LUBRICANT_CASH"
+      date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:qty>0?rupee(taxableAmount/qty):finalRate,amount:finalAmount,taxableAmount,gstRate,gstAmount,paymentMode:"CASH",source:"MANUAL_LUBRICANT_CASH"
     };
     const result=await update({lubricantCashSales:[...(data.lubricantCashSales||[]),row]});
     if(!result?.ok) return setMsg("❌ Lubricant Cash Sale save नहीं हुई: "+(result?.reason||"Mutation rejected"));
@@ -4504,12 +4507,15 @@ export function LubricantManagement({ data, update }) {
     if(!parchi || !editingSale.party) return setMsg("Parchi No और Party जरूरी हैं।");
     if(!isValidISODate(editingSale.date) || editingSale.date<START_DATE || editingSale.date>today) return setMsg("Date valid period में नहीं है।");
     if(!String(editingSale.productName||"").trim()) return setMsg("Product Name जरूरी है।");
-    const amount=rupee(n(editingSale.amount));
-    if(amount<=0) return setMsg("Amount ₹0 से अधिक होना चाहिए।");
+    const taxableAmount=rupee(n(editingSale.amount));
+    if(taxableAmount<=0) return setMsg("Taxable Amount ₹0 से अधिक होना चाहिए।");
+    const gstRate=18;
+    const gstAmount=rupee(taxableAmount*gstRate/100);
+    const amount=rupee(taxableAmount+gstAmount);
     const duplicate=(data.credits||[]).some(c=>String(c.id)!==String(editingSaleId) && String(c?.parchiNo||"").trim().toLowerCase()===parchi.toLowerCase());
     if(duplicate) return setMsg(`Parchi No. ${parchi} पहले से मौजूद है।`);
     const qty=n(editingSale.qty);
-    const nextRow={...row,date:editingSale.date,parchiNo:parchi,party:String(editingSale.party).trim(),vehicle:String(editingSale.vehicle||"").toUpperCase(),fuel:"LUBRICANT",productName:String(editingSale.productName).trim(),qty,rate:qty>0?rupee(amount/qty):0,amount};
+    const nextRow={...row,date:editingSale.date,parchiNo:parchi,party:String(editingSale.party).trim(),vehicle:String(editingSale.vehicle||"").toUpperCase(),fuel:"LUBRICANT",productName:String(editingSale.productName).trim(),qty,rate:qty>0?rupee(taxableAmount/qty):0,amount,taxableAmount,gstRate,gstAmount};
     const result=await update({credits:(data.credits||[]).map(c=>String(c.id)===String(editingSaleId)?nextRow:c)});
     if(!result?.ok) return setMsg(`❌ Lubricant Sale update नहीं हुआ: ${result?.reason||"Mutation rejected"}`);
     resetSaleForm();
