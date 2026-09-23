@@ -4760,19 +4760,32 @@ export function LubricantManagement({ data, update }) {
     const lines=raw.split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
     const joined=lines.join(' ');
     const invoice=(joined.match(/INVOICE\s+NUMBER\s*[:\-]?\s*([A-Z0-9-]+)/i)||joined.match(/INVOICE\s+NO\.?\s*[:\-]?\s*([A-Z0-9-]+)/i)||joined.match(/INVOICE\s+NO\s*[:\-]?\s*([A-Z0-9-]+)/i))?.[1]||'';
-    const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE)\s*[:\-]?\s*((?:\d{1,2}[\/-]\s*\d{1,2}[\/-]\s*\d{4})|(?:\d{1,2}\s+(?:JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)\s+\d{4})|(?:(?:JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)\s+\d{1,2}\s+\d{4}))/i)||[])[1]||'';
+    const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE)\s*[:.\-]?\s*((?:\d{1,2}[\/\-]\s*\d{1,2}[\/\-]\s*\d{4})|(?:\d{1,2}\s+(?:JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)\s+\d{4})|(?:(?:JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)\s+\d{1,2}\s+\d{4}))/i)||[])[1]||"";
     const billDate=hpclDate2(dateRaw);
-    const gst=(joined.match(/GSTIN\s*[:\-]?\s*([0-9A-Z]{15})/i)||[])[1]||'';
+    const gstMatches=[...joined.matchAll(/GSTIN\s*[:\-]?\s*([0-9A-Z]{15})/gi)].map(m=>m[1]);
+    const gst=gstMatches.find(x=>x!=="05ABWFS5610D1Z4")||gstMatches[0]||"";
     const supplier=(joined.match(/HINDUSTAN\s+PETROLEUM\s+CORPORATION\s+LIMITED/i)||[])[0]||'HINDUSTAN PETROLEUM CORP. LTD.';
     const items=[];
-    const rowRe=/^(\d{1,3})\s+(.+?)\s+(\d{6})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s*$/i;
+    const rowRe=/^(\d{1,3})\s+(.+?)\s+(\d{6})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i;
+    const parseRowTail=(tail)=>{
+      const nums=tail.trim().split(/\s+/).filter(Boolean).map(hpclNum2);
+      if(nums.length>=8){
+        return {totalValue:nums[0],discount:nums[1],taxable:nums[2],igstRate:0,igstAmount:nums[4]+nums[6],netAmount:nums[7]};
+      }
+      if(nums.length>=6){
+        return {totalValue:nums[0],discount:nums[1],taxable:nums[2],igstRate:nums[3],igstAmount:nums[4],netAmount:nums[5]};
+      }
+      return null;
+    };
+    const products=[];
     for(const line of lines){
       const m=line.match(rowRe); if(!m) continue;
-      const [,lineNo,description,hsn,bqty,uom,totalValue,disc,taxable,igstRate,igstAmount,netAmount]=m;
-      const pack=(description.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i));
-      const packCount=pack?Number(pack[1]):1, packLitres=pack?Number(pack[2]):(uom.toUpperCase()==='L'?1:0);
-      const billedQty=hpclNum2(bqty), inventoryQty=packLitres>0?billedQty*packCount:billedQty;
-      items.push({lineNo:Number(lineNo),description:description.trim(),hsn:String(hsn),billedQty,unit:uom.toUpperCase(),packSize:pack?`${pack[1]} × ${pack[2]} L`:'',inventoryQty,totalValue:hpclNum2(totalValue),discount:hpclNum2(disc),taxableValue:hpclNum2(taxable),igstRate:hpclNum2(igstRate),igstAmount:hpclNum2(igstAmount),netAmount:hpclNum2(netAmount)});
+      const [,lineNo,description,hsn,bqty,uom,tail]=m;
+      const parsedTail=parseRowTail(tail); if(!parsedTail) continue;
+      const pack=description.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
+      const billedQty=hpclNum2(bqty), packCount=pack?Number(pack[1]):1, packLitres=pack?Number(pack[2]):(uom.toUpperCase()==="L"?1:0);
+      const inventoryQty=packLitres>0?billedQty*packCount:billedQty;
+      products.push({lineNo:Number(lineNo),description:description.trim(),hsn:String(hsn),billedQty,unit:uom.toUpperCase(),packSize:pack?pack[1]+" × "+pack[2]+" L":"",inventoryQty,...parsedTail});
     }
     // Some PDF extractors split each item over multiple lines. Rebuild rows from item-number anchors.
     if(!items.length){
@@ -4823,9 +4836,9 @@ export function LubricantManagement({ data, update }) {
       const blockText=block.map(r=>r.text).join(' ').replace(/\s+/g,' ').trim();
       // HPCL native PDFs keep billed EA count separate from actual Qty/Vol.
       // Prefer Qty/Vol for inventory litres; use pack conversion only as fallback.
-      const main=blockText.match(/^(?:\d{1,3}\s+)?(.+?)\s+(\d{6})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)/i);
+      const main=blockText.match(/^(?:\d{1,3}\s+)?(.+?)\s+(\d{6})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
       if(main){
-        const [,rawDesc,hsn,bqty,uom,totalValue,disc,taxable,igstRate,igstAmount,netAmount]=main;
+        const [,rawDesc,hsn,bqty,uom,tail]=main;\n        const parsedTail=parseRowTail(tail); if(!parsedTail) continue;\n        const totalValue=parsedTail.totalValue, disc=parsedTail.discount, taxable=parsedTail.taxable, igstRate=parsedTail.igstRate, igstAmount=parsedTail.igstAmount, netAmount=parsedTail.netAmount;
         const desc=rawDesc.replace(/\s+Locn\s+Lot\s+No\.\s*\d*.*$/i,'').replace(/\s+MRP\w*\d*\b.*$/i,'').trim();
         const qtyVol=blockText.match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
         const pack=desc.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
@@ -4879,7 +4892,7 @@ export function LubricantManagement({ data, update }) {
     const r=lubBillPreview;
     try {
       if(!r.invoiceNo || !r.date || !Array.isArray(r.items) || r.items.length===0) return setLubBillMsg('❌ Invoice No, Bill Date और कम-से-कम एक item जरूरी है।');
-      if(r.date<START_DATE || r.date>today) return setLubBillMsg('❌ Bill Date valid period में नहीं है।');
+      if(r.date<fy.start || r.date>fy.end) return setLubBillMsg(`❌ Bill Date ${r.date} selected Financial Year ${selectedFY} (${fy.start} to ${fy.end}) के बाहर है। Financial Year बदलकर फिर upload करें।`);
       const invoiceNo=String(r.invoiceNo).trim();
       const key=`LUBRICANT|${r.date}|${invoiceNo.toUpperCase()}`;
       if(purchases.some(x=>`LUBRICANT|${x.date}|${String(x.invoiceNo||'').trim().toUpperCase()}`===key)) return setLubBillMsg('❌ यह Lubricant invoice पहले से मौजूद है।');
