@@ -2493,6 +2493,7 @@ export function CreditSale({
     useState({
       date:todayDate(),
       parchiNo:"",
+      invoiceNo:"",
       party:"",
       vehicle:"",
       fuel:"MS",
@@ -2543,6 +2544,7 @@ export function CreditSale({
     const record = {
       date: f.date,
       parchiNo: normalizedParchi,
+      invoiceNo: f.fuel === "LUBRICANT" ? String(f.invoiceNo || "").trim() : "",
       party: f.party,
       vehicle: f.vehicle.toUpperCase(),
       fuel: f.fuel,
@@ -2563,7 +2565,7 @@ export function CreditSale({
       setMsg("Credit Sale saved successfully.");
     }
 
-    setF({ ...f, parchiNo: "", party: "", vehicle: "", productName: "", qty: "", manualAmount: "" });
+    setF({ ...f, parchiNo: "", invoiceNo: "", party: "", vehicle: "", productName: "", qty: "", manualAmount: "" });
   }
 
   function exportCreditExcel() {
@@ -2622,7 +2624,8 @@ export function CreditSale({
       return parts.join(" ") + " Rupees Only";
     })();
     const product = c.productName || "Mobile Oil (HPCL)";
-    const invoiceNo = c.invoiceNo || c.parchiNo || "";
+    const invoiceNo = String(c.invoiceNo || "").trim();
+    const challanNo = String(c.parchiNo || "").trim();
     const w = window.open("", "_blank");
     if (!w) { alert("Print window blocked है. Chrome में pop-up allow करें."); return; }
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${escHtml(invoiceNo)}</title>
@@ -2640,8 +2643,8 @@ export function CreditSale({
     <div class="printbar"><button class="printbtn" onclick="window.focus();window.print()">🖨️ Print / Save PDF</button></div>
     <div class="invoice">
       <div class="head"><div class="om">ॐ श्री गुरुवे नमः:</div><div><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05</div><h1>SATAT FILLING STATION</h1><div class="dealer">DEALER - HINDUSTAN PETROLEUM CORP. LTD.</div><div class="addr">Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div>
-      <div class="meta"><div><b>Bill To:</b><br>${escHtml(c.party)}<br>${c.vehicle ? "Vehicle No.: "+escHtml(c.vehicle) : ""}</div><div><b>Tax Invoice</b><br><b>Invoice No.:</b> ${escHtml(invoiceNo)}<br><b>Date:</b> ${escHtml(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
-      <table class="items"><thead><tr><th>Date</th><th>Parchi No.</th><th>Vehicle No.</th><th>HSN Code</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+      <div class="meta"><div><b>Bill To:</b><br>${escHtml(c.party)}<br>${c.vehicle ? "Vehicle No.: "+escHtml(c.vehicle) : ""}</div><div><b>Tax Invoice</b><br><b>Invoice No.:</b> ${escHtml(invoiceNo || "—")}<br><b>Challan No.:</b> ${escHtml(challanNo || "—")}<br><b>Date:</b> ${escHtml(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
+      <table class="items"><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN Code</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
       <tbody><tr><td>${escHtml(c.date)}</td><td>${escHtml(c.parchiNo)}</td><td>${escHtml(c.vehicle)}</td><td>${escHtml(c.hsnCode || "")}</td><td>${escHtml(product)}</td><td class="num">${qty ? qty.toFixed(2) : "—"}</td><td class="num">${unitRate ? money(unitRate) : "—"}</td><td class="num">${money(total)}</td></tr></tbody></table>
       <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(amountInWords)}</div><div><div>Total Amount Before Tax: <b style="float:right">${money(taxable)}</b></div><div>Add: CGST (9%): <b style="float:right">${money(cgst)}</b></div><div>Add: SGST (9%): <b style="float:right">${money(sgst)}</b></div><div>Add: IGST: <b style="float:right">${money(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${money(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${money(total)}</b></div></div></div>
       <div class="terms"><b>TERMS &amp; CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
@@ -2690,7 +2693,7 @@ export function CreditSale({
 
           </Field>
 
-          <Field label="Parchi No. (Manual)">
+          <Field label="Challan No. (Manual)">
 
             <input
               value={f.parchiNo}
@@ -2704,6 +2707,16 @@ export function CreditSale({
             />
 
           </Field>
+
+          {f.fuel === "LUBRICANT" && (
+            <Field label="Invoice No. (Manual)">
+              <input
+                value={f.invoiceNo}
+                onChange={e => setF({ ...f, invoiceNo: e.target.value })}
+                placeholder="Invoice No. डालें"
+              />
+            </Field>
+          )}
 
           <Field label="Party">
 
@@ -2827,7 +2840,7 @@ export function CreditSale({
           {editId !== null && (
             <button type="button" className="btn gray" onClick={() => {
               setEditId(null);
-              setF({ date: todayDate(), parchiNo: "", party: "", vehicle: "", fuel: "MS", productName: "", qty: "", manualAmount: "" });
+              setF({ date: todayDate(), parchiNo: "", invoiceNo: "", party: "", vehicle: "", fuel: "MS", productName: "", qty: "", manualAmount: "" });
               setMsg("");
             }}>
               Cancel Edit
@@ -2898,6 +2911,7 @@ export function CreditSale({
     setF({
       date: c.date || todayDate(),
       parchiNo: String(c.parchiNo ?? ""),
+      invoiceNo: String(c.invoiceNo ?? ""),
       party: c.party ?? "",
       vehicle: c.vehicle ?? "",
       fuel: c.fuel ?? "MS",
