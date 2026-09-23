@@ -4337,6 +4337,7 @@ export function LubricantManagement({ data, update }) {
   const [openingQty, setOpeningQty] = useState(opening.LUBRICANT_QTY ?? "");
   const [openingValue, setOpeningValue] = useState(opening.LUBRICANT_VALUE ?? "");
   const [purchase, setPurchase] = useState({date:today, invoiceNo:"", supplier:"HINDUSTAN PETROLEUM CORP. LTD.", productName:"Mobile Oil (HPCL)", quantity:"", rate:"", taxRate:"", taxAmount:"", totalAmount:""});
+  const [purchaseBillFile, setPurchaseBillFile] = useState(null);
   const [msg, setMsg] = useState("");
 
   useEffect(()=>{
@@ -4482,17 +4483,34 @@ export function LubricantManagement({ data, update }) {
   const resetPurchaseForm=()=>{
     setEditingPurchaseId(null);
     setPurchase({date:today, invoiceNo:"", supplier:"HINDUSTAN PETROLEUM CORP. LTD.", productName:"Mobile Oil (HPCL)", quantity:"", rate:"", taxRate:"", taxAmount:"", totalAmount:""});
+    setPurchaseBillFile(null);
+  };
+
+  const purchaseBillData = row => String(row?.billFileData || row?.fileData || row?.billData || row?.attachmentData || "");
+  const openPurchaseBill = row => {
+    const src = purchaseBillData(row);
+    if(!src) return setMsg("❌ इस purchase के साथ कोई Bill file saved नहीं है। Edit Purchase में bill upload करें।");
+    const w = window.open("", "_blank");
+    if(!w) return setMsg("❌ Bill window browser ने block कर दी। Popup allow करें।");
+    const type = String(row?.billFileType || row?.fileType || "").toLowerCase();
+    if(type.includes("pdf") || src.startsWith("data:application/pdf")){
+      w.document.write(`<!doctype html><html><body style="margin:0"><embed src="${src}" type="application/pdf" width="100%" height="100%" style="position:fixed;inset:0"></body></html>`);
+    } else {
+      w.document.write(`<!doctype html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;background:#111"><img src="${src}" style="max-width:100%;max-height:100vh;object-fit:contain"></body></html>`);
+    }
+    w.document.close();
   };
 
   const editPurchase=(row)=>{
     if(!row) return;
     setEditingPurchaseId(row.id);
+    setPurchaseBillFile(null);
     setPurchase({
       date:row.date||today, invoiceNo:row.invoiceNo||"", supplier:row.supplier||"HINDUSTAN PETROLEUM CORP. LTD.",
       productName:row.productName||"Mobile Oil (HPCL)", quantity:row.quantity??"", rate:row.rate??"",
       taxRate:row.taxRate??"", taxAmount:row.taxAmount??"", totalAmount:row.totalAmount??row.amount??""
     });
-    setMsg(`✏️ Purchase Edit mode: Invoice ${row.invoiceNo||"—"}. नीचे values बदलकर Save करें।`);
+    setMsg(`✏️ Purchase Edit mode: Invoice ${row.invoiceNo||"—"}. Bill upload करने पर पुराना attachment replace होगा।`);
     window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
   };
 
@@ -4510,6 +4528,10 @@ export function LubricantManagement({ data, update }) {
 
   const addPurchase=async()=>{
     setMsg("");
+    if(purchaseBillFile){
+      if(!/^(application\\/pdf|image\\/(jpeg|png|webp))$/i.test(purchaseBillFile.type)) return setMsg("❌ Bill के लिए PDF/JPG/PNG/WEBP file चुनें।");
+      if(purchaseBillFile.size>8*1024*1024) return setMsg("❌ Bill file 8 MB से छोटी रखें।");
+    }
     if(!purchase.invoiceNo.trim()) return setMsg("Purchase Invoice No जरूरी है।");
     if(!purchase.productName.trim()) return setMsg("Product Name जरूरी है।");
     if(!purchase.date || purchase.date<START_DATE || purchase.date>today) return setMsg("Purchase Date selected Financial Year में होनी चाहिए।");
@@ -4522,13 +4544,16 @@ export function LubricantManagement({ data, update }) {
     if(editingPurchaseId){
       const old=(data.purchases||[]).find(x=>x.id===editingPurchaseId);
       if(!old) return setMsg("❌ Edit record नहीं मिला।");
-      const row={...old,date:purchase.date,invoiceNo:purchase.invoiceNo.trim(),fuel:"LUBRICANT",productName:purchase.productName.trim(),supplier:purchase.supplier.trim(),quantity:qty,unit:old.unit||"L",rate,basicAmount:Math.max(0,total-tax),taxAmount:tax,totalAmount:total,amount:total};
+      let attachment = {};
+      if(purchaseBillFile) attachment = {billFileName:purchaseBillFile.name,billFileType:purchaseBillFile.type,billFileData:await readFileAsDataUrl(purchaseBillFile),uploadedAt:new Date().toISOString()};
+      const row={...old,date:purchase.date,invoiceNo:purchase.invoiceNo.trim(),fuel:"LUBRICANT",productName:purchase.productName.trim(),supplier:purchase.supplier.trim(),quantity:qty,unit:old.unit||"L",rate,basicAmount:Math.max(0,total-tax),taxAmount:tax,totalAmount:total,amount:total,...attachment};
       const result=await update({purchases:(data.purchases||[]).map(x=>x.id===editingPurchaseId?row:x)});
       if(!result?.ok) return setMsg(`❌ Lubricant Purchase edit save नहीं हुआ: ${result?.reason||"Mutation rejected"}`);
       resetPurchaseForm();
       return setMsg(`✅ Lubricant purchase updated: ${row.productName} · ${qty.toFixed(2)} L · ${money(total)}`);
     }
-    const row={id:Date.now()+Math.random(),date:purchase.date,invoiceNo:purchase.invoiceNo.trim(),fuel:"LUBRICANT",productName:purchase.productName.trim(),supplier:purchase.supplier.trim(),quantity:qty,unit:"L",rate, basicAmount:Math.max(0,total-tax),taxAmount:tax,totalAmount:total,amount:total,source:"MANUAL_LUBRICANT"};
+    const attachment = purchaseBillFile ? {billFileName:purchaseBillFile.name,billFileType:purchaseBillFile.type,billFileData:await readFileAsDataUrl(purchaseBillFile),uploadedAt:new Date().toISOString()} : {};
+    const row={id:Date.now()+Math.random(),date:purchase.date,invoiceNo:purchase.invoiceNo.trim(),fuel:"LUBRICANT",productName:purchase.productName.trim(),supplier:purchase.supplier.trim(),quantity:qty,unit:"L",rate, basicAmount:Math.max(0,total-tax),taxAmount:tax,totalAmount:total,amount:total,source:"MANUAL_LUBRICANT",...attachment};
     const result=await update({purchases:[...(data.purchases||[]),row]});
     if(!result?.ok) return setMsg(`❌ Lubricant Purchase save नहीं हुआ: ${result?.reason||"Mutation rejected"}`);
     resetPurchaseForm();
@@ -4759,7 +4784,7 @@ export function LubricantManagement({ data, update }) {
       </div>}
     </section>
 
-    <section className="panel" style={{marginTop:18}}><h3>{editingPurchaseId?'✏️ Edit Lubricant Purchase':'🧾 Add Lubricant Purchase'}</h3><div className="form"><Field label="Bill Date"><input type="date" value={purchase.date} onChange={e=>setPurchase({...purchase,date:e.target.value})}/></Field><Field label="Invoice No"><input value={purchase.invoiceNo} onChange={e=>setPurchase({...purchase,invoiceNo:e.target.value})}/></Field><Field label="Supplier"><input value={purchase.supplier} onChange={e=>setPurchase({...purchase,supplier:e.target.value})}/></Field><Field label="Product"><input value={purchase.productName} onChange={e=>setPurchase({...purchase,productName:e.target.value})}/></Field><Field label="Qty (L)"><input type="number" min="0" step="0.01" value={purchase.quantity} onChange={e=>setPurchase({...purchase,quantity:e.target.value})}/></Field><Field label="Bill Rate"><input type="number" min="0" step="0.01" value={purchase.rate} onChange={e=>setPurchase({...purchase,rate:e.target.value})}/></Field><Field label="Tax Amount"><input type="number" min="0" step="0.01" value={purchase.taxAmount} onChange={e=>setPurchase({...purchase,taxAmount:e.target.value})}/></Field><Field label="Total Amount"><input type="number" min="0" step="0.01" value={purchase.totalAmount} onChange={e=>setPurchase({...purchase,totalAmount:e.target.value})}/></Field></div><div className="actions" style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="btn" onClick={addPurchase}>{editingPurchaseId?'💾 Update Lubricant Purchase':'➕ Save Lubricant Purchase'}</button>{editingPurchaseId&&<button type="button" className="btn" onClick={resetPurchaseForm}>✖ Cancel Edit</button>}</div>{msg&&<div className={msg.startsWith('❌')?'warning':'success'} style={{marginTop:10}}>{msg}</div>}</section>
+    <section className="panel" style={{marginTop:18}}><h3>{editingPurchaseId?'✏️ Edit Lubricant Purchase':'🧾 Add Lubricant Purchase'}</h3><div className="form"><Field label="Bill Date"><input type="date" value={purchase.date} onChange={e=>setPurchase({...purchase,date:e.target.value})}/></Field><Field label="Invoice No"><input value={purchase.invoiceNo} onChange={e=>setPurchase({...purchase,invoiceNo:e.target.value})}/></Field><Field label="Supplier"><input value={purchase.supplier} onChange={e=>setPurchase({...purchase,supplier:e.target.value})}/></Field><Field label="Product"><input value={purchase.productName} onChange={e=>setPurchase({...purchase,productName:e.target.value})}/></Field><Field label="Qty (L)"><input type="number" min="0" step="0.01" value={purchase.quantity} onChange={e=>setPurchase({...purchase,quantity:e.target.value})}/></Field><Field label="Bill Rate"><input type="number" min="0" step="0.01" value={purchase.rate} onChange={e=>setPurchase({...purchase,rate:e.target.value})}/></Field><Field label="Tax Amount"><input type="number" min="0" step="0.01" value={purchase.taxAmount} onChange={e=>setPurchase({...purchase,taxAmount:e.target.value})}/></Field><Field label="Total Amount"><input type="number" min="0" step="0.01" value={purchase.totalAmount} onChange={e=>setPurchase({...purchase,totalAmount:e.target.value})}/></Field><Field label="Bill Attachment (optional)"><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.pdf" onChange={e=>setPurchaseBillFile(e.target.files?.[0]||null)}/></Field></div>{editingPurchaseId&&(()=>{const current=(data.purchases||[]).find(x=>String(x.id)===String(editingPurchaseId)); const src=purchaseBillData(current); return <div className="staff-note" style={{marginTop:10}}>{src?<><b>Current Bill:</b> {current?.billFileName||current?.fileName||"saved attachment"} · <button type="button" className="btn small" onClick={()=>openPurchaseBill(current)}>📎 View Bill</button></>:<><b>Current Bill:</b> कोई attachment saved नहीं है। ऊपर Bill Attachment चुनकर Update करें।</>}</div>})()}</div><div className="actions" style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="btn" onClick={addPurchase}>{editingPurchaseId?'💾 Update Lubricant Purchase':'➕ Save Lubricant Purchase'}</button>{editingPurchaseId&&<button type="button" className="btn" onClick={resetPurchaseForm}>✖ Cancel Edit</button>}</div>{msg&&<div className={msg.startsWith('❌')?'warning':'success'} style={{marginTop:10}}>{msg}</div>}</section>
 
     <section className="panel" style={{marginTop:18,border:'2px solid #16a34a'}}>
       <h3>💵 Lubricant Cash Sale — बिना पर्ची</h3>
@@ -4782,7 +4807,7 @@ export function LubricantManagement({ data, update }) {
 
     {editingSaleId!==null&&<section className="panel" style={{marginTop:18,border:'2px solid #f59e0b'}}><h3>✏️ Edit Lubricant Sale</h3><div className="form"><Field label="Date"><input type="date" min={START_DATE} max={today} value={editingSale.date} onChange={e=>setEditingSale({...editingSale,date:e.target.value})}/></Field><Field label="Parchi No."><input value={editingSale.parchiNo} onChange={e=>setEditingSale({...editingSale,parchiNo:e.target.value})}/></Field><Field label="Party"><select value={editingSale.party} onChange={e=>setEditingSale({...editingSale,party:e.target.value})}><option value="">Select</option>{(data.parties||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select></Field><Field label="Vehicle"><input value={editingSale.vehicle} onChange={e=>setEditingSale({...editingSale,vehicle:e.target.value.toUpperCase()})}/></Field><Field label="Product / Brand"><input value={editingSale.productName} onChange={e=>setEditingSale({...editingSale,productName:e.target.value})}/></Field><Field label="Qty (Optional)"><input type="number" min="0" step="0.01" value={editingSale.qty} onChange={e=>setEditingSale({...editingSale,qty:e.target.value})}/></Field><Field label="Amount"><input type="number" min="0" step="0.01" value={editingSale.amount} onChange={e=>setEditingSale({...editingSale,amount:e.target.value})}/></Field></div><div className="actions"><button type="button" className="btn" onClick={saveEditedSale}>💾 Update Lubricant Sale</button><button type="button" className="btn gray" onClick={resetSaleForm}>Cancel Edit</button></div></section>}
     <section className="panel" style={{marginTop:18}}><h3>💳 Lubricant Credit Sale Register — Mobile Oil (HPCL)</h3><Table headers={['Date','Parchi No.','Party','Vehicle','Product','Qty','Amount']} rows={sales.map(c=>[c.date,c.parchiNo,c.party,c.vehicle,c.productName||'Mobile Oil (HPCL)',n(c.qty)>0?`${n(c.qty).toFixed(2)} L`:'Qty pending',money(c.amount)])} rowIds={sales.map(c=>c.id||`${c.date}|${c.parchiNo}`)} onEdit={id=>editSale(sales.find(c=>c.id===id))} onPrintBill={id=>bill(sales.find(c=>c.id===id))} showPrintBill={id=>!!sales.find(c=>c.id===id)} onDelete={id=>deleteSale(sales.find(c=>c.id===id))} />{sales.length===0&&<div className="warning" style={{marginTop:10}}>अभी कोई Lubricant Credit Sale नहीं मिली। Credit Sale में Lubricant / Mobile Oil चुनकर entry save करें।</div>}</section>
-    <section className="panel" style={{marginTop:18}}><h3>📦 Lubricant Purchase Register</h3><Table headers={['Date','Invoice No.','Supplier','Items','Qty','Assessable','Tax','Total','Bill']} rows={purchases.map(p=>[p.date,p.invoiceNo,p.supplier||'Hindustan Petroleum Corp. Ltd.',Array.isArray(p.items)?p.items.length:1,`${n(p.quantity).toFixed(2)} L`,money(p.basicAmount),money(p.taxAmount),money(purchaseLandedValue(p)),p.billFileData?<button className="btn small" onClick={()=>{const w=window.open();if(!w)return;const a=p.billFileData;w.document.write(`<html><body style="margin:0"><embed src="${a}" type="${p.billFileType||'application/pdf'}" width="100%" height="100%" /></body></html>`);w.document.close();}}>📎 View Bill</button>:'—'])} rowIds={purchases.map(p=>p.id||`${p.date}|${p.invoiceNo}`)} onEdit={(id)=>editPurchase(purchases.find(p=>p.id===id))} onDelete={(id)=>deletePurchase(purchases.find(p=>p.id===id))} /></section>
+    <section className="panel" style={{marginTop:18}}><h3>📦 Lubricant Purchase Register</h3><Table headers={['Date','Invoice No.','Supplier','Items','Qty','Assessable','Tax','Total','Bill']} rows={purchases.map(p=>[p.date,p.invoiceNo,p.supplier||'Hindustan Petroleum Corp. Ltd.',Array.isArray(p.items)?p.items.length:1,`${n(p.quantity).toFixed(2)} L`,money(p.basicAmount),money(p.taxAmount),money(purchaseLandedValue(p)),purchaseBillData(p)?<button type="button" className="btn small" onClick={()=>openPurchaseBill(p)}>📎 View Bill</button>:'—'])} rowIds={purchases.map(p=>p.id||`${p.date}|${p.invoiceNo}`)} onEdit={(id)=>editPurchase(purchases.find(p=>p.id===id))} onDelete={(id)=>deletePurchase(purchases.find(p=>p.id===id))} /></section>
   </div>;
 }
 
