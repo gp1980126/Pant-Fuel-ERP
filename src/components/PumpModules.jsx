@@ -4777,7 +4777,6 @@ export function LubricantManagement({ data, update }) {
       }
       return null;
     };
-    const products=[];
     for(const line of lines){
       const m=line.match(rowRe); if(!m) continue;
       const [,lineNo,description,hsn,bqty,uom,tail]=m;
@@ -4785,7 +4784,7 @@ export function LubricantManagement({ data, update }) {
       const pack=description.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
       const billedQty=hpclNum2(bqty), packCount=pack?Number(pack[1]):1, packLitres=pack?Number(pack[2]):(uom.toUpperCase()==="L"?1:0);
       const inventoryQty=packLitres>0?billedQty*packCount:billedQty;
-      products.push({lineNo:Number(lineNo),description:description.trim(),hsn:String(hsn),billedQty,unit:uom.toUpperCase(),packSize:pack?pack[1]+" × "+pack[2]+" L":"",inventoryQty,...parsedTail});
+      items.push({lineNo:Number(lineNo),description:description.trim(),hsn:String(hsn),billedQty,unit:uom.toUpperCase(),packSize:pack?pack[1]+" × "+pack[2]+" L":"",inventoryQty,totalValue:parsedTail.totalValue,discount:parsedTail.discount,taxableValue:parsedTail.taxable,igstRate:parsedTail.igstRate,igstAmount:parsedTail.igstAmount,netAmount:parsedTail.netAmount});
     }
     // Some PDF extractors split each item over multiple lines. Rebuild rows from item-number anchors.
     if(!items.length){
