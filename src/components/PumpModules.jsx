@@ -2638,8 +2638,30 @@ export function CreditSale({
     const product = c.productName || "Mobile Oil (HPCL)";
     const invoiceNo = String(c.invoiceNo || "").trim();
     const challanNo = String(c.parchiNo || "").trim();
-    const w = window.open("", "_blank");
-    if (!w) { alert("Print window blocked है. Chrome में pop-up allow करें."); return; }
+    // Do not open a popup/new tab. Show the generated invoice in a visible
+    // in-app viewer so the Sale Bill button works reliably in Chrome/Edge.
+    const showInvoice = html => {
+      const old = document.getElementById("stationmitra-lubricant-sale-viewer");
+      if (old) old.remove();
+      const overlay = document.createElement("div");
+      overlay.id = "stationmitra-lubricant-sale-viewer";
+      overlay.style.cssText = "position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.55);display:flex;flex-direction:column;padding:10px;box-sizing:border-box";
+      const bar = document.createElement("div");
+      bar.style.cssText = "display:flex;justify-content:flex-end;gap:8px;padding-bottom:8px";
+      const close = document.createElement("button");
+      close.type = "button";
+      close.textContent = "✕ Close";
+      close.style.cssText = "padding:9px 18px;border:0;border-radius:6px;background:#111;color:#fff;font-weight:700;cursor:pointer";
+      close.onclick = () => overlay.remove();
+      const frame = document.createElement("iframe");
+      frame.title = "Lubricant Tax Invoice";
+      frame.style.cssText = "width:100%;flex:1;border:0;border-radius:6px;background:#fff";
+      bar.appendChild(close);
+      overlay.appendChild(bar);
+      overlay.appendChild(frame);
+      document.body.appendChild(overlay);
+      frame.srcdoc = html;
+    };
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${escHtml(invoiceNo)}</title>
     <style>
       *{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;padding:14mm;color:#111;font-size:12px}
@@ -2661,7 +2683,12 @@ export function CreditSale({
       <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(amountInWords)}</div><div><div>Total Amount Before Tax: <b style="float:right">${money(taxable)}</b></div><div>Add: CGST (9%): <b style="float:right">${money(cgst)}</b></div><div>Add: SGST (9%): <b style="float:right">${money(sgst)}</b></div><div>Add: IGST: <b style="float:right">${money(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${money(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${money(total)}</b></div></div></div>
       <div class="terms"><b>TERMS &amp; CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
     </div></body></html>`;
-    try { w.document.open(); w.document.write(html); w.document.close(); w.focus(); } catch (e) { try { w.close(); } catch {} alert("Sale Bill print नहीं खुल पाया।"); }
+    try {
+      showInvoice(html);
+    } catch (e) {
+      console.error("Sale Bill render error:", e);
+      alert("Sale Bill नहीं खुल पाया: " + (e?.message || e));
+    }
   }
 
   function shareCreditWhatsApp() {
