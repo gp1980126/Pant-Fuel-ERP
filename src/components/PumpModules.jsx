@@ -2510,9 +2510,12 @@ export function CreditSale({
   const creditRate = f.fuel === "LUBRICANT" ? 0 : getRate(data, f.fuel, f.date);
 
   const LUBRICANT_GST_RATE = 18;
-  const lubricantTaxablePreview = f.fuel === "LUBRICANT" ? rupee(n(f.manualAmount) * 100 / 118) : 0;
-  const lubricantGstPreview = f.fuel === "LUBRICANT" ? rupee(n(f.manualAmount) - lubricantTaxablePreview) : 0;
-  const amount = f.fuel === "LUBRICANT" ? rupee(lubricantTaxablePreview + lubricantGstPreview) : rupee(n(f.qty) * creditRate);
+  // Lubricant sale amount entered by the user is the FINAL/GROSS invoice amount,
+  // inclusive of GST. Taxable value and GST are derived from that final amount.
+  const lubricantGrossPreview = f.fuel === "LUBRICANT" ? rupee(n(f.manualAmount)) : 0;
+  const lubricantTaxablePreview = f.fuel === "LUBRICANT" ? rupee(lubricantGrossPreview * 100 / (100 + LUBRICANT_GST_RATE)) : 0;
+  const lubricantGstPreview = f.fuel === "LUBRICANT" ? rupee(lubricantGrossPreview - lubricantTaxablePreview) : 0;
+  const amount = f.fuel === "LUBRICANT" ? lubricantGrossPreview : rupee(n(f.qty) * creditRate);
 
   function save() {
 
@@ -2545,7 +2548,8 @@ export function CreditSale({
       fuel: f.fuel,
       productName: f.fuel === "LUBRICANT" ? f.productName.trim() : "",
       qty: n(f.qty),
-      rate: f.fuel === "LUBRICANT" ? (n(f.qty) > 0 ? rupee(lubricantTaxablePreview / n(f.qty)) : 0) : creditRate,
+      // Invoice Rate for lubricant is GST-inclusive gross rate per litre.
+      rate: f.fuel === "LUBRICANT" ? (n(f.qty) > 0 ? rupee(lubricantGrossPreview / n(f.qty)) : 0) : creditRate,
       amount,
       ...(f.fuel === "LUBRICANT" ? { taxableAmount:lubricantTaxablePreview, gstRate:LUBRICANT_GST_RATE, gstAmount:lubricantGstPreview } : {})
     };
@@ -2578,7 +2582,7 @@ export function CreditSale({
   function printCreditPdf() {
     const body=data.credits.slice().reverse().map(c=>`<tr><td>${c.date||""}</td><td>${c.parchiNo||""}</td><td>${c.party||""}</td><td>${c.vehicle||""}</td><td>${c.fuel||""}</td><td>${c.productName||"—"}</td><td>${n(c.qty).toFixed(c.fuel==="CNG"?3:2)}</td><td>${money(n(c.rate ?? (n(c.amount)/Math.max(n(c.qty),1))))}</td><td>${moneyRupee(c.amount)}</td></tr>`).join("");
     const w=window.open("","_blank"); if(!w){alert("Print window blocked है. Browser में pop-up allow करें.");return;}
-    w.document.write(`<!doctype html><html><head><title>Credit Sale Register</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:6px;font-size:11px}th{background:#eee}</style></head><body><h1>SATAT FILLING STATION</h1><h2>Credit Sale Register</h2><table><thead><tr><th>Date</th><th>Parchi No</th><th>Party</th><th>Vehicle</th><th>Fuel</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${body}</tbody></table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`); w.document.close();
+    w.document.write(`<!doctype html><html><head><title>Credit Sale Register</title><style>body{font-family:Arial;margin:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:6px;font-size:11px}th{background:#eee}</style></head><body><h1>SATAT FILLING STATION</h1><h2>Credit Sale Register</h2><table><thead><tr><th>Date</th><th>Parchi No</th><th>Party</th><th>Vehicle</th><th>Fuel</th><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount (GST Incl.)</th></tr></thead><tbody>${body}</tbody></table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`); w.document.close();
   }
 
   function printLubricantSaleBill(c) {
@@ -2590,12 +2594,33 @@ export function CreditSale({
     const total = rupee(n(c.amount));
     const qty = n(c.qty);
     const gstRate = n(c.gstRate) > 0 ? n(c.gstRate) : 18;
-    const taxable = n(c.taxableAmount) > 0 ? rupee(c.taxableAmount) : rupee(total * 100 / (100 + gstRate));
+    // Always treat the saved amount as the final/gross invoice value.
+    const taxable = rupee(total * 100 / (100 + gstRate));
     const tax = rupee(total - taxable);
-    const rate = qty > 0 ? rupee(taxable / qty) : 0;
+    const rate = qty > 0 ? rupee(total / qty) : 0;
     const cgst = gstRate > 0 ? rupee(tax / 2) : 0;
-    const sgst = gstRate > 0 ? rupee(tax / 2) : 0;
+    const sgst = gstRate > 0 ? rupee(tax - cgst) : 0;
     const unitRate = qty > 0 ? rate : 0;
+    const amountInWords = (() => {
+      const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+      const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+      const two = n => n < 20 ? ones[n] : tens[Math.floor(n/10)] + (n%10 ? " " + ones[n%10] : "");
+      const under1000 = n => {
+        const h = Math.floor(n/100), r = n%100;
+        return (h ? ones[h] + " Hundred" : "") + (h && r ? " " : "") + (r ? two(r) : "");
+      };
+      let x = Math.round(total);
+      if (x === 0) return "Zero Rupees Only";
+      const parts = [];
+      const crore = Math.floor(x/10000000); x %= 10000000;
+      const lakh = Math.floor(x/100000); x %= 100000;
+      const thousand = Math.floor(x/1000); x %= 1000;
+      if (crore) parts.push(under1000(crore) + " Crore");
+      if (lakh) parts.push(under1000(lakh) + " Lakh");
+      if (thousand) parts.push(under1000(thousand) + " Thousand");
+      if (x) parts.push(under1000(x));
+      return parts.join(" ") + " Rupees Only";
+    })();
     const product = c.productName || "Mobile Oil (HPCL)";
     const invoiceNo = c.invoiceNo || c.parchiNo || "";
     const w = window.open("", "_blank");
@@ -2618,7 +2643,7 @@ export function CreditSale({
       <div class="meta"><div><b>Bill To:</b><br>${escHtml(c.party)}<br>${c.vehicle ? "Vehicle No.: "+escHtml(c.vehicle) : ""}</div><div><b>Tax Invoice</b><br><b>Invoice No.:</b> ${escHtml(invoiceNo)}<br><b>Date:</b> ${escHtml(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
       <table class="items"><thead><tr><th>Date</th><th>Parchi No.</th><th>Vehicle No.</th><th>HSN Code</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
       <tbody><tr><td>${escHtml(c.date)}</td><td>${escHtml(c.parchiNo)}</td><td>${escHtml(c.vehicle)}</td><td>${escHtml(c.hsnCode || "")}</td><td>${escHtml(product)}</td><td class="num">${qty ? qty.toFixed(2) : "—"}</td><td class="num">${unitRate ? money(unitRate) : "—"}</td><td class="num">${money(total)}</td></tr></tbody></table>
-      <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(c.amountInWords || "")}</div><div><div>Total Amount Before Tax: <b style="float:right">${money(taxable)}</b></div><div>Add: CGST (9%): <b style="float:right">${money(cgst)}</b></div><div>Add: SGST (9%): <b style="float:right">${money(sgst)}</b></div><div>Add: IGST: <b style="float:right">${money(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${money(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${money(total)}</b></div></div></div>
+      <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(amountInWords)}</div><div><div>Total Amount Before Tax: <b style="float:right">${money(taxable)}</b></div><div>Add: CGST (9%): <b style="float:right">${money(cgst)}</b></div><div>Add: SGST (9%): <b style="float:right">${money(sgst)}</b></div><div>Add: IGST: <b style="float:right">${money(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${money(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${money(total)}</b></div></div></div>
       <div class="terms"><b>TERMS &amp; CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
     </div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
     try { w.document.open(); w.document.write(html); w.document.close(); w.focus(); } catch (e) { try { w.close(); } catch {} alert("Sale Bill print नहीं खुल पाया।"); }
@@ -2878,7 +2903,8 @@ export function CreditSale({
       fuel: c.fuel ?? "MS",
       productName: c.productName ?? "",
       qty: String(c.qty ?? ""),
-      manualAmount: String(c.fuel === "LUBRICANT" ? (c.taxableAmount ?? (n(c.gstAmount) > 0 ? n(c.amount)-n(c.gstAmount) : n(c.amount)/1.18)) : "")
+      // Edit using the final/gross invoice amount so GST is re-derived correctly.
+      manualAmount: String(c.fuel === "LUBRICANT" ? n(c.amount) : "")
     });
     setMsg("Credit Sale edit mode में है.");
   }}
