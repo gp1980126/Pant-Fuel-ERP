@@ -2557,7 +2557,19 @@ export function CreditSale({
     };
 
     if (editId !== null) {
-      update({ credits: data.credits.map(c => c.id === editId ? { ...c, ...record } : c) });
+      const oldRow = data.credits.find(c => c.id === editId);
+      if (!oldRow) return setMsg("Credit Sale edit record नहीं मिला।");
+      // Editing a protected transaction changes its signed business content.
+      // Recompute the v2 fingerprint before passing the row to the integrity firewall.
+      const updatedRow = {
+        ...oldRow,
+        ...record,
+        fingerprint: transactionFingerprint("CREDIT_SALE", { ...oldRow, ...record }),
+        fingerprintVersion: 2
+      };
+      update({ credits: data.credits.map(c => c.id === editId ? updatedRow : c) }).then?.(result => {
+        if (result?.ok === false) setMsg(`❌ Credit Sale update नहीं हुआ: ${result.reason || "Mutation rejected"}`);
+      });
       setMsg("Credit Sale updated successfully.");
       setEditId(null);
     } else {
@@ -4555,7 +4567,24 @@ export function LubricantManagement({ data, update }) {
     const duplicate=(data.credits||[]).some(c=>String(c.id)!==String(editingSaleId) && String(c?.parchiNo||"").trim().toLowerCase()===parchi.toLowerCase());
     if(duplicate) return setMsg(`Parchi No. ${parchi} पहले से मौजूद है।`);
     const qty=n(editingSale.qty);
-    const nextRow={...row,date:editingSale.date,parchiNo:parchi,party:String(editingSale.party).trim(),vehicle:String(editingSale.vehicle||"").toUpperCase(),fuel:"LUBRICANT",productName:String(editingSale.productName).trim(),qty,rate:qty>0?rupee(taxableAmount/qty):0,amount,taxableAmount,gstRate,gstAmount};
+    const nextRow={
+      ...row,
+      date:editingSale.date,
+      parchiNo:parchi,
+      party:String(editingSale.party).trim(),
+      vehicle:String(editingSale.vehicle||"").toUpperCase(),
+      fuel:"LUBRICANT",
+      productName:String(editingSale.productName).trim(),
+      qty,
+      rate:qty>0?rupee(taxableAmount/qty):0,
+      amount,
+      taxableAmount,
+      gstRate,
+      gstAmount
+    };
+    // This is a protected CREDIT_SALE row too; re-sign it after editing.
+    nextRow.fingerprint=transactionFingerprint("CREDIT_SALE",nextRow);
+    nextRow.fingerprintVersion=2;
     const result=await update({credits:(data.credits||[]).map(c=>String(c.id)===String(editingSaleId)?nextRow:c)});
     if(!result?.ok) return setMsg(`❌ Lubricant Sale update नहीं हुआ: ${result?.reason||"Mutation rejected"}`);
     resetSaleForm();
