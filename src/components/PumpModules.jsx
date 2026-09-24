@@ -5130,7 +5130,7 @@ export function LubricantManagement({ data, update }) {
       }
       let fin=null;
       for(let j=i+1;j<=Math.min(lines.length-1,i+5);j++){
-        const fm=lines[j].match(/^(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
+        const fm=lines[j].match(/^(?:\d{1,3}\s+)?(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
         if(!fm) continue;
         const nums=fm[4].trim().split(/\s+/).map(hpclNum2);
         if(nums.length>=6){
@@ -5175,7 +5175,7 @@ export function LubricantManagement({ data, update }) {
     }
 
     const parseFinancialLine=(line)=>{
-      const m=line.match(/^(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
+      const m=line.match(/^(?:\d{1,3}\s+)?(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
       if(!m) return null;
       const nums=m[4].trim().split(/\s+/).map(hpclNum2);
       if(nums.length<6) return null;
