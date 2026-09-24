@@ -5404,10 +5404,14 @@ export function LubricantManagement({ data, update }) {
     }
   };
 
-  const legacyHPCLPurchases=(Array.isArray(purchases)?purchases:[]).filter(p=>
+  // Recovery must be visible across ALL financial years. A legacy bill such as
+  // 27-03-2026 belongs to FY 2025-26, while the user may currently be viewing
+  // FY 2026-27. Do not hide the recovery action just because the selected FY changed.
+  const legacyHPCLPurchases=(Array.isArray(allLubPurchases)?allLubPurchases:[]).filter(p=>
+    String(p?.fuel||"").toUpperCase()==="LUBRICANT" &&
     String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF" &&
     !(Array.isArray(p?.items)&&p.items.length)
-  );
+  ).sort((a,b)=>String(b?.date||"").localeCompare(String(a?.date||"")));
 
   const autoRecoveredLegacyRef=useRef(new Set());
   const previousFYLegacyHPCL=useMemo(()=>{
