@@ -2646,6 +2646,7 @@ export function CreditSale({
     // Calculate one half of GST to paise, then derive taxable value from
     // the final displayed GST so the invoice total reconciles exactly.
     // Example ₹6,000 @ 18% => Taxable ₹5,084.74, CGST ₹457.63,
+    // Production cache-refresh marker: invoice GST display uses the paise-precise equal split.
     // SGST ₹457.63, Grand Total ₹6,000.00.
     const round2 = v => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
     const invoiceMoney = v => "₹" + Number(v || 0).toLocaleString("en-IN", {minimumFractionDigits:2, maximumFractionDigits:2});
