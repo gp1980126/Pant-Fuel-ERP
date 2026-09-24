@@ -2648,6 +2648,7 @@ export function CreditSale({
     // Example ₹6,000 @ 18% => Taxable ₹5,084.74, CGST ₹457.63,
     // SGST ₹457.63, Grand Total ₹6,000.00.
     const round2 = v => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
+    const invoiceMoney = v => "₹" + Number(v || 0).toLocaleString("en-IN", {minimumFractionDigits:2, maximumFractionDigits:2});
     const halfGst = gstRate > 0 ? round2(total * gstRate / (2 * (100 + gstRate))) : 0;
     const cgst = gstRate > 0 ? halfGst : 0;
     const sgst = gstRate > 0 ? halfGst : 0;
@@ -2748,7 +2749,7 @@ export function CreditSale({
       <div class="meta"><div><b>Bill To:</b><br>${escHtml(c.party)}<br>${c.vehicle ? "Vehicle No.: "+escHtml(c.vehicle) : ""}</div><div><b>Tax Invoice</b><br><b>Invoice No.:</b> ${escHtml(invoiceNo || "—")}<br><b>Challan No.:</b> ${escHtml(challanNo || "—")}<br><b>Date:</b> ${escHtml(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
       <table class="items"><thead><tr><th>Date</th><th>Challan</th><th>Vehicle</th><th>HSN</th><th>Product / Description</th><th>Qty (L)</th><th>Rate / L</th><th>Amount</th></tr></thead>
       <tbody><tr><td>${escHtml(c.date || "—")}</td><td>${escHtml(c.parchiNo || "—")}</td><td>${escHtml(c.vehicle || "—")}</td><td>${escHtml(c.hsnCode || "—")}</td><td><b>${escHtml(product)}</b></td><td class="num">${qty ? qty.toFixed(2) : "—"}</td><td class="num">${unitRate ? money(unitRate) : "—"}</td><td class="num"><b>${money(total)}</b></td></tr></tbody></table>
-      <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(amountInWords)}</div><div><div>Total Amount Before Tax: <b style="float:right">${money(taxable)}</b></div><div>Add: CGST (9%): <b style="float:right">${money(cgst)}</b></div><div>Add: SGST (9%): <b style="float:right">${money(sgst)}</b></div><div>Add: IGST: <b style="float:right">${money(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${money(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${money(total)}</b></div></div></div>
+      <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(amountInWords)}</div><div><div>Taxable Value: <b style="float:right">${invoiceMoney(taxable)}</b></div><div>Add: CGST (9%): <b style="float:right">${invoiceMoney(cgst)}</b></div><div>Add: SGST (9%): <b style="float:right">${invoiceMoney(sgst)}</b></div><div>Add: IGST: <b style="float:right">${invoiceMoney(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${invoiceMoney(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${invoiceMoney(total)}</b></div></div></div>
       <div class="terms"><b>TERMS &amp; CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
     </div></body></html>`;
     try {
