@@ -5077,11 +5077,15 @@ export function LubricantManagement({ data, update }) {
     const gstRate=n(c.gstRate)>0?n(c.gstRate):18;
     const total=rupee(c.amount);
     const qty=n(c.qty);
-    const taxable=rupee(total*100/(100+gstRate));
-    const tax=rupee(total-taxable);
-    const cgst=rupee(Math.floor((tax/2)*100)/100);
-    const sgst=rupee(tax-cgst);
-    const rate=qty>0?rupee(total/qty):0;
+    // Lubricant invoice only: GST-inclusive total. CGST and SGST are exactly equal to paise.
+    const round2=v=>Math.round((Number(v)+Number.EPSILON)*100)/100;
+    const halfGst=gstRate>0?round2(total*gstRate/(2*(100+gstRate))):0;
+    const cgst=gstRate>0?halfGst:0;
+    const sgst=gstRate>0?halfGst:0;
+    const tax=round2(cgst+sgst);
+    const taxable=round2(total-tax);
+    const invoiceMoney=v=>"₹"+Number(v??0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+    const rate=qty>0?round2(total/qty):0;
     const amountInWords=(()=>{
       const ones=["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
       const tens=["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
@@ -5134,8 +5138,8 @@ export function LubricantManagement({ data, update }) {
       <div class="bill-paper">
         <div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div>
         <div class="meta"><div><b>M/s:</b> ${esc(c.party)}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(invoiceNo||"—")}<br><b>Challan No.:</b> ${esc(challanNo||"—")}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
-        <table><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount (GST Incl.)</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(challanNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${money(total)}</td></tr></tbody></table>
-        <div class="bottom"><div><b>Rupees in Words:</b><br>${esc(amountInWords)}</div><div><b>Assessable / Taxable Value:</b><span style="float:right">${money(taxable)}</span><br><b>Add: CGST (9%):</b><span style="float:right">${money(cgst)}</span><br><b>Add: SGST (9%):</b><span style="float:right">${money(sgst)}</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${money(total)}</span></div></div>
+        <table><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount (GST Incl.)</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(challanNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${invoiceMoney(total)}</td></tr></tbody></table>
+        <div class="bottom"><div><b>Rupees in Words:</b><br>${esc(amountInWords)}</div><div><b>Assessable / Taxable Value:</b><span style="float:right">${invoiceMoney(taxable)}</span><br><b>Add: CGST (9%):</b><span style="float:right">${invoiceMoney(cgst)}</span><br><b>Add: SGST (9%):</b><span style="float:right">${invoiceMoney(sgst)}</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${invoiceMoney(total)}</span></div></div>
         <div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
       </div>`;
     document.body.appendChild(overlay);
