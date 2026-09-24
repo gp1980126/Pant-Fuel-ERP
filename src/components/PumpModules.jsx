@@ -2523,7 +2523,8 @@ export function CreditSale({
     (data.purchases || []).filter(p => String(p?.fuel || "").toUpperCase() === "LUBRICANT").forEach(p => {
       const items = Array.isArray(p.items) && p.items.length ? p.items : [{ description: p.productName || "Mobile Oil (HPCL)", hsn: p.hsn || "" }];
       items.forEach(item => {
-        const name = String(item?.description || "").trim();
+        const rawName = String(item?.description || "").trim();
+        const name = normalizeLubricantProductName(rawName);
         if (!name) return;
         const key = name.toLowerCase();
         if (!map.has(key)) map.set(key, { name, hsn: String(item?.hsn || "").trim(), invoiceNo: String(p.invoiceNo || "").trim() });
@@ -4472,6 +4473,17 @@ export function Reports({ data, totals }) {
    Opening stock is optional and can be entered later. Credit Sale rows
    already stored with fuel=LUBRICANT are the authoritative lubricant sales.
 ========================================================= */
+// Normalize HPCL inventory descriptions to the parent product. Pack size remains in the source bill,
+// but stock costing is consolidated at product level so paid + free quantities receive one
+// GST-inclusive effective purchase cost. DEF remains its own product and never mixes with oils.
+export function normalizeLubricantProductName(value) {
+  let name=String(value||"").replace(/\\s+/g," ").trim();
+  if(!name) return "";
+  name=name.replace(/\\s*[-–]\\s*\\d+(?:\\.\\d+)?\\s*[x×]\\s*\\d+(?:\\.\\d+)?\\s*L(?:\\s*SQ)?\\s*$/i,"");
+  name=name.replace(/\\s+\\d+(?:\\.\\d+)?\\s*L\\s*$/i,"");
+  return name.replace(/\\s+/g," ").trim();
+}
+
 export function LubricantManagement({ data, update }) {
   const [selectedFY,setSelectedFY]=useState(DEFAULT_FINANCIAL_YEAR);
   const fy=financialYearBounds(selectedFY);
@@ -4564,7 +4576,7 @@ export function LubricantManagement({ data, update }) {
     };
     purchases.forEach(p=>{
       if(Array.isArray(p.items) && p.items.length){
-        p.items.forEach(item=>add(item?.description,{hsn:item?.hsn}));
+        p.items.forEach(item=>add(normalizeLubricantProductName(item?.description),{hsn:item?.hsn}));
       } else if(String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF"){
         // Never guess an item/SKU for a legacy HPCL bill whose item lines were not saved.
         // Keep the quantity visible under an explicit unclassified bucket until the
@@ -4584,7 +4596,7 @@ export function LubricantManagement({ data, update }) {
       const openingRow=saved[key]||saved[item.name]||{};
       const isUnclassifiedHPCL=key==="⚠️ unclassified hpcl purchase (item lines unavailable)";
       const itemPurchases=purchases.filter(p=>{
-        if(Array.isArray(p.items) && p.items.length) return p.items.some(x=>String(x?.description||"").trim().toLowerCase()===key);
+        if(Array.isArray(p.items) && p.items.length) return p.items.some(x=>normalizeLubricantProductName(x?.description).toLowerCase()===key);
         if(isUnclassifiedHPCL) return String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF";
         return String(p.productName||"").trim().toLowerCase()===key;
       });
@@ -4592,7 +4604,7 @@ export function LubricantManagement({ data, update }) {
       itemPurchases.forEach(p=>{
         if(Array.isArray(p.items) && p.items.length){
           p.items.forEach(x=>{
-            if(String(x?.description||"").trim().toLowerCase()!==key) return;
+            if(normalizeLubricantProductName(x?.description).toLowerCase()!==key) return;
             const q=n(x?.inventoryQty)>0?n(x.inventoryQty):0;
             purchaseQty+=q;
             const lineValue=n(x?.netAmount)>0?n(x.netAmount):n(x?.taxableValue)+n(x?.igstAmount);
