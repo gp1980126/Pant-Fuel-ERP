@@ -2642,15 +2642,15 @@ export function CreditSale({
     const qty = n(c.qty) > 0 ? n(c.qty) : parsedQty;
     const gstRate = n(c.gstRate) > 0 ? n(c.gstRate) : 18;
     // Always treat the saved amount as the final/gross invoice value.
-    const taxable = rupee(total * 100 / (100 + gstRate));
-    const tax = rupee(total - taxable);
-    const rate = qty > 0 ? rupee(total / qty) : 0;
-    // Round the two GST components from the rounded GST total so the displayed
-    // tax lines reconcile exactly to the invoice total. Any 1-paise residual
-    // is assigned to SGST.
-    const roundedTax = rupee(total - taxable);
-    const cgst = gstRate > 0 ? rupee(roundedTax / 2) : 0;
-    const sgst = gstRate > 0 ? rupee(roundedTax - cgst) : 0;
+    // Invoice tax must be rounded to paise, not whole rupees.
+    // For ₹6,000 inclusive at 18%: taxable ₹5,084.75, GST ₹915.25.
+    // CGST/SGST are split with the one-paise residual assigned to SGST.
+    const round2 = v => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
+    const taxable = round2(total * 100 / (100 + gstRate));
+    const tax = round2(total - taxable);
+    const rate = qty > 0 ? round2(total / qty) : 0;
+    const cgst = gstRate > 0 ? round2(tax / 2) : 0;
+    const sgst = gstRate > 0 ? round2(tax - cgst) : 0;
     const unitRate = qty > 0 ? rate : 0;
     const amountInWords = (() => {
       const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
