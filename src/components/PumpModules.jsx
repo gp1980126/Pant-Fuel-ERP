@@ -2521,7 +2521,11 @@ export function CreditSale({
   const lubricantProductOptions = useMemo(() => {
     const map = new Map();
     (data.purchases || []).filter(p => String(p?.fuel || "").toUpperCase() === "LUBRICANT").forEach(p => {
-      const items = Array.isArray(p.items) && p.items.length ? p.items : [{ description: p.productName || "Mobile Oil (HPCL)", hsn: p.hsn || "" }];
+      // HPCL legacy rows without item lines must never create a fake generic
+      // "Mobile Oil (HPCL)" product option. Recover the saved invoice first.
+      const items = Array.isArray(p.items) && p.items.length
+        ? p.items
+        : (String(p?.source || "").toUpperCase() === "HPCL-LUBRICANT-PDF" ? [] : [{ description: p.productName || "", hsn: p.hsn || "" }]);
       items.forEach(item => {
         const rawName = String(item?.description || "").trim();
         const name = normalizeLubricantProductName(rawName);
@@ -4681,10 +4685,10 @@ export function LubricantManagement({ data, update }) {
       if(Array.isArray(p.items) && p.items.length){
         p.items.forEach(item=>add(normalizeLubricantProductName(item?.description),{hsn:item?.hsn}));
       } else if(String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF"){
-        // Never guess an item/SKU for a legacy HPCL bill whose item lines were not saved.
-        // Keep the quantity visible under an explicit unclassified bucket until the
-        // original saved bill attachment is re-read successfully.
-        add("⚠️ UNCLASSIFIED HPCL PURCHASE (ITEM LINES UNAVAILABLE)");
+        // Legacy HPCL rows without item lines are NOT valid item-wise stock.
+        // Do not manufacture "Mobile Oil (HPCL)" or an unclassified SKU here.
+        // The dedicated recovery panel below remains the only path to restore
+        // the actual invoice item lines from the saved source bill.
       } else add(p.productName);
     });
     sales.forEach(x=>add(normalizeLubricantSaleItemName(x.productName)));
@@ -4700,10 +4704,11 @@ export function LubricantManagement({ data, update }) {
     return lubricantStockItems.map(item=>{
       const key=item.name.toLowerCase();
       const openingRow=saved[key]||saved[item.name]||calculatedPreviousItemClosing[key]||calculatedPreviousItemClosing[item.name]||{};
-      const isUnclassifiedHPCL=key==="⚠️ unclassified hpcl purchase (item lines unavailable)";
       const itemPurchases=purchases.filter(p=>{
         if(Array.isArray(p.items) && p.items.length) return p.items.some(x=>normalizeLubricantProductName(x?.description).toLowerCase()===key);
-        if(isUnclassifiedHPCL) return String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF";
+        // Legacy HPCL purchase rows without items[] are deliberately excluded
+        // from item-wise stock until their original invoice lines are recovered.
+        if(String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF") return false;
         return String(p.productName||"").trim().toLowerCase()===key;
       });
       let purchaseQty=0, purchaseValue=0;
