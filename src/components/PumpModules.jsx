@@ -5349,6 +5349,35 @@ export function LubricantManagement({ data, update }) {
     }
   };
 
+  // Recovery path for old HPCL records where the original PDF was not saved.
+  // The user supplies the original invoice; the parser creates real item lines.
+  const recoverUploadedHPCLBill=async(row,file)=>{
+    if(!row || !file) return;
+    if(String(row?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF") return setLubBillMsg("❌ यह HPCL Lubricant PDF purchase record नहीं है।");
+    if(Array.isArray(row.items) && row.items.length) return setLubBillMsg("ℹ️ इस bill में item lines पहले से मौजूद हैं।");
+    if(!/^application\\/pdf$|^image\\/(jpeg|png|webp)$/i.test(String(file.type||"")) && !/\\.pdf$/i.test(String(file.name||""))) {
+      return setLubBillMsg("❌ केवल original HPCL PDF/JPG/PNG/WEBP bill upload करें।");
+    }
+    if(file.size>8*1024*1024) return setLubBillMsg("❌ HPCL bill 8 MB से छोटी रखें।");
+    setLubBillBusy(true);
+    setLubBillMsg("⏳ पुराने HPCL bill को पढ़कर item-wise stock recover किया जा रहा है...");
+    try{
+      const dataUrl=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(String(reader.result||""));
+        reader.onerror=()=>reject(new Error("Bill file read failed"));
+        reader.readAsDataURL(file);
+      });
+      if(!dataUrl) throw new Error("Bill file data खाली है");
+      await reReadSavedHPCLBill({...row,billFileData:dataUrl,billFileName:file.name,billFileType:file.type||"application/pdf"});
+    }catch(err){
+      console.error("Uploaded HPCL bill recovery failed",err);
+      setLubBillMsg("❌ HPCL bill recovery failed: "+(err?.message||"Unknown error"));
+    }finally{
+      setLubBillBusy(false);
+    }
+  };
+
   const legacyHPCLPurchases=(Array.isArray(purchases)?purchases:[]).filter(p=>
     String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF" &&
     !(Array.isArray(p?.items)&&p.items.length)
@@ -5545,7 +5574,13 @@ export function LubricantManagement({ data, update }) {
         <tbody>{legacyHPCLPurchases.map(row=><tr key={String(row.id)}>
           <td>{row.date}</td><td>{row.invoiceNo||"—"}</td><td>{n(row.quantity).toFixed(2)} L</td>
           <td>{row.billFileData?<span>✅ Saved</span>:<span>❌ Not saved</span>}</td>
-          <td><button type="button" className="btn" disabled={lubBillBusy||!row.billFileData} onClick={()=>reReadSavedHPCLBill(row)}>🔄 Re-read & Recover Items</button></td>
+          <td style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {row.billFileData && <button type="button" className="btn small" disabled={lubBillBusy} onClick={()=>reReadSavedHPCLBill(row)}>🔄 Re-read & Recover</button>}
+            <label className="btn small" style={{display:"inline-block",cursor:lubBillBusy?"not-allowed":"pointer",opacity:lubBillBusy?.6:1}}>
+              📤 Upload & Recover
+              <input type="file" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp" disabled={lubBillBusy} style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0]; if(f) recoverUploadedHPCLBill(row,f); e.target.value="";}} />
+            </label>
+          </td>
         </tr>)}</tbody>
       </table></div>
     </section>}
