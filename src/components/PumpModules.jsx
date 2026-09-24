@@ -2636,6 +2636,7 @@ export function CreditSale({
     }
     const escHtml = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[ch]));
     const total = rupee(n(c.amount));
+    const lubricantInvoiceBuild = "paise-v3"; // Lubricant invoice only; forces a fresh browser bundle.
     const product = c.productName || "Mobile Oil (HPCL)";
     const qtyMatch = String(product).match(/([0-9]+(?:[.][0-9]+)?)\s*(?:ltr|litre|liter|l)\s*x\s*([0-9]+(?:[.][0-9]+)?)/i);
     const parsedQty = qtyMatch ? n(qtyMatch[1]) * n(qtyMatch[2]) : 0;
