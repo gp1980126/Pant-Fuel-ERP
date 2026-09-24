@@ -4569,7 +4569,7 @@ export function LubricantManagement({ data, update }) {
 
   const previousFY = useMemo(()=>{
     const y=Number(String(selectedFY).slice(0,4));
-    return Number.isFinite(y) ? `${y-1}-${String(y).slice(0,4)}` : "";
+    return Number.isFinite(y) ? `${y-1}-${String(y).slice(-2)}` : "";
   },[selectedFY]);
 
   const calculatedPreviousClosing=useMemo(()=>{
