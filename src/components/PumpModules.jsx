@@ -4507,6 +4507,25 @@ export function normalizeLubricantProductName(value) {
   return name.replace(/\\s+/g," ").trim();
 }
 
+/*
+ * Legacy lubricant sale aliases must map to the actual item-wise stock SKU.
+ * "Mobile Oil (HPCL) 5Ltr Lal godha" is a 5 L sale from the 4x5 L
+ * Laal Ghoda pack line. Keep this mapping explicit; never infer it from
+ * a generic product-name match.
+ */
+export function normalizeLubricantSaleItemName(value) {
+  const raw=String(value||"").replace(/\\s+/g," ").trim();
+  const key=raw.toLowerCase().replace(/[×]/g,"x");
+  if (
+    key.includes("mobile oil") &&
+    /5\\s*l(?:tr|itre|iter)?\\b/i.test(key) &&
+    /la+al\\s+ghoda/i.test(key)
+  ) {
+    return "HP LAAL GHODA 20W40 - 4X5L";
+  }
+  return raw;
+}
+
 export function LubricantManagement({ data, update }) {
   const [selectedFY,setSelectedFY]=useState(DEFAULT_FINANCIAL_YEAR);
   const fy=financialYearBounds(selectedFY);
@@ -4607,8 +4626,8 @@ export function LubricantManagement({ data, update }) {
         add("⚠️ UNCLASSIFIED HPCL PURCHASE (ITEM LINES UNAVAILABLE)");
       } else add(p.productName);
     });
-    sales.forEach(x=>add(x.productName));
-    cashSales.forEach(x=>add(x.productName));
+    sales.forEach(x=>add(normalizeLubricantSaleItemName(x.productName)));
+    cashSales.forEach(x=>add(normalizeLubricantSaleItemName(x.productName)));
     return Array.from(map.values()).sort((a,b)=>a.name.localeCompare(b.name));
   },[purchases,sales,cashSales]);
 
@@ -4638,8 +4657,8 @@ export function LubricantManagement({ data, update }) {
           purchaseValue+=purchaseLandedValue(p);
         }
       });
-      const credit=sales.filter(x=>String(x?.productName||"").trim().toLowerCase()===key);
-      const cash=cashSales.filter(x=>String(x?.productName||"").trim().toLowerCase()===key);
+      const credit=sales.filter(x=>normalizeLubricantSaleItemName(x?.productName).trim().toLowerCase()===key);
+      const cash=cashSales.filter(x=>normalizeLubricantSaleItemName(x?.productName).trim().toLowerCase()===key);
       const creditQty=credit.reduce((a,x)=>a+n(x.qty),0);
       const cashQty=cash.reduce((a,x)=>a+n(x.qty),0);
       const creditValue=credit.reduce((a,x)=>a+n(x.amount),0);
