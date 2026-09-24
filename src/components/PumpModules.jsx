@@ -2649,7 +2649,8 @@ export function CreditSale({
     // Production cache-refresh marker: invoice GST display uses the paise-precise equal split.
     // SGST ₹457.63, Grand Total ₹6,000.00.
     const round2 = v => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
-    const invoiceMoney = v => "₹" + Number(v || 0).toLocaleString("en-IN", {minimumFractionDigits:2, maximumFractionDigits:2});
+    const gstInvoicePaise = 2;
+    const invoiceMoney = v => "₹" + Number(v || 0).toLocaleString("en-IN", {minimumFractionDigits:gstInvoicePaise, maximumFractionDigits:gstInvoicePaise});
     const halfGst = gstRate > 0 ? round2(total * gstRate / (2 * (100 + gstRate))) : 0;
     const cgst = gstRate > 0 ? halfGst : 0;
     const sgst = gstRate > 0 ? halfGst : 0;
