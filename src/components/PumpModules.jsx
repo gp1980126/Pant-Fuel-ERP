@@ -4565,6 +4565,11 @@ export function LubricantManagement({ data, update }) {
     purchases.forEach(p=>{
       if(Array.isArray(p.items) && p.items.length){
         p.items.forEach(item=>add(item?.description,{hsn:item?.hsn}));
+      } else if(String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF"){
+        // Never guess an item/SKU for a legacy HPCL bill whose item lines were not saved.
+        // Keep the quantity visible under an explicit unclassified bucket until the
+        // original saved bill attachment is re-read successfully.
+        add("⚠️ UNCLASSIFIED HPCL PURCHASE (ITEM LINES UNAVAILABLE)");
       } else add(p.productName);
     });
     sales.forEach(x=>add(x.productName));
@@ -4577,8 +4582,10 @@ export function LubricantManagement({ data, update }) {
     return lubricantStockItems.map(item=>{
       const key=item.name.toLowerCase();
       const openingRow=saved[key]||saved[item.name]||{};
+      const isUnclassifiedHPCL=key==="⚠️ unclassified hpcl purchase (item lines unavailable)";
       const itemPurchases=purchases.filter(p=>{
         if(Array.isArray(p.items) && p.items.length) return p.items.some(x=>String(x?.description||"").trim().toLowerCase()===key);
+        if(isUnclassifiedHPCL) return String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF";
         return String(p.productName||"").trim().toLowerCase()===key;
       });
       let purchaseQty=0, purchaseValue=0;
@@ -5068,6 +5075,93 @@ export function LubricantManagement({ data, update }) {
     }
   };
 
+  // Legacy HPCL purchase recovery: re-read the bill attachment already stored on the
+  // purchase row. This never invents product quantities. It only promotes successfully
+  // parsed source invoice lines into items[] and then re-signs the purchase row.
+  const reReadSavedHPCLBill=async(row)=>{
+    setLubBillMsg("");
+    if(!row) return;
+    if(String(row?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF") return setLubBillMsg("❌ यह HPCL Lubricant PDF purchase record नहीं है।");
+    if(Array.isArray(row.items) && row.items.length) return setLubBillMsg("ℹ️ इस bill में item lines पहले से मौजूद हैं। कोई migration जरूरी नहीं।");
+    if(!row.billFileData) return setLubBillMsg("❌ इस पुराने bill के साथ original attachment save नहीं है। इसे फिर से upload करना पड़ेगा; system अनुमान से item split नहीं करेगा।");
+    setLubBillBusy(true);
+    setLubBillMsg("⏳ Saved HPCL bill को दोबारा पढ़कर item lines recover की जा रही हैं...");
+    try{
+      const response=await fetch(row.billFileData);
+      const buffer=await response.arrayBuffer();
+      const type=String(row.billFileType||response.headers.get("content-type")||"application/pdf");
+      const file=new File([buffer],String(row.billFileName||("HPCL-"+row.invoiceNo+".pdf")), {type});
+      let parsed;
+      if(/^application\/pdf$/i.test(type)){
+        const structured=await extractLubricantPdf(file);
+        parsed=parseLubricantStructured(structured,file.name);
+      }else{
+        if(!window.Tesseract){
+          await new Promise((resolve,reject)=>{
+            const sc=document.createElement("script");
+            sc.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+            sc.onload=resolve; sc.onerror=()=>reject(new Error("OCR library load failed"));
+            document.head.appendChild(sc);
+          });
+        }
+        const out=await window.Tesseract.recognize(file,"eng",{logger:m=>{
+          if(m.status==="recognizing text"&&m.progress>0) setLubBillMsg("⏳ OCR "+Math.round(m.progress*100)+"%...");
+        }});
+        parsed=parseLubricantBillLines(out.data.text,file.name);
+      }
+      if(!parsed?.items?.length) return setLubBillMsg("❌ Saved bill पढ़ा गया, लेकिन item table recover नहीं हुई। कोई data change नहीं किया गया।");
+      if(String(parsed.invoiceNo||"").trim().toUpperCase()!==String(row.invoiceNo||"").trim().toUpperCase()){
+        return setLubBillMsg("❌ Re-read invoice number saved record से match नहीं करता। कोई data change नहीं किया गया।");
+      }
+      if(String(parsed.date||"")!==String(row.date||"")){
+        return setLubBillMsg("❌ Re-read bill date saved record से match नहीं करती। कोई data change नहीं किया गया।");
+      }
+      const qty=n(parsed.totalInventoryQty), total=n(parsed.totalNet||((parsed.totalTaxable||0)+(parsed.totalTax||0)));
+      if(!(qty>0)||!(total>0)) return setLubBillMsg("❌ Re-read से valid Qty/Net Amount नहीं मिला। कोई data change नहीं किया गया।");
+
+      const updated={
+        ...row,
+        productName:parsed.items.map(x=>x.description).join(" | ").slice(0,500),
+        quantity:qty,
+        unit:"L",
+        rate:qty>0?total/qty:0,
+        basicAmount:n(parsed.totalTaxable||parsed.totalBasic),
+        taxAmount:n(parsed.totalTax),
+        totalAmount:total,
+        amount:total,
+        supplier:String(parsed.supplier||row.supplier||"HINDUSTAN PETROLEUM CORP. LTD.").trim(),
+        supplierGstin:String(parsed.gstin||row.supplierGstin||"").trim(),
+        items:parsed.items.map(x=>({...x})),
+        source:"HPCL-LUBRICANT-PDF"
+      };
+      updated.fingerprint=transactionFingerprint("PURCHASE",updated);
+      updated.fingerprintVersion=2;
+
+      const nextPurchases=(Array.isArray(data.purchases)?data.purchases:[]).map(p=>String(p.id)===String(row.id)?updated:p);
+      const beforeScan=scanTransactionIntegrity(data);
+      const candidate=normalizeIntegrityData({...data,purchases:nextPurchases});
+      const afterScan=scanTransactionIntegrity(candidate);
+      const sig=x=>String(x.type||"")+"|"+String(x.collection||"")+"|"+String(x.index??"")+"|"+String(x.reason||"");
+      const beforeErrors=new Set(beforeScan.errors.map(sig));
+      const newErrors=afterScan.errors.filter(x=>!beforeErrors.has(sig(x)));
+      if(newErrors.length) return setLubBillMsg("❌ Migration blocked by Data Integrity Firewall: "+newErrors.slice(0,3).map(x=>x.reason).join(" | "));
+
+      const result=await update({purchases:nextPurchases});
+      if(!result?.ok) return setLubBillMsg("❌ HPCL bill migration save नहीं हुआ: "+(result?.reason||"Mutation rejected"));
+      setLubBillMsg("✅ HPCL bill recover हो गया: "+parsed.items.length+" item lines · "+qty.toFixed(2)+" L · "+money(total)+". अब Item Wise Stock में वास्तविक products दिखेंगे।");
+    }catch(err){
+      console.error("Saved HPCL bill re-read failed",err);
+      setLubBillMsg("❌ Saved HPCL bill re-read failed: "+(err?.message||"Unknown error"));
+    }finally{
+      setLubBillBusy(false);
+    }
+  };
+
+  const legacyHPCLPurchases=(Array.isArray(purchases)?purchases:[]).filter(p=>
+    String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF" &&
+    !(Array.isArray(p?.items)&&p.items.length)
+  );
+
   const bill = c => {
     if (!c || String(c.fuel || "").toUpperCase() !== "LUBRICANT") {
       alert("यह Sale Bill केवल Lubricant / Mobile Oil के लिए है।");
@@ -5202,6 +5296,22 @@ export function LubricantManagement({ data, update }) {
         </tr>)}
       </tbody></table></div>
       <div className="actions" style={{marginTop:10}}><button type="button" className="btn" onClick={saveItemWiseOpening}>💾 Save Item-wise Opening</button></div>
+    </section>}
+    {legacyHPCLPurchases.length>0&&<section className="panel" style={{marginTop:18,border:"2px solid #f59e0b"}}>
+      <h3>⚠️ पुराने HPCL Bills — Item Lines Recover करें</h3>
+      <p style={{marginTop:0,color:"#92400e"}}>
+        इन पुराने HPCL purchase records में <b>items[] save नहीं हुई थी</b>। System इन्हें किसी product में अनुमान से नहीं बाँटेगा।
+        Original saved bill attachment उपलब्ध हो तो उसे दोबारा पढ़कर वास्तविक item lines recover की जा सकती हैं।
+      </p>
+      {lubBillMsg&&<div className="warning" style={{marginBottom:10}}>{lubBillMsg}</div>}
+      <div className="table" style={{overflowX:"auto"}}><table>
+        <thead><tr><th>Date</th><th>Invoice No.</th><th>Current Qty</th><th>Attachment</th><th>Action</th></tr></thead>
+        <tbody>{legacyHPCLPurchases.map(row=><tr key={String(row.id)}>
+          <td>{row.date}</td><td>{row.invoiceNo||"—"}</td><td>{n(row.quantity).toFixed(2)} L</td>
+          <td>{row.billFileData?<span>✅ Saved</span>:<span>❌ Not saved</span>}</td>
+          <td><button type="button" className="btn" disabled={lubBillBusy||!row.billFileData} onClick={()=>reReadSavedHPCLBill(row)}>🔄 Re-read & Recover Items</button></td>
+        </tr>)}</tbody>
+      </table></div>
     </section>}
     <section className="panel" style={{marginTop:18}}>
       <h3>📄 HPCL Lubricant Purchase Bill — Full Auto Reading</h3>
