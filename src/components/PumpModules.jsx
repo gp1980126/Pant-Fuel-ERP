@@ -5036,7 +5036,7 @@ export function LubricantManagement({ data, update }) {
       // Item-wise save invariant: every HPCL line must have a real description,
       // positive inventory quantity and positive line value; invoice totals must
       // reconcile to the parsed lines before the purchase can be saved.
-      const badItem=r.items.find(x=>!String(x?.description||"").trim()||n(x?.inventoryQty)<=0||n(x?.netAmount)<=0);
+      const badItem=r.items.find(x=>!String(x?.description||"").trim()||n(x?.inventoryQty)<=0||n(x?.netAmount)<0);
       if(badItem) return setLubBillMsg('❌ HPCL bill में invalid item line मिली। Item-wise save रोक दिया गया; original bill verify करें।');
       const lineQty=r.items.reduce((a,x)=>a+n(x?.inventoryQty),0);
       const lineNet=r.items.reduce((a,x)=>a+n(x?.netAmount),0);
