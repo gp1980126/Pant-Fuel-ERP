@@ -4476,6 +4476,29 @@ export function Reports({ data, totals }) {
 // Normalize HPCL inventory descriptions to the parent product. Pack size remains in the source bill,
 // but stock costing is consolidated at product level so paid + free quantities receive one
 // GST-inclusive effective purchase cost. DEF remains its own product and never mixes with oils.
+const LUBRICANT_PACK_SALE_PRICES = Object.freeze({
+  "HP GEAR OIL EP 140": [{ pack:"210 L Drum", price:61500 }],
+  "HP LAAL GHODA 20W40": [
+    { pack:"1 L", price:295 },
+    { pack:"5 L", price:1475 },
+    { pack:"10 L", price:2950 },
+    { pack:"20 L", price:5900 }
+  ],
+  "HP RACER 4 20W40": [{ pack:"1 L", price:345 }],
+  "HP MILCY TURBO 15W40": [
+    { pack:"1 L", price:325 },
+    { pack:"4×5 L", price:1635 },
+    { pack:"7.5 L", price:2450 },
+    { pack:"10 L", price:3265 }
+  ],
+  "TATA MOTORS HP GENUINE DEF": [{ pack:"20 L Bucket", price:2000 }]
+});
+
+const lubricantSalePriceOptions = value => {
+  const key = normalizeLubricantProductName(value).toUpperCase();
+  return LUBRICANT_PACK_SALE_PRICES[key] || [];
+};
+
 export function normalizeLubricantProductName(value) {
   let name=String(value||"").replace(/\\s+/g," ").trim();
   if(!name) return "";
@@ -5281,7 +5304,7 @@ export function LubricantManagement({ data, update }) {
       <p style={{marginTop:0,color:"#64748b"}}>हर HPCL product/SKU का stock अलग दिखेगा। Closing Qty = Opening + Purchase − Credit Sale − Cash Sale.</p>
       {lubricantStockItems.length===0 ? <div className="warning">अभी कोई Lubricant item नहीं मिला। HPCL purchase bill upload/save करने के बाद items यहाँ दिखाई देंगे।</div> :
       <div className="table" style={{overflowX:"auto"}}><table>
-        <thead><tr><th>Item / Product</th><th>Opening Qty</th><th>Purchase Qty</th><th>Credit Sale</th><th>Cash Sale</th><th>Closing Qty</th><th>Avg Cost</th><th>Closing Value</th></tr></thead>
+        <thead><tr><th>Item / Product</th><th>Opening Qty</th><th>Purchase Qty</th><th>Credit Sale</th><th>Cash Sale</th><th>Closing Qty</th><th>Avg Cost</th><th>Rounded Sale Price (GST Incl.)</th><th>Closing Value</th></tr></thead>
         <tbody>
           {lubricantItemLedger.map(item=><tr key={item.key}>
             <td><b>{item.name}</b>{item.hsn&&<small style={{display:"block",color:"#64748b"}}>HSN {item.hsn}</small>}</td>
@@ -5291,6 +5314,15 @@ export function LubricantManagement({ data, update }) {
             <td>{item.cashQty.toFixed(2)} L</td>
             <td><b>{item.closingQty.toFixed(2)} L</b></td>
             <td>{money(item.avgCost)}/L</td>
+            <td>
+              {lubricantSalePriceOptions(item.name).length
+                ? <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {lubricantSalePriceOptions(item.name).map(x=><span key={x.pack} style={{padding:"4px 7px",borderRadius:7,border:"1px solid #cbd5e1",background:"#f8fafc",fontSize:11}}>
+                      <b>{x.pack}</b> · ₹{Number(x.price).toLocaleString("en-IN")}
+                    </span>)}
+                  </div>
+                : "—"}
+            </td>
             <td><b>{money(item.closingValue)}</b></td>
           </tr>)}
           <tr className="total-row">
@@ -5300,6 +5332,7 @@ export function LubricantManagement({ data, update }) {
             <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.creditQty,0).toFixed(2)} L</b></td>
             <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.cashQty,0).toFixed(2)} L</b></td>
             <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.closingQty,0).toFixed(2)} L</b></td>
+            <td>—</td>
             <td>—</td>
             <td><b>{money(lubricantItemLedger.reduce((a,x)=>a+x.closingValue,0))}</b></td>
           </tr>
