@@ -1,4 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+
+function inferLubricantPackSizeLitres(name){
+  const v=String(name||"").toUpperCase().replace(/×/g,"X").trim();
+  let m=v.match(/(\d+(?:\.\d+)?)\s*L(?:TR|ITRE)?\s*X\s*(\d+(?:\.\d+)?)\s*(?:BALTY|BALTI|BUCKETS?)/i);
+  if(m) return Number(m[1]);
+  m=v.match(/\d+(?:\.\d+)?\s*X\s*(\d+(?:\.\d+)?)\s*L(?:TR|ITRE)?/i);
+  if(m) return Number(m[1]);
+  return 0;
+}
+
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "../cloud_sync_supabase";
 import {
   START_DATE,
@@ -2499,6 +2509,8 @@ export function CreditSale({
       fuel:"MS",
       productName:"",
       qty:"",
+      packQty:"",
+      packSize:"",
       manualAmount:""
     });
 
@@ -2531,6 +2543,7 @@ export function CreditSale({
   const lubricantGrossPreview = f.fuel === "LUBRICANT" ? rupee(n(f.manualAmount)) : 0;
   const lubricantTaxablePreview = f.fuel === "LUBRICANT" ? rupee(lubricantGrossPreview * 100 / (100 + LUBRICANT_GST_RATE)) : 0;
   const lubricantGstPreview = f.fuel === "LUBRICANT" ? rupee(lubricantGrossPreview - lubricantTaxablePreview) : 0;
+  const lubricantSaleQty = (f.fuel === "LUBRICANT" && n(f.packQty)>0 && n(f.packSize)>0) ? rupee(n(f.packQty)*n(f.packSize)) : n(f.qty);
   const amount = f.fuel === "LUBRICANT" ? lubricantGrossPreview : rupee(n(f.qty) * creditRate);
 
   function save() {
@@ -2540,7 +2553,7 @@ export function CreditSale({
     }
     if (f.fuel === "LUBRICANT") {
       if (!f.invoiceNo.trim()) return setMsg("Lubricant Sale में Invoice No. जरूरी है.");
-      if (n(f.qty) <= 0) return setMsg("Lubricant Sale में Qty जरूरी है.");
+      if (lubricantSaleQty <= 0) return setMsg("Lubricant Sale में Qty जरूरी है.");
       if (!f.productName.trim()) return setMsg("Lubricant / Product Name जरूरी है.");
       if (n(f.manualAmount) <= 0) return setMsg("Lubricant Credit Sale में Amount ₹0 से अधिक होना चाहिए.");
     } else if (n(f.qty) <= 0) {
@@ -2566,9 +2579,9 @@ export function CreditSale({
       vehicle: f.vehicle.toUpperCase(),
       fuel: f.fuel,
       productName: f.fuel === "LUBRICANT" ? f.productName.trim() : "",
-      qty: n(f.qty),
+      qty: f.fuel === "LUBRICANT" ? lubricantSaleQty : n(f.qty),
       // Invoice Rate for lubricant is GST-inclusive gross rate per litre.
-      rate: f.fuel === "LUBRICANT" ? (n(f.qty) > 0 ? rupee(lubricantGrossPreview / n(f.qty)) : 0) : creditRate,
+      rate: f.fuel === "LUBRICANT" ? (lubricantSaleQty > 0 ? rupee(lubricantGrossPreview / lubricantSaleQty) : 0) : creditRate,
       amount,
       ...(f.fuel === "LUBRICANT" ? { taxableAmount:lubricantTaxablePreview, gstRate:LUBRICANT_GST_RATE, gstAmount:lubricantGstPreview } : {})
     };
@@ -2594,7 +2607,7 @@ export function CreditSale({
       setMsg("Credit Sale saved successfully.");
     }
 
-    setF({ ...f, parchiNo: "", invoiceNo: "", party: "", vehicle: "", productName: "", qty: "", manualAmount: "" });
+    setF({ ...f, parchiNo: "", invoiceNo: "", party: "", vehicle: "", productName: "", qty: "", packQty: "", packSize: "", manualAmount: "" });
   }
 
   function exportCreditExcel() {
@@ -2874,7 +2887,7 @@ export function CreditSale({
 
           {f.fuel === "LUBRICANT" && (
             <Field label="Product (Uploaded Bill से Select करें)">
-              <select value={f.productName} onChange={e => setF({ ...f, productName: e.target.value })}>
+              <select value={f.productName} onChange={e => {const productName=e.target.value;const inferred=inferLubricantPackSizeLitres(productName);setF(x=>({...x,productName,packSize:inferred||x.packSize,qty:n(x.packQty)>0&&inferred>0?rupee(n(x.packQty)*inferred):x.qty}));}}>
                 <option value="">Select Product</option>
                 {f.productName && !lubricantProductOptions.some(x => x.name === f.productName) && <option value={f.productName}>{f.productName}</option>}
                 {lubricantProductOptions.map((x, i) => <option key={x.name + i} value={x.name}>{x.name}{x.hsn ? " · HSN " + x.hsn : ""}{x.invoiceNo ? " · Inv " + x.invoiceNo : ""}</option>)}
@@ -2883,24 +2896,9 @@ export function CreditSale({
             </Field>
           )}
 
-          <Field label={f.fuel === "LUBRICANT" ? "Qty (Litre)" : "Qty"}>
-
-            <input
-              type="number"
-              step={
-                f.fuel === "CNG"
-                  ? ".001"
-                  : ".01"
-              }
-              value={f.qty}
-              onChange={e =>
-                setF({
-                  ...f,
-                  qty:e.target.value
-                })
-              }
-            />
-
+          {f.fuel === "LUBRICANT" && <><Field label="Pack/Balti Qty"><input type="number" min="0" step="1" value={f.packQty} onChange={e=>setF({...f,packQty:e.target.value,qty:n(e.target.value)>0&&n(f.packSize)>0?rupee(n(e.target.value)*n(f.packSize)):""})}/></Field><Field label="Pack Size (L)"><input type="number" min="0" step="0.01" value={f.packSize} onChange={e=>setF({...f,packSize:e.target.value,qty:n(f.packQty)>0&&n(e.target.value)>0?rupee(n(f.packQty)*n(e.target.value)):f.qty})} placeholder="जैसे 10"/></Field></>}
+          <Field label={f.fuel === "LUBRICANT" ? "Total Qty (Litre)" : "Qty"}>
+            <input type="number" step={f.fuel === "CNG" ? ".001" : ".01"} value={f.qty} onChange={e=>setF({...f,qty:e.target.value})}/>
           </Field>
 
           <Field label={f.fuel === "LUBRICANT" ? "Bill Amount (GST सहित)" : "Amount"}>
@@ -4657,21 +4655,21 @@ export function LubricantManagement({ data, update }) {
 
   const [editingPurchaseId,setEditingPurchaseId]=useState(null);
   const [editingCashSaleId,setEditingCashSaleId]=useState(null);
-  const [cashSale,setCashSale]=useState({date:today,productName:"Mobile Oil (HPCL)",qty:"",rate:"",amount:""});
+  const [cashSale,setCashSale]=useState({date:today,productName:"Mobile Oil (HPCL)",packQty:"",packSize:"",qty:"",rate:"",amount:""});
   const [editingSaleId,setEditingSaleId]=useState(null);
   const [editingSale,setEditingSale]=useState({date:today,parchiNo:"",party:"",vehicle:"",productName:"Mobile Oil (HPCL)",qty:"",amount:""});
 
 
   const resetCashSaleForm=()=>{
     setEditingCashSaleId(null);
-    setCashSale({date:today,productName:"Mobile Oil (HPCL)",qty:"",rate:"",amount:""});
+    setCashSale({date:today,productName:"Mobile Oil (HPCL)",packQty:"",packSize:"",qty:"",rate:"",amount:""});
   };
 
   const saveCashSale=async()=>{
     setMsg("");
     if(!cashSale.date || !isValidISODate(cashSale.date) || cashSale.date<START_DATE || cashSale.date>today) return setMsg("Cash Sale Date valid period में नहीं है।");
     if(!String(cashSale.productName||"").trim()) return setMsg("Uploaded Bill से Product Select करना जरूरी है।");
-    const qty=n(cashSale.qty), rate=n(cashSale.rate), inclusiveAmount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate), taxableAmount=rupee(inclusiveAmount*100/118);
+    const qty=(n(cashSale.packQty)>0&&n(cashSale.packSize)>0)?rupee(n(cashSale.packQty)*n(cashSale.packSize)):n(cashSale.qty), rate=n(cashSale.rate), inclusiveAmount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate), taxableAmount=rupee(inclusiveAmount*100/118);
     const gstRate=18, gstAmount=rupee(inclusiveAmount-taxableAmount), amount=inclusiveAmount;
     if(qty<=0) return setMsg("Qty 0 से अधिक होना चाहिए।");
     if(rate<=0 && amount<=0) return setMsg("Rate या Amount भरें।");
@@ -5215,8 +5213,8 @@ export function LubricantManagement({ data, update }) {
       <p style={{marginTop:0,color:'#6b7280'}}>Cash sale में Parchi No., Party या Vehicle नहीं होगा। केवल Product, Qty, Rate और Amount दर्ज होगा। Payment हमेशा Cash रहेगा।</p>
       <div className="form">
         <Field label="Date"><input type="date" min={START_DATE} max={today} value={cashSale.date} onChange={e=>setCashSale({...cashSale,date:e.target.value})}/></Field>
-        <Field label="Product (Uploaded Bill से Select करें)"><select value={cashSale.productName} onChange={e=>setCashSale({...cashSale,productName:e.target.value})}><option value="">Select Product</option>{cashSale.productName&&!lubricantProductOptions.some(x=>x.name===cashSale.productName)&&<option value={cashSale.productName}>{cashSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select><small style={{display:"block",marginTop:4,color:"#64748b"}}>Uploaded HPCL purchase bill के product में से चुनें।</small></Field>
-        <Field label="Qty (L)"><input type="number" min="0" step="0.01" value={cashSale.qty} onChange={e=>setCashSale({...cashSale,qty:e.target.value})}/></Field>
+        <Field label="Product (Uploaded Bill से Select करें)"><select value={cashSale.productName} onChange={e=>{const productName=e.target.value;const inferred=inferLubricantPackSizeLitres(productName);setCashSale(x=>({...x,productName,packSize:inferred||x.packSize,qty:n(x.packQty)>0&&inferred>0?rupee(n(x.packQty)*inferred):x.qty}));}}><option value="">Select Product</option>{cashSale.productName&&!lubricantProductOptions.some(x=>x.name===cashSale.productName)&&<option value={cashSale.productName}>{cashSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select><small style={{display:"block",marginTop:4,color:"#64748b"}}>Uploaded HPCL purchase bill के product में से चुनें।</small></Field>
+        <Field label="Pack/Balti Qty"><input type="number" min="0" step="1" value={cashSale.packQty} onChange={e=>setCashSale({...cashSale,packQty:e.target.value,qty:n(e.target.value)>0&&n(cashSale.packSize)>0?rupee(n(e.target.value)*n(cashSale.packSize)):""})}/></Field><Field label="Pack Size (L)"><input type="number" min="0" step="0.01" value={cashSale.packSize} onChange={e=>setCashSale({...cashSale,packSize:e.target.value,qty:n(cashSale.packQty)>0&&n(e.target.value)>0?rupee(n(cashSale.packQty)*n(e.target.value)):cashSale.qty})} placeholder="जैसे 10"/></Field><Field label="Total Qty (L)"><input type="number" min="0" step="0.01" value={cashSale.qty} onChange={e=>setCashSale({...cashSale,qty:e.target.value})}/></Field>
         <Field label="Rate / L"><input type="number" min="0" step="0.01" value={cashSale.rate} onChange={e=>setCashSale({...cashSale,rate:e.target.value})}/></Field>
         <Field label="Amount"><input type="number" min="0" step="0.01" value={cashSale.amount} onChange={e=>setCashSale({...cashSale,amount:e.target.value})} placeholder="Qty × Rate auto"/></Field>
         <Field label="Payment"><input value="CASH" readOnly/></Field>
