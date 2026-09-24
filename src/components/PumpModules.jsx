@@ -5033,6 +5033,16 @@ export function LubricantManagement({ data, update }) {
       if(!(qty>0)) return setLubBillMsg('❌ Invoice की Inventory Qty 0 है। Bill की Qty/Vol verify करें।');
       if(!(total>0)) return setLubBillMsg('❌ Invoice का Total/Net Amount 0 है। Bill amounts verify करें।');
 
+      // Item-wise save invariant: every HPCL line must have a real description,
+      // positive inventory quantity and positive line value; invoice totals must
+      // reconcile to the parsed lines before the purchase can be saved.
+      const badItem=r.items.find(x=>!String(x?.description||"").trim()||n(x?.inventoryQty)<=0||n(x?.netAmount)<=0);
+      if(badItem) return setLubBillMsg('❌ HPCL bill में invalid item line मिली। Item-wise save रोक दिया गया; original bill verify करें।');
+      const lineQty=r.items.reduce((a,x)=>a+n(x?.inventoryQty),0);
+      const lineNet=r.items.reduce((a,x)=>a+n(x?.netAmount),0);
+      if(Math.abs(lineQty-qty)>0.01) return setLubBillMsg('❌ Item-wise Qty और invoice total Qty match नहीं हैं। Save रोक दिया गया।');
+      if(Math.abs(lineNet-total)>0.05) return setLubBillMsg('❌ Item-wise Net Amount और invoice Net Amount match नहीं हैं। Save रोक दिया गया।');
+
       if(!window.confirm(`क्या HPCL Lubricant Purchase Invoice ${invoiceNo} को save करना है?\n\n${r.items.length} item lines\nInventory Qty: ${qty.toFixed(2)} L\nNet Amount: ${money(total)}`)) return setLubBillMsg('↩️ Save cancel किया गया। कोई data save नहीं हुआ।');
 
       const now=Date.now();
