@@ -4517,6 +4517,11 @@ export function normalizeLubricantProductName(value) {
  * Laal Ghoda pack line. Keep this mapping explicit; never infer it from
  * a generic product-name match.
  */
+function isGenericLegacyLubricantName(value) {
+  const key=String(value||"").replace(/\\s+/g," ").trim().toLowerCase();
+  return key==="mobile oil (hpcl)" || key==="mobile oil" || key==="mobile oil (hpcl) 5ltr";
+}
+
 export function normalizeLubricantSaleItemName(value) {
   const raw=String(value||"").replace(/\\s+/g," ").trim();
   const key=raw.toLowerCase().replace(/[×]/g,"x");
@@ -4546,7 +4551,9 @@ export function LubricantManagement({ data, update }) {
   const lubricantProductOptions = useMemo(() => {
     const map = new Map();
     (data.purchases || []).filter(p => String(p?.fuel || "").toUpperCase() === "LUBRICANT").forEach(p => {
-      const items = Array.isArray(p.items) && p.items.length ? p.items : [{ description: p.productName || "Mobile Oil (HPCL)", hsn: p.hsn || "" }];
+      const items = Array.isArray(p.items) && p.items.length
+        ? p.items
+        : (String(p?.source || "").toUpperCase() === "HPCL-LUBRICANT-PDF" ? [] : [{ description: p.productName || "", hsn: p.hsn || "" }]);
       items.forEach(item => {
         const name = String(item?.description || "").trim();
         if (!name) return;
@@ -4691,12 +4698,20 @@ export function LubricantManagement({ data, update }) {
         // the actual invoice item lines from the saved source bill.
       } else add(p.productName);
     });
-    sales.forEach(x=>add(normalizeLubricantSaleItemName(x.productName)));
-    cashSales.forEach(x=>add(normalizeLubricantSaleItemName(x.productName)));
+    sales.forEach(x=>{
+      const name=normalizeLubricantSaleItemName(x.productName);
+      if(!isGenericLegacyLubricantName(name)) add(name);
+    });
+    cashSales.forEach(x=>{
+      const name=normalizeLubricantSaleItemName(x.productName);
+      if(!isGenericLegacyLubricantName(name)) add(name);
+    });
     const savedOpen=data?.lubricantOpeningByFY?.[selectedFY]||{};
     Object.entries(savedOpen).forEach(([key,row])=>add(row?.name||key,{hsn:row?.hsn}));
     Object.entries(calculatedPreviousItemClosing).forEach(([key,row])=>add(row?.name||key,{hsn:row?.hsn}));
-    return Array.from(map.values()).sort((a,b)=>a.name.localeCompare(b.name));
+    return Array.from(map.values())
+      .filter(item=>!isGenericLegacyLubricantName(item.name))
+      .sort((a,b)=>a.name.localeCompare(b.name));
   },[purchases,sales,cashSales]);
 
   const lubricantItemLedger = useMemo(()=>{
@@ -4726,8 +4741,14 @@ export function LubricantManagement({ data, update }) {
           purchaseValue+=purchaseLandedValue(p);
         }
       });
-      const credit=sales.filter(x=>normalizeLubricantSaleItemName(x?.productName).trim().toLowerCase()===key);
-      const cash=cashSales.filter(x=>normalizeLubricantSaleItemName(x?.productName).trim().toLowerCase()===key);
+      const credit=sales.filter(x=>{
+        const name=normalizeLubricantSaleItemName(x?.productName);
+        return !isGenericLegacyLubricantName(name) && name.trim().toLowerCase()===key;
+      });
+      const cash=cashSales.filter(x=>{
+        const name=normalizeLubricantSaleItemName(x?.productName);
+        return !isGenericLegacyLubricantName(name) && name.trim().toLowerCase()===key;
+      });
       const creditQty=credit.reduce((a,x)=>a+n(x.qty),0);
       const cashQty=cash.reduce((a,x)=>a+n(x.qty),0);
       const creditValue=credit.reduce((a,x)=>a+n(x.amount),0);
