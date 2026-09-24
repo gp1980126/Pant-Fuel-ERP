@@ -5407,11 +5407,18 @@ export function LubricantManagement({ data, update }) {
   // Recovery must be visible across ALL financial years. A legacy bill such as
   // 27-03-2026 belongs to FY 2025-26, while the user may currently be viewing
   // FY 2026-27. Do not hide the recovery action just because the selected FY changed.
-  const legacyHPCLPurchases=(Array.isArray(allLubPurchases)?allLubPurchases:[]).filter(p=>
-    String(p?.fuel||"").toUpperCase()==="LUBRICANT" &&
-    String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF" &&
-    !(Array.isArray(p?.items)&&p.items.length)
-  ).sort((a,b)=>String(b?.date||"").localeCompare(String(a?.date||"")));
+  const legacyHPCLPurchases=(Array.isArray(allLubPurchases)?allLubPurchases:[]).filter(p=>{
+    if(String(p?.fuel||"").toUpperCase()!=="LUBRICANT") return false;
+    if(Array.isArray(p?.items)&&p.items.length) return false;
+    const source=String(p?.source||"").toUpperCase();
+    const product=String(p?.productName||"").toLowerCase();
+    const supplier=String(p?.supplier||"").toLowerCase();
+    // Legacy data exists in more than one historical format. Do not require one
+    // exact source string; identify HPCL legacy rows by their stored metadata.
+    return source.includes("HPCL") ||
+      /mobile oil.*hpcl|hpcl.*mobile oil|mobile oil \(hpcl\)/i.test(product) ||
+      /hindustan petroleum|hpcl/i.test(supplier);
+  }).sort((a,b)=>String(b?.date||"").localeCompare(String(a?.date||"")));
 
   const autoRecoveredLegacyRef=useRef(new Set());
   const previousFYLegacyHPCL=useMemo(()=>{
