@@ -2645,8 +2645,12 @@ export function CreditSale({
     const taxable = rupee(total * 100 / (100 + gstRate));
     const tax = rupee(total - taxable);
     const rate = qty > 0 ? rupee(total / qty) : 0;
-    const cgst = gstRate > 0 ? rupee(tax / 2) : 0;
-    const sgst = gstRate > 0 ? rupee(tax - cgst) : 0;
+    // Round the two GST components from the rounded GST total so the displayed
+    // tax lines reconcile exactly to the invoice total. Any 1-paise residual
+    // is assigned to SGST.
+    const roundedTax = rupee(total - taxable);
+    const cgst = gstRate > 0 ? rupee(roundedTax / 2) : 0;
+    const sgst = gstRate > 0 ? rupee(roundedTax - cgst) : 0;
     const unitRate = qty > 0 ? rate : 0;
     const amountInWords = (() => {
       const ones = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
