@@ -5108,6 +5108,56 @@ export function LubricantManagement({ data, update }) {
     const supplier='HINDUSTAN PETROLEUM CORP. LTD.';
     const items=[];
 
+    // Robust HPCL table reader: native HPCL PDFs can expose the table as
+    // separate text fragments. Do not depend on the PDF text extractor keeping
+    // the SR/description/Qty/financial columns in one exact block.
+    // Find each Qty/Vol line, then pair it with the nearest product description
+    // above and the nearest HSN/EA financial row below.
+    const hardTableRows=[];
+    for(let i=0;i<lines.length;i++){
+      const q=lines[i].match(/^Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L(?:\d+)?$/i);
+      if(!q) continue;
+      let sr=0;
+      for(let j=i-1;j>=Math.max(0,i-8);j--){
+        const sm=lines[j].match(/^(\d{1,3})$/);
+        if(sm){ sr=Number(sm[1]); break; }
+      }
+      let desc="";
+      for(let j=i-1;j>=Math.max(0,i-6);j--){
+        if(/^(?:HP|TATA\s+MOTORS\s+HP|DEF\b)/i.test(lines[j])){
+          desc=lines[j].trim(); break;
+        }
+      }
+      let fin=null;
+      for(let j=i+1;j<=Math.min(lines.length-1,i+5);j++){
+        const fm=lines[j].match(/^(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
+        if(!fm) continue;
+        const nums=fm[4].trim().split(/\s+/).map(hpclNum2);
+        if(nums.length>=6){
+          fin={
+            hsn:String(fm[1]), billedQty:hpclNum2(fm[2]), unit:fm[3].toUpperCase(),
+            totalValue:nums[0]||0, discount:nums[1]||0, taxableValue:nums[2]||0,
+            igstRate:nums[3]||0, igstAmount:nums[4]||0, netAmount:nums[5]||0
+          };
+          break;
+        }
+      }
+      if(!desc || !fin) continue;
+      const inventoryQty=hpclNum2(q[1]);
+      const pack=desc.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
+      hardTableRows.push({
+        lineNo:sr||hardTableRows.length+1,
+        description:desc,
+        hsn:fin.hsn,
+        billedQty:fin.billedQty,
+        unit:fin.unit,
+        packSize:pack?pack[1]+' × '+pack[2]+' L':'',
+        inventoryQty,
+        ...fin
+      });
+    }
+    if(hardTableRows.length) items.push(...hardTableRows);
+
     // HPCL lubricant PDFs place each product over several physical text lines:
     // SR number -> product description -> Qty/Vol -> HSN/EA financial row.
     // The old parser treated the EA count (e.g. "3 EA") as litres when Qty/Vol
