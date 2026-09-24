@@ -11,12 +11,19 @@ function inferLubricantPackSizeLitres(name){
 
 function isLegacyHPCLPurchase(row){
   if(Array.isArray(row?.items) && row.items.length) return false;
+  const fuel=String(row?.fuel||"").toUpperCase();
   const source=String(row?.source||"").toUpperCase();
   const product=String(row?.productName||"").toLowerCase();
   const supplier=String(row?.supplier||"").toLowerCase();
-  return source.includes("HPCL") ||
-    /mobile oil.*hpcl|hpcl.*mobile oil|mobile oil \(hpcl\)/i.test(product) ||
-    /hindustan petroleum|hpcl/i.test(supplier);
+  const lubricantProduct=/mobile oil|lubricant|engine oil|gear oil|laal ghoda|milcy|racer/i.test(product);
+  const explicitHPCLLubricantSource=/HPCL-LUBRICANT|HPCL.*LUBRICANT/i.test(source);
+  const hpclSupplier=/hindustan petroleum|hpcl/i.test(supplier);
+  // Never pull ordinary MS/HSD/CNG purchase rows into the lubricant recovery list.
+  // A legacy lubricant row is identified by its lubricant fuel/type metadata or by
+  // an explicitly lubricant-looking product name when the old row lacks fuel metadata.
+  if(fuel==="LUBRICANT") return source.includes("HPCL") || lubricantProduct || hpclSupplier;
+  if(fuel && fuel!=="LUBRICANT") return false;
+  return explicitHPCLLubricantSource || lubricantProduct;
 }
 
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "../cloud_sync_supabase";
