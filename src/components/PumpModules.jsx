@@ -5355,7 +5355,7 @@ export function LubricantManagement({ data, update }) {
     if(!row || !file) return;
     if(String(row?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF") return setLubBillMsg("❌ यह HPCL Lubricant PDF purchase record नहीं है।");
     if(Array.isArray(row.items) && row.items.length) return setLubBillMsg("ℹ️ इस bill में item lines पहले से मौजूद हैं।");
-    if(!/^application\\/pdf$|^image\\/(jpeg|png|webp)$/i.test(String(file.type||"")) && !/\\.pdf$/i.test(String(file.name||""))) {
+    if(!/^application\/pdf$|^image\/(jpeg|png|webp)$/i.test(String(file.type||"")) && !/\.pdf$/i.test(String(file.name||""))) {
       return setLubBillMsg("❌ केवल original HPCL PDF/JPG/PNG/WEBP bill upload करें।");
     }
     if(file.size>8*1024*1024) return setLubBillMsg("❌ HPCL bill 8 MB से छोटी रखें।");
