@@ -36,3 +36,6 @@ Roles: Admin, Owner, Manager, Operator, View Only. View Only is strictly read-on
 Manager and Operator mutations are restricted by the central mutation gateway and the
 production server-side `save_app_state` authorization gate; accounting-period locks
 override every mutation permission.
+
+
+<!-- Production asset refresh: equal CGST/SGST invoice fix -->
