@@ -4567,6 +4567,11 @@ export function LubricantManagement({ data, update }) {
   const allLubCredits=Array.isArray(data?.credits)?data.credits:[];
   const allLubCash=Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[];
 
+  const previousFY = useMemo(()=>{
+    const y=Number(String(selectedFY).slice(0,4));
+    return Number.isFinite(y) ? `${y-1}-${String(y).slice(0,4)}` : "";
+  },[selectedFY]);
+
   const calculatedPreviousClosing=useMemo(()=>{
     if(!previousFYBounds) return {qty:baseOpeningQ,value:baseOpeningV};
     const inPrev=x=>String(x?.date||"")>=previousFYBounds.start && String(x?.date||"")<=previousFYBounds.end;
@@ -4579,6 +4584,62 @@ export function LubricantManagement({ data, update }) {
     const avg=totalQ>0?(baseOpeningV+pv)/totalQ:0;
     return {qty,value:Math.max(0,qty*avg)};
   },[previousFYBounds,baseOpeningQ,baseOpeningV,allLubPurchases,allLubCredits,allLubCash]);
+
+  // IMPORTANT: FY carry-forward must be item-wise. Never split an aggregate
+  // lubricant opening balance across products by guesswork. Where a previous
+  // FY item opening exists, calculate that item's exact closing qty/value from
+  // its own purchases and sales, then use that as the next FY opening.
+  const calculatedPreviousItemClosing=useMemo(()=>{
+    if(!previousFYBounds) return {};
+    const inPrev=x=>String(x?.date||"")>=previousFYBounds.start && String(x?.date||"")<=previousFYBounds.end;
+    const map=new Map();
+    const ensure=(name,hsn="")=>{
+      const clean=String(name||"").trim(); if(!clean) return null;
+      const key=normalizeLubricantProductName(clean).toLowerCase();
+      if(!key) return null;
+      if(!map.has(key)) map.set(key,{name:normalizeLubricantProductName(clean),hsn:String(hsn||"").trim()});
+      return key;
+    };
+    const prevOpening=(data?.lubricantOpeningByFY?.[previousFY]||{});
+    Object.entries(prevOpening).forEach(([key,row])=>{
+      const name=String(row?.name||key).trim();
+      if(name) ensure(name,row?.hsn||"");
+    });
+    allLubPurchases.filter(p=>String(p?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(p)).forEach(p=>{
+      if(Array.isArray(p.items)&&p.items.length){
+        p.items.forEach(x=>ensure(x?.description,x?.hsn));
+      } else if(p?.productName) ensure(p.productName,p?.hsn);
+    });
+    allLubCredits.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)).forEach(x=>ensure(normalizeLubricantSaleItemName(x?.productName)));
+    allLubCash.filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)).forEach(x=>ensure(normalizeLubricantSaleItemName(x?.productName)));
+
+    const out={};
+    for(const [key,item] of map){
+      const openingRow=prevOpening[key]||prevOpening[item.name]||{};
+      let openingQtyItem=n(openingRow?.qty), openingValueItem=n(openingRow?.value);
+      let purchaseQty=0,purchaseValue=0;
+      allLubPurchases.filter(p=>String(p?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(p)).forEach(p=>{
+        if(Array.isArray(p.items)&&p.items.length){
+          p.items.forEach(x=>{
+            if(normalizeLubricantProductName(x?.description).toLowerCase()!==key) return;
+            const q=n(x?.inventoryQty)>0?n(x.inventoryQty):0;
+            const lineValue=n(x?.netAmount)>0?n(x.netAmount):n(x?.taxableValue)+n(x?.igstAmount);
+            purchaseQty+=q; purchaseValue+=lineValue>0?lineValue:0;
+          });
+        } else if(String(p?.productName||"").trim().toLowerCase()===key){
+          purchaseQty+=n(p.quantity); purchaseValue+=purchaseLandedValue(p);
+        }
+      });
+      const creditQty=allLubCredits.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)&&normalizeLubricantSaleItemName(x?.productName).toLowerCase()===key).reduce((a,x)=>a+n(x.qty),0);
+      const cashQty=allLubCash.filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)&&normalizeLubricantSaleItemName(x?.productName).toLowerCase()===key).reduce((a,x)=>a+n(x.qty),0);
+      const availableQty=openingQtyItem+purchaseQty;
+      const avgCost=availableQty>0?(openingValueItem+purchaseValue)/availableQty:0;
+      const closingQty=Math.max(0,availableQty-creditQty-cashQty);
+      const closingValue=closingQty*avgCost;
+      if(closingQty>0 || closingValue>0) out[key]={name:item.name,hsn:item.hsn,qty:closingQty,value:closingValue,source:"FY_CLOSING_ITEM_WISE",fromFY:previousFY};
+    }
+    return out;
+  },[previousFYBounds,previousFY,data?.lubricantOpeningByFY,allLubPurchases,allLubCredits,allLubCash]);
 
   const effectiveOpening=openingByFY[selectedFY] || (String(selectedFY).startsWith("2026-") ? calculatedPreviousClosing : {qty:baseOpeningQ,value:baseOpeningV});
 
@@ -4628,6 +4689,9 @@ export function LubricantManagement({ data, update }) {
     });
     sales.forEach(x=>add(normalizeLubricantSaleItemName(x.productName)));
     cashSales.forEach(x=>add(normalizeLubricantSaleItemName(x.productName)));
+    const savedOpen=data?.lubricantOpeningByFY?.[selectedFY]||{};
+    Object.entries(savedOpen).forEach(([key,row])=>add(row?.name||key,{hsn:row?.hsn}));
+    Object.entries(calculatedPreviousItemClosing).forEach(([key,row])=>add(row?.name||key,{hsn:row?.hsn}));
     return Array.from(map.values()).sort((a,b)=>a.name.localeCompare(b.name));
   },[purchases,sales,cashSales]);
 
@@ -4635,7 +4699,7 @@ export function LubricantManagement({ data, update }) {
     const saved=(data?.lubricantOpeningByFY?.[selectedFY]||{});
     return lubricantStockItems.map(item=>{
       const key=item.name.toLowerCase();
-      const openingRow=saved[key]||saved[item.name]||{};
+      const openingRow=saved[key]||saved[item.name]||calculatedPreviousItemClosing[key]||calculatedPreviousItemClosing[item.name]||{};
       const isUnclassifiedHPCL=key==="⚠️ unclassified hpcl purchase (item lines unavailable)";
       const itemPurchases=purchases.filter(p=>{
         if(Array.isArray(p.items) && p.items.length) return p.items.some(x=>normalizeLubricantProductName(x?.description).toLowerCase()===key);
@@ -4675,18 +4739,36 @@ export function LubricantManagement({ data, update }) {
         closingValue:Math.max(0,closingQtyItem*avgItemCost)
       };
     });
-  },[lubricantStockItems,purchases,sales,cashSales,data?.lubricantOpeningByFY,selectedFY]);
+  },[lubricantStockItems,purchases,sales,cashSales,data?.lubricantOpeningByFY,calculatedPreviousItemClosing,selectedFY]);
 
   const [itemOpeningDraft,setItemOpeningDraft]=useState({});
   useEffect(()=>{
     const saved=data?.lubricantOpeningByFY?.[selectedFY]||{};
     const next={};
     lubricantStockItems.forEach(item=>{
-      const row=saved[item.key]||saved[item.name]||{};
+      const row=saved[item.key]||saved[item.name]||calculatedPreviousItemClosing[item.key]||calculatedPreviousItemClosing[item.name]||{};
       next[item.key]={qty:row.qty??"",value:row.value??""};
     });
     setItemOpeningDraft(next);
-  },[selectedFY,lubricantStockItems,data?.lubricantOpeningByFY]);
+  },[selectedFY,lubricantStockItems,data?.lubricantOpeningByFY,calculatedPreviousItemClosing]);
+
+  const carryForwardItemWiseOpening=async()=>{
+    if(!previousFYBounds || !previousFY) return setMsg("❌ Previous FY उपलब्ध नहीं है।");
+    const rows=Object.entries(calculatedPreviousItemClosing);
+    if(!rows.length){
+      const aggregatePrevious=n(calculatedPreviousClosing.qty);
+      if(aggregatePrevious>0) return setMsg("⚠️ Previous FY में aggregate lubricant stock है, लेकिन item-wise opening उपलब्ध नहीं है। System अनुमान से items में नहीं बाँटेगा। पहले FY "+previousFY+" का item-wise opening दर्ज करें।");
+      return setMsg("ℹ️ Previous FY का item-wise closing stock शून्य है।");
+    }
+    const existing={...(data?.lubricantOpeningByFY||{})};
+    const next={};
+    rows.forEach(([key,row])=>{ next[key]={qty:n(row.qty),value:n(row.value),name:row.name,hsn:row.hsn||"",source:"CARRY_FORWARD",fromFY:previousFY}; });
+    existing[selectedFY]=next;
+    const result=await update({lubricantOpeningByFY:existing});
+    if(result?.ok===false) return setMsg("❌ Item-wise carry-forward save नहीं हुआ: "+(result?.reason||"Mutation rejected"));
+    setItemOpeningDraft(Object.fromEntries(Object.entries(next).map(([k,v])=>[k,{qty:v.qty,value:v.value}])));
+    setMsg(`✅ FY ${previousFY} का closing lubricant stock FY ${selectedFY} में item-wise carry-forward हो गया — ${rows.length} items.`);
+  };
 
   const saveItemWiseOpening=async()=>{
     const existing={...(data?.lubricantOpeningByFY||{})};
@@ -5369,7 +5451,13 @@ export function LubricantManagement({ data, update }) {
           <td><input type="number" min="0" step="0.01" value={itemOpeningDraft[item.key]?.value??""} onChange={e=>setItemOpeningDraft(d=>({...d,[item.key]:{...(d[item.key]||{}),value:e.target.value}}))}/></td>
         </tr>)}
       </tbody></table></div>
-      <div className="actions" style={{marginTop:10}}><button type="button" className="btn" onClick={saveItemWiseOpening}>💾 Save Item-wise Opening</button></div>
+      <div className="actions" style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button type="button" className="btn" onClick={carryForwardItemWiseOpening}>↪️ Carry Forward Previous FY Item-wise</button>
+        <button type="button" className="btn" onClick={saveItemWiseOpening}>💾 Save Item-wise Opening</button>
+      </div>
+      {previousFY && <div style={{marginTop:8,padding:"9px 11px",borderRadius:8,background:"#eff6ff",border:"1px solid #bfdbfe",fontSize:12}}>
+        FY {previousFY} closing → FY {selectedFY} opening. System item-wise closing Qty/Value calculate करता है; aggregate stock को किसी item में अनुमान से नहीं बाँटता।
+      </div>}
     </section>}
     {legacyHPCLPurchases.length>0&&<section className="panel" style={{marginTop:18,border:"2px solid #f59e0b"}}>
       <h3>⚠️ पुराने HPCL Bills — Item Lines Recover करें</h3>
