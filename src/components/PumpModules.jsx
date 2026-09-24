@@ -5117,33 +5117,39 @@ export function LubricantManagement({ data, update }) {
     for(let i=0;i<lines.length;i++){
       const q=lines[i].match(/^Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L(?:\d+)?$/i);
       if(!q) continue;
-      let sr=0;
-      for(let j=i-1;j>=Math.max(0,i-8);j--){
-        const sm=lines[j].match(/^(\d{1,3})$/);
-        if(sm){ sr=Number(sm[1]); break; }
-      }
-      let desc="";
-      for(let j=i-1;j>=Math.max(0,i-6);j--){
-        if(/^(?:HP|TATA\s+MOTORS\s+HP|DEF\b)/i.test(lines[j])){
-          desc=lines[j].trim(); break;
-        }
-      }
-      let fin=null;
-      for(let j=i+1;j<=Math.min(lines.length-1,i+5);j++){
-        const fm=lines[j].match(/^(?:\d{1,3}\s+)?(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
+
+      // Native HPCL PDF text order is:
+      // Description -> Locn/Lot -> SR+HSN+EA financial row -> MRP -> Qty/Vol.
+      // Therefore the financial row must be searched BACKWARDS from Qty/Vol.
+      let sr=0, fin=null, finIndex=-1;
+      for(let j=i-1;j>=Math.max(0,i-7);j--){
+        const fm=lines[j].match(/^(?:(\d{1,3})\s+)?(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
         if(!fm) continue;
-        const nums=fm[4].trim().split(/\s+/).map(hpclNum2);
+        const nums=fm[5].trim().split(/\s+/).map(hpclNum2);
         if(nums.length>=6){
+          sr=fm[1]?Number(fm[1]):0;
           fin={
-            hsn:String(fm[1]), billedQty:hpclNum2(fm[2]), unit:fm[3].toUpperCase(),
+            hsn:String(fm[2]), billedQty:hpclNum2(fm[3]), unit:fm[4].toUpperCase(),
             totalValue:nums[0]||0, discount:nums[1]||0, taxableValue:nums[2]||0,
             igstRate:nums[3]||0, igstAmount:nums[4]||0, netAmount:nums[5]||0
           };
+          finIndex=j;
           break;
         }
       }
-      if(!desc || !fin) continue;
+      if(!fin) continue;
+
+      let desc="";
+      for(let j=finIndex-1;j>=Math.max(0,finIndex-7);j--){
+        if(/^(?:HP|TATA\s+MOTORS\s+HP|DEF\b)/i.test(lines[j])){
+          desc=lines[j].trim();
+          break;
+        }
+      }
+      if(!desc) continue;
+
       const inventoryQty=hpclNum2(q[1]);
+      if(inventoryQty<=0) continue;
       const pack=desc.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
       hardTableRows.push({
         lineNo:sr||hardTableRows.length+1,
