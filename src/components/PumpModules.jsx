@@ -5101,6 +5101,7 @@ export function LubricantManagement({ data, update }) {
     const lines=raw.split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
     const joined=lines.join(' ');
     const invoice=(joined.match(/INVOICE\s+NUMBER\s*[:.\-]?\s*([A-Z0-9-]+)/i)||joined.match(/INVOICE\s+NO\.?\s*[:.\-]?\s*([A-Z0-9-]+)/i)||[])[1]||'';
+    const billingDocNo=(joined.match(/BILLING\s+DOC\s+NO\.?\s*[:.\-]?\s*([A-Z0-9-]+)/i)||[])[1]||'';
     const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE\.)?\s*[:.\-]?\s*((?:\d{1,2}[\/-]\d{1,2}[\/-]\d{4})|(?:\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{4})|(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+\d{4}))/i)||[])[1]||'';
     const billDate=hpclDate2(dateRaw);
     const gstMatches=[...joined.matchAll(/GSTIN\s*[:.\-]?\s*([0-9A-Z]{15})/gi)].map(m=>m[1]);
@@ -5248,7 +5249,7 @@ export function LubricantManagement({ data, update }) {
     const totalTax=items.reduce((a,x)=>a+n(x.igstAmount),0);
     const totalNet=items.reduce((a,x)=>a+n(x.netAmount),0);
     return {
-      invoiceNo:String(invoice).trim(),date:billDate,supplier,gstin:String(gst).trim(),items,
+      invoiceNo:String(invoice).trim(),billingDocNo:String(billingDocNo).trim(),date:billDate,supplier,gstin:String(gst).trim(),items,
       totalInventoryQty,totalBasic,totalTaxable,totalTax,totalNet,
       documentTaxable,documentNet,fileName,rawText:raw.slice(0,12000)
     };
@@ -5401,8 +5402,11 @@ export function LubricantManagement({ data, update }) {
         parsed=parseLubricantBillLines(out.data.text,file.name);
       }
       if(!parsed?.items?.length) return setLubBillMsg("❌ Saved bill पढ़ा गया, लेकिन item table recover नहीं हुई। कोई data change नहीं किया गया।");
-      if(String(parsed.invoiceNo||"").trim().toUpperCase()!==String(row.invoiceNo||"").trim().toUpperCase()){
-        return setLubBillMsg("❌ Re-read invoice number saved record से match नहीं करता। कोई data change नहीं किया गया।");
+      const savedInvoiceNo=String(row.invoiceNo||"").trim().toUpperCase();
+      const parsedInvoiceNo=String(parsed.invoiceNo||"").trim().toUpperCase();
+      const parsedBillingDocNo=String(parsed.billingDocNo||"").trim().toUpperCase();
+      if(!savedInvoiceNo || (savedInvoiceNo!==parsedInvoiceNo && savedInvoiceNo!==parsedBillingDocNo)){
+        return setLubBillMsg("❌ Re-read invoice/billing document number saved record से match नहीं करता। कोई data change नहीं किया गया।");
       }
       if(String(parsed.date||"")!==String(row.date||"")){
         return setLubBillMsg("❌ Re-read bill date saved record से match नहीं करती। कोई data change नहीं किया गया।");
@@ -5413,6 +5417,8 @@ export function LubricantManagement({ data, update }) {
       const updated={
         ...row,
         productName:parsed.items.map(x=>x.description).join(" | ").slice(0,500),
+        hpclInvoiceNo:String(parsed.invoiceNo||row.hpclInvoiceNo||"").trim(),
+        billingDocNo:String(parsed.billingDocNo||row.billingDocNo||row.invoiceNo||"").trim(),
         quantity:qty,
         unit:"L",
         rate:qty>0?total/qty:0,
