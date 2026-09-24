@@ -4487,7 +4487,7 @@ const LUBRICANT_PACK_SALE_PRICES = Object.freeze({
   "HP RACER 4 20W40": [{ pack:"1 L", price:345 }],
   "HP MILCY TURBO 15W40": [
     { pack:"1 L", price:325 },
-    { pack:"4×5 L", price:1635 },
+    { pack:"4×5 L", price:6530 },
     { pack:"7.5 L", price:2450 },
     { pack:"10 L", price:3265 }
   ],
