@@ -5084,75 +5084,101 @@ export function LubricantManagement({ data, update }) {
     const lines=raw.split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
     const joined=lines.join(' ');
     const invoice=(joined.match(/INVOICE\s+NUMBER\s*[:.\-]?\s*([A-Z0-9-]+)/i)||joined.match(/INVOICE\s+NO\.?\s*[:.\-]?\s*([A-Z0-9-]+)/i)||[])[1]||'';
-    const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE)\s*[:.\-]?\s*((?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})|(?:\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{4})|(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+\d{4}))/i)||[])[1]||'';
+    const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE\.)?\s*[:.\-]?\s*((?:\d{1,2}[\/-]\d{1,2}[\/-]\d{4})|(?:\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{4})|(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+\d{4}))/i)||[])[1]||'';
     const billDate=hpclDate2(dateRaw);
     const gstMatches=[...joined.matchAll(/GSTIN\s*[:.\-]?\s*([0-9A-Z]{15})/gi)].map(m=>m[1]);
     const gst=gstMatches.find(x=>x!=='05ABWFS5610D1Z4')||gstMatches[0]||'';
     const supplier='HINDUSTAN PETROLEUM CORP. LTD.';
     const items=[];
-    const rowRe=/^(\d{1,3})\s+(.+?)\s+(\d{4,10})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i;
-    const parseTail=tail=>{
-      const nums=tail.trim().split(/\s+/).filter(Boolean).map(hpclNum2);
-      if(nums.length>=8) return {totalValue:nums[0],discount:nums[1],taxableValue:nums[2],igstRate:0,igstAmount:nums[4]+nums[6],netAmount:nums[7]};
-      if(nums.length>=6) return {totalValue:nums[0],discount:nums[1],taxableValue:nums[2],igstRate:nums[3],igstAmount:nums[4],netAmount:nums[5]};
-      return null;
-    };
-    const addRow=(m)=>{
-      const lineNo=Number(m[1]), description=m[2].trim(), hsn=String(m[3]), billedQty=hpclNum2(m[4]), unit=m[5].toUpperCase(), parsed=parseTail(m[6]);
-      if(!parsed||!(billedQty>0)||!(parsed.netAmount>0)) return;
-      const pack=description.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
-      const packCount=pack?Number(pack[1]):1, packLitres=pack?Number(pack[2]):(unit==='L'?1:0);
-      const qtyVol=(description+' '+m[6]).match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
-      const inventoryQty=qtyVol?hpclNum2(qtyVol[1]):(packLitres>0?billedQty*packCount:billedQty);
-      items.push({lineNo,description,hsn,billedQty,unit,packSize:pack?pack[1]+' × '+pack[2]+' L':'',inventoryQty,...parsed});
-    };
-    for(const line of lines){ const m=line.match(rowRe); if(m) addRow(m); }
 
-    // HPCL invoices often wrap the product description and Qty/Vol across
-    // separate PDF text lines. Rebuild those fields from the item block so
-    // 8-digit HSNs and EA-pack products are imported with the real product
-    // name and inventory quantity.
-    items.forEach(item=>{
-      const hsnToken=String(item.hsn||'');
-      const rowIndex=lines.findIndex(line=>new RegExp('^\\s*'+String(item.lineNo)+'\\s+').test(line) && line.includes(hsnToken));
-      if(rowIndex<0) return;
-      const block=[];
-      for(let j=rowIndex;j<lines.length;j++){
-        const s=lines[j];
-        if(j>rowIndex && /^\s*\d{1,3}\s+/.test(s) && /\b\d{4,10}\b/.test(s)) break;
-        if(j>rowIndex && /^(Total:|Net Amount|Declarations|PAN No\.|Goods\/Services)/i.test(s)) break;
-        block.push(s);
+    // HPCL lubricant PDFs place each product over several physical text lines:
+    // SR number -> product description -> Qty/Vol -> HSN/EA financial row.
+    // The old parser treated the EA count (e.g. "3 EA") as litres when Qty/Vol
+    // was on a separate line. Parse the complete block instead.
+    const itemBlocks=[];
+    for(let i=0;i<lines.length;i++){
+      const m=lines[i].match(/^(\d{1,3})$/);
+      if(!m) continue;
+      const next=lines.slice(i+1).findIndex((x,j)=>j>0 && /^\d{1,3}$/.test(x));
+      const endIndex=next>=0 ? i+1+next : Math.min(lines.length,i+12);
+      const block=lines.slice(i,endIndex);
+      if(block.some(x=>/^\d{4,10}\s+\d[\d,]*(?:\.\d+)?\s+(EA|L|KG|PCS)\b/i.test(x))){
+        itemBlocks.push({lineNo:Number(m[1]),block});
       }
-      const qtyMatch=block.join(' ').match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
-      if(qtyMatch) item.inventoryQty=hpclNum2(qtyMatch[1]);
+    }
 
-      const isMetaDescription=/^Locn\s+Lot\s+No\.?$/i.test(String(item.description||'').trim());
-      if(isMetaDescription){
-        const desc=[];
-        for(let j=rowIndex-1;j>=0;j--){
-          const s=String(lines[j]||'').trim();
-          if(!s) continue;
-          if(/^\s*\d{1,3}\s+/.test(s) && /\b\d{4,10}\b/.test(s)) break;
-          if(/^(?:Locn\s+Lot\s+No\.?|MRP[0-9A-Z-]+|Qty\s*\/\s*Vol)/i.test(s)) continue;
-          if(/^(?:Taxable|SR\s+Item|Description|HSN\/|Total:|Net Amount|Declarations)/i.test(s)) break;
-          if(/^(?:GSTIN|Recipient|Delivery Address|Billing Doc No\.|Invoice Number|Document Type|Date\.)/i.test(s)) break;
-          desc.unshift(s);
-          if(desc.length>=3) break;
-        }
-        if(desc.length) item.description=desc.join(' ').replace(/\s+/g,' ').trim();
-      }
+    const parseFinancialLine=(line)=>{
+      const m=line.match(/^(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
+      if(!m) return null;
+      const nums=m[4].trim().split(/\s+/).map(hpclNum2);
+      if(nums.length<6) return null;
+      // HSN Qty UoM TotalValue Discount Taxable IGSTRate IGSTAmount NetAmount
+      return {
+        hsn:String(m[1]),
+        billedQty:hpclNum2(m[2]),
+        unit:m[3].toUpperCase(),
+        totalValue:nums[0]||0,
+        discount:nums[1]||0,
+        taxableValue:nums[2]||0,
+        igstRate:nums.length>=6 ? nums[3]||0 : 0,
+        igstAmount:nums.length>=6 ? nums[4]||0 : 0,
+        netAmount:nums.length>=6 ? nums[5]||0 : 0
+      };
+    };
+
+    itemBlocks.forEach(({lineNo,block})=>{
+      const fin=block.map(parseFinancialLine).find(Boolean);
+      if(!fin) return;
+      const qtyLine=block.find(x=>/Qty\s*\/\s*Vol\s+[\d,]+(?:\.\d+)?\s*L/i.test(x));
+      const qtyMatch=qtyLine?.match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
+      const inventoryQty=qtyMatch ? hpclNum2(qtyMatch[1]) : (fin.unit==='L' ? fin.billedQty : 0);
+
+      // Prefer the actual HP/DEF product description, not address/meta lines.
+      const desc=block.find(x=>/^(?:HP|TATA\s+MOTORS\s+HP|DEF\b)/i.test(x.trim()))
+        || block.find(x=>/^[A-Z][A-Z0-9 .&()\/-]{8,}$/.test(x) && !/^(Locn|MRP|Qty\/Vol|Declarations|Total|Net Amount)/i.test(x))
+        || '';
+      if(!desc || inventoryQty<=0 || fin.netAmount<0) return;
+
+      const pack=desc.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
+      items.push({
+        lineNo, description:desc.trim(), hsn:fin.hsn, billedQty:fin.billedQty, unit:fin.unit,
+        packSize:pack?pack[1]+' × '+pack[2]+' L':'',
+        inventoryQty, ...fin
+      });
     });
 
+    // Fallback for less-structured HPCL text extraction.
     if(!items.length){
-      const m=joined.match(/\b(\d{1,3})\s+(.+?)\s+(\d{4,10})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+([\d,]+(?:\.\d+)?(?:\s+[\d,]+(?:\.\d+)?){5,7})/i);
-      if(m) addRow(m);
+      const rowRe=/^(\d{1,3})\s+(.+?)\s+(\d{4,10})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i;
+      const parseTail=tail=>{
+        const nums=tail.trim().split(/\s+/).filter(Boolean).map(hpclNum2);
+        if(nums.length>=6) return {totalValue:nums[0],discount:nums[1],taxableValue:nums[2],igstRate:nums[3],igstAmount:nums[4],netAmount:nums[5]};
+        return null;
+      };
+      for(const line of lines){
+        const m=line.match(rowRe); if(!m) continue;
+        const parsed=parseTail(m[6]); if(!parsed||!(m[4]&&parsed.netAmount>=0)) continue;
+        const description=m[2].trim();
+        const qtyVol=(description+' '+m[6]).match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
+        const inventoryQty=qtyVol?hpclNum2(qtyVol[1]):(m[5].toUpperCase()==='L'?hpclNum2(m[4]):0);
+        if(inventoryQty<=0) continue;
+        items.push({lineNo:Number(m[1]),description,hsn:String(m[3]),billedQty:hpclNum2(m[4]),unit:m[5].toUpperCase(),packSize:'',inventoryQty,...parsed});
+      }
     }
+
+    const totalMatch=joined.match(/\bTotal:\s*([\d,]+(?:\.\d+)?)\s+[\d,]+(?:\.\d+)?\s+[\d,]+(?:\.\d+)?\s+([\d,]+(?:\.\d+)?)/i);
+    const documentTaxable=totalMatch?hpclNum2(totalMatch[1]):0;
+    const documentNet=totalMatch?hpclNum2(totalMatch[2]):0;
     const totalInventoryQty=items.reduce((a,x)=>a+n(x.inventoryQty),0);
     const totalBasic=items.reduce((a,x)=>a+n(x.totalValue),0);
     const totalTaxable=items.reduce((a,x)=>a+n(x.taxableValue),0);
     const totalTax=items.reduce((a,x)=>a+n(x.igstAmount),0);
     const totalNet=items.reduce((a,x)=>a+n(x.netAmount),0);
-    return {invoiceNo:String(invoice).trim(),date:billDate,supplier,gstin:String(gst).trim(),items,totalInventoryQty,totalBasic,totalTaxable,totalTax,totalNet,fileName,rawText:raw.slice(0,12000)};
+    return {
+      invoiceNo:String(invoice).trim(),date:billDate,supplier,gstin:String(gst).trim(),items,
+      totalInventoryQty,totalBasic,totalTaxable,totalTax,totalNet,
+      documentTaxable,documentNet,fileName,rawText:raw.slice(0,12000)
+    };
   };
 
   const extractLubricantPdf = async file => {
