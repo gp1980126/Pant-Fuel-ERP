@@ -4614,15 +4614,25 @@ export function LubricantManagement({ data, update }) {
     const prevOpening=(data?.lubricantOpeningByFY?.[previousFY]||{});
     Object.entries(prevOpening).forEach(([key,row])=>{
       const name=String(row?.name||key).trim();
-      if(name) ensure(name,row?.hsn||"");
+      if(name && !isGenericLegacyLubricantName(name)) ensure(name,row?.hsn||"");
     });
     allLubPurchases.filter(p=>String(p?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(p)).forEach(p=>{
       if(Array.isArray(p.items)&&p.items.length){
         p.items.forEach(x=>ensure(x?.description,x?.hsn));
-      } else if(p?.productName) ensure(p.productName,p?.hsn);
+      } else if(
+        p?.productName &&
+        String(p?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF" &&
+        !isGenericLegacyLubricantName(p.productName)
+      ) ensure(p.productName,p?.hsn);
     });
-    allLubCredits.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)).forEach(x=>ensure(normalizeLubricantSaleItemName(x?.productName)));
-    allLubCash.filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)).forEach(x=>ensure(normalizeLubricantSaleItemName(x?.productName)));
+    allLubCredits.filter(x=>{
+      const name=normalizeLubricantSaleItemName(x?.productName);
+      return String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)&&!isGenericLegacyLubricantName(name);
+    }).forEach(x=>ensure(normalizeLubricantSaleItemName(x?.productName)));
+    allLubCash.filter(x=>{
+      const name=normalizeLubricantSaleItemName(x?.productName);
+      return String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)&&!isGenericLegacyLubricantName(name);
+    }).forEach(x=>ensure(normalizeLubricantSaleItemName(x?.productName)));
 
     const out={};
     for(const [key,item] of map){
@@ -4637,12 +4647,22 @@ export function LubricantManagement({ data, update }) {
             const lineValue=n(x?.netAmount)>0?n(x.netAmount):n(x?.taxableValue)+n(x?.igstAmount);
             purchaseQty+=q; purchaseValue+=lineValue>0?lineValue:0;
           });
-        } else if(String(p?.productName||"").trim().toLowerCase()===key){
+        } else if(
+          String(p?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF" &&
+          !isGenericLegacyLubricantName(p?.productName) &&
+          String(p?.productName||"").trim().toLowerCase()===key
+        ){
           purchaseQty+=n(p.quantity); purchaseValue+=purchaseLandedValue(p);
         }
       });
-      const creditQty=allLubCredits.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)&&normalizeLubricantSaleItemName(x?.productName).toLowerCase()===key).reduce((a,x)=>a+n(x.qty),0);
-      const cashQty=allLubCash.filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)&&normalizeLubricantSaleItemName(x?.productName).toLowerCase()===key).reduce((a,x)=>a+n(x.qty),0);
+      const creditQty=allLubCredits.filter(x=>{
+        const name=normalizeLubricantSaleItemName(x?.productName);
+        return String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)&&!isGenericLegacyLubricantName(name)&&name.toLowerCase()===key;
+      }).reduce((a,x)=>a+n(x.qty),0);
+      const cashQty=allLubCash.filter(x=>{
+        const name=normalizeLubricantSaleItemName(x?.productName);
+        return String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)&&!isGenericLegacyLubricantName(name)&&name.toLowerCase()===key;
+      }).reduce((a,x)=>a+n(x.qty),0);
       const availableQty=openingQtyItem+purchaseQty;
       const avgCost=availableQty>0?(openingValueItem+purchaseValue)/availableQty:0;
       const closingQty=Math.max(0,availableQty-creditQty-cashQty);
@@ -5333,6 +5353,34 @@ export function LubricantManagement({ data, update }) {
     String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF" &&
     !(Array.isArray(p?.items)&&p.items.length)
   );
+
+  const autoRecoveredLegacyRef=useRef(new Set());
+  const previousFYLegacyHPCL=useMemo(()=>{
+    if(!previousFYBounds) return [];
+    const inPrev=x=>String(x?.date||"")>=previousFYBounds.start && String(x?.date||"")<=previousFYBounds.end;
+    return allLubPurchases.filter(p=>
+      String(p?.fuel||"").toUpperCase()==="LUBRICANT" &&
+      String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF" &&
+      inPrev(p) &&
+      !(Array.isArray(p?.items)&&p.items.length) &&
+      !!p?.billFileData
+    );
+  },[allLubPurchases,previousFYBounds]);
+
+  useEffect(()=>{
+    if(!previousFYLegacyHPCL.length) return;
+    let cancelled=false;
+    (async()=>{
+      for(const row of previousFYLegacyHPCL){
+        const id=String(row?.id||row?.invoiceNo||"");
+        if(!id || autoRecoveredLegacyRef.current.has(id)) continue;
+        autoRecoveredLegacyRef.current.add(id);
+        if(cancelled) break;
+        await reReadSavedHPCLBill(row);
+      }
+    })();
+    return ()=>{cancelled=true;};
+  },[previousFYLegacyHPCL]);
 
   const bill = c => {
     if (!c || String(c.fuel || "").toUpperCase() !== "LUBRICANT") {
