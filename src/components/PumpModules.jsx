@@ -4538,6 +4538,97 @@ export function LubricantManagement({ data, update }) {
     .filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH" && x.date>=fy.start && x.date<=fy.end)
     .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.lubricantCashSales,selectedFY]);
 
+  // Item-wise stock ledger. HPCL invoices can contain multiple item lines in one
+  // purchase row, so inventory is calculated from each line's inventoryQty.
+  const lubricantStockItems = useMemo(()=>{
+    const map=new Map();
+    const add=(name,meta={})=>{
+      const clean=String(name||"").trim();
+      if(!clean) return;
+      const key=clean.toLowerCase();
+      if(!map.has(key)) map.set(key,{name:clean,hsn:String(meta.hsn||"").trim()});
+      else if(meta.hsn && !map.get(key).hsn) map.get(key).hsn=String(meta.hsn).trim();
+    };
+    purchases.forEach(p=>{
+      if(Array.isArray(p.items) && p.items.length){
+        p.items.forEach(item=>add(item?.description,{hsn:item?.hsn}));
+      } else add(p.productName);
+    });
+    sales.forEach(x=>add(x.productName));
+    cashSales.forEach(x=>add(x.productName));
+    return Array.from(map.values()).sort((a,b)=>a.name.localeCompare(b.name));
+  },[purchases,sales,cashSales]);
+
+  const lubricantItemLedger = useMemo(()=>{
+    const saved=(data?.lubricantOpeningByFY?.[selectedFY]||{});
+    return lubricantStockItems.map(item=>{
+      const key=item.name.toLowerCase();
+      const openingRow=saved[key]||saved[item.name]||{};
+      const itemPurchases=purchases.filter(p=>{
+        if(Array.isArray(p.items) && p.items.length) return p.items.some(x=>String(x?.description||"").trim().toLowerCase()===key);
+        return String(p.productName||"").trim().toLowerCase()===key;
+      });
+      let purchaseQty=0, purchaseValue=0;
+      itemPurchases.forEach(p=>{
+        if(Array.isArray(p.items) && p.items.length){
+          p.items.forEach(x=>{
+            if(String(x?.description||"").trim().toLowerCase()!==key) return;
+            const q=n(x?.inventoryQty)>0?n(x.inventoryQty):0;
+            purchaseQty+=q;
+            const lineValue=n(x?.netAmount)>0?n(x.netAmount):n(x?.taxableValue)+n(x?.igstAmount);
+            purchaseValue+=lineValue>0?lineValue:0;
+          });
+        } else {
+          purchaseQty+=n(p.quantity);
+          purchaseValue+=purchaseLandedValue(p);
+        }
+      });
+      const credit=sales.filter(x=>String(x?.productName||"").trim().toLowerCase()===key);
+      const cash=cashSales.filter(x=>String(x?.productName||"").trim().toLowerCase()===key);
+      const creditQty=credit.reduce((a,x)=>a+n(x.qty),0);
+      const cashQty=cash.reduce((a,x)=>a+n(x.qty),0);
+      const creditValue=credit.reduce((a,x)=>a+n(x.amount),0);
+      const cashValue=cash.reduce((a,x)=>a+n(x.amount),0);
+      const openingQtyItem=n(openingRow.qty);
+      const openingValueItem=n(openingRow.value);
+      const availableQty=openingQtyItem+purchaseQty;
+      const avgItemCost=availableQty>0?(openingValueItem+purchaseValue)/availableQty:0;
+      const closingQtyItem=availableQty-creditQty-cashQty;
+      return {
+        ...item, key, openingQty:openingQtyItem, openingValue:openingValueItem,
+        purchaseQty, purchaseValue, creditQty, creditValue, cashQty, cashValue,
+        closingQty:closingQtyItem, avgCost:avgItemCost,
+        closingValue:Math.max(0,closingQtyItem*avgItemCost)
+      };
+    });
+  },[lubricantStockItems,purchases,sales,cashSales,data?.lubricantOpeningByFY,selectedFY]);
+
+  const [itemOpeningDraft,setItemOpeningDraft]=useState({});
+  useEffect(()=>{
+    const saved=data?.lubricantOpeningByFY?.[selectedFY]||{};
+    const next={};
+    lubricantStockItems.forEach(item=>{
+      const row=saved[item.key]||saved[item.name]||{};
+      next[item.key]={qty:row.qty??"",value:row.value??""};
+    });
+    setItemOpeningDraft(next);
+  },[selectedFY,lubricantStockItems,data?.lubricantOpeningByFY]);
+
+  const saveItemWiseOpening=async()=>{
+    const existing={...(data?.lubricantOpeningByFY||{})};
+    const next={};
+    for(const item of lubricantStockItems){
+      const row=itemOpeningDraft[item.key]||{};
+      const qty=n(row.qty), value=n(row.value);
+      if(qty<0 || value<0) return setMsg("❌ Item-wise opening stock में negative Qty/Value नहीं हो सकता।");
+      if(qty>0 || value>0) next[item.key]={qty,value};
+    }
+    existing[selectedFY]=next;
+    const result=await update({lubricantOpeningByFY:existing});
+    if(result?.ok===false) return setMsg("❌ Item-wise Opening Stock save नहीं हुआ: "+(result?.reason||"Mutation rejected"));
+    setMsg("✅ Item-wise Lubricant Opening Stock save हो गया।");
+  };
+
   const openingQ=n(openingQty), openingV=n(openingValue);
   const purchaseQ=purchases.reduce((a,x)=>a+n(x.quantity),0);
   const purchaseV=purchases.reduce((a,x)=>a+purchaseLandedValue(x),0);
@@ -5053,16 +5144,48 @@ export function LubricantManagement({ data, update }) {
       <section className="panel"><h3>Current Reconciliation</h3><div className="cards" style={{gridTemplateColumns:'repeat(2,1fr)'}}><div className="card"><span>Opening</span><strong>{openingQ.toFixed(2)} L</strong><small>{money(openingV)}</small></div><div className="card"><span>Purchase</span><strong>{purchaseQ.toFixed(2)} L</strong><small>{money(purchaseV)}</small></div><div className="card"><span>Sale</span><strong>{saleQ.toFixed(2)} L</strong><small>{money(saleV)}</small></div><div className="card"><span>Closing Book Stock</span><strong>{closingQty.toFixed(2)} L</strong><small>Avg Cost {money(avgCost)}/L</small></div></div><div className={reconciliationStatus==='OK'?'success':'warning'} style={{marginTop:12}}><b>Status: {reconciliationStatus}</b>{qtyMissingSales>0&&<div>{qtyMissingSales} lubricant sale(s) में Qty नहीं है; amount accounting में है लेकिन physical stock reconciliation के लिए Qty बाद में भरनी होगी।</div>}</div></section></div>
     </section>
     <section className="panel" style={{marginTop:18}}>
-      <h3>📊 Lubricant Stock — कहाँ दिखेगा</h3>
-      <p style={{marginTop:0,color:"#64748b"}}>इसी Lubricant screen पर stock दिखेगा। Closing Book Stock = Opening + Purchase − Credit Sale − Cash Sale.</p>
-      <div className="table" style={{overflowX:"auto"}}><table><thead><tr><th>Stock Head</th><th>Qty (L)</th><th>Value</th></tr></thead><tbody>
-        <tr><td>Opening Stock</td><td>{openingQ.toFixed(2)}</td><td>{money(openingV)}</td></tr>
-        <tr><td>Lubricant Purchase / Received</td><td>{purchaseQ.toFixed(2)}</td><td>{money(purchaseV)}</td></tr>
-        <tr><td>Credit Sale</td><td>{sales.reduce((a,x)=>a+n(x.qty),0).toFixed(2)}</td><td>{money(sales.reduce((a,x)=>a+n(x.amount),0))}</td></tr>
-        <tr><td>Cash Sale</td><td>{cashSales.reduce((a,x)=>a+n(x.qty),0).toFixed(2)}</td><td>{money(cashSales.reduce((a,x)=>a+n(x.amount),0))}</td></tr>
-        <tr className="total-row"><td><b>Closing Book Stock</b></td><td><b>{closingQty.toFixed(2)} L</b></td><td><b>{money(closingValue)}</b></td></tr>
-      </tbody></table></div>
+      <h3>📊 Lubricant Stock — Item Wise</h3>
+      <p style={{marginTop:0,color:"#64748b"}}>हर HPCL product/SKU का stock अलग दिखेगा। Closing Qty = Opening + Purchase − Credit Sale − Cash Sale.</p>
+      {lubricantStockItems.length===0 ? <div className="warning">अभी कोई Lubricant item नहीं मिला। HPCL purchase bill upload/save करने के बाद items यहाँ दिखाई देंगे।</div> :
+      <div className="table" style={{overflowX:"auto"}}><table>
+        <thead><tr><th>Item / Product</th><th>Opening Qty</th><th>Purchase Qty</th><th>Credit Sale</th><th>Cash Sale</th><th>Closing Qty</th><th>Avg Cost</th><th>Closing Value</th></tr></thead>
+        <tbody>
+          {lubricantItemLedger.map(item=><tr key={item.key}>
+            <td><b>{item.name}</b>{item.hsn&&<small style={{display:"block",color:"#64748b"}}>HSN {item.hsn}</small>}</td>
+            <td>{item.openingQty.toFixed(2)} L</td>
+            <td>{item.purchaseQty.toFixed(2)} L</td>
+            <td>{item.creditQty.toFixed(2)} L</td>
+            <td>{item.cashQty.toFixed(2)} L</td>
+            <td><b>{item.closingQty.toFixed(2)} L</b></td>
+            <td>{money(item.avgCost)}/L</td>
+            <td><b>{money(item.closingValue)}</b></td>
+          </tr>)}
+          <tr className="total-row">
+            <td><b>ITEM-WISE TOTAL</b></td>
+            <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.openingQty,0).toFixed(2)} L</b></td>
+            <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.purchaseQty,0).toFixed(2)} L</b></td>
+            <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.creditQty,0).toFixed(2)} L</b></td>
+            <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.cashQty,0).toFixed(2)} L</b></td>
+            <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.closingQty,0).toFixed(2)} L</b></td>
+            <td>—</td>
+            <td><b>{money(lubricantItemLedger.reduce((a,x)=>a+x.closingValue,0))}</b></td>
+          </tr>
+        </tbody>
+      </table></div>}
     </section>
+
+    {lubricantStockItems.length>0&&<section className="panel" style={{marginTop:18}}>
+      <h3>🧮 Item-wise Opening Stock — FY {selectedFY}</h3>
+      <p style={{marginTop:0,color:"#64748b"}}>यदि पुराने opening stock को product-wise मालूम है तो यहाँ item के अनुसार Qty और Value डालें। पुराना aggregate Opening ऊपर अलग रहेगा, इसलिए बिना allocation के item-wise closing में उसे शामिल नहीं किया जाएगा।</p>
+      <div className="table" style={{overflowX:"auto"}}><table><thead><tr><th>Item</th><th>Opening Qty (L)</th><th>Opening Value (₹)</th></tr></thead><tbody>
+        {lubricantStockItems.map(item=><tr key={item.key}>
+          <td><b>{item.name}</b></td>
+          <td><input type="number" min="0" step="0.01" value={itemOpeningDraft[item.key]?.qty??""} onChange={e=>setItemOpeningDraft(d=>({...d,[item.key]:{...(d[item.key]||{}),qty:e.target.value}}))}/></td>
+          <td><input type="number" min="0" step="0.01" value={itemOpeningDraft[item.key]?.value??""} onChange={e=>setItemOpeningDraft(d=>({...d,[item.key]:{...(d[item.key]||{}),value:e.target.value}}))}/></td>
+        </tr>)}
+      </tbody></table></div>
+      <div className="actions" style={{marginTop:10}}><button type="button" className="btn" onClick={saveItemWiseOpening}>💾 Save Item-wise Opening</button></div>
+    </section>}
     <section className="panel" style={{marginTop:18}}>
       <h3>📄 HPCL Lubricant Purchase Bill — Full Auto Reading</h3>
       <p style={{marginTop:0,color:'#6b7280'}}>पूरा HPCL invoice upload करें। एक invoice की सभी item lines, EA quantity, pack size, litre conversion, HSN, taxable value, IGST और net amount पढ़े जाएंगे।</p>
