@@ -9,6 +9,23 @@ function inferLubricantPackSizeLitres(name){
   return 0;
 }
 
+function isLegacyHPCLPurchase(row){
+  if(Array.isArray(row?.items) && row.items.length) return false;
+  const fuel=String(row?.fuel||"").toUpperCase();
+  const source=String(row?.source||"").toUpperCase();
+  const product=String(row?.productName||"").toLowerCase();
+  const supplier=String(row?.supplier||"").toLowerCase();
+  const lubricantProduct=/mobile oil|lubricant|engine oil|gear oil|laal ghoda|milcy|racer/i.test(product);
+  const explicitHPCLLubricantSource=/HPCL-LUBRICANT|HPCL.*LUBRICANT/i.test(source);
+  const hpclSupplier=/hindustan petroleum|hpcl/i.test(supplier);
+  // Never pull ordinary MS/HSD/CNG purchase rows into the lubricant recovery list.
+  // A legacy lubricant row is identified by its lubricant fuel/type metadata or by
+  // an explicitly lubricant-looking product name when the old row lacks fuel metadata.
+  if(fuel==="LUBRICANT") return source.includes("HPCL") || lubricantProduct || hpclSupplier;
+  if(fuel && fuel!=="LUBRICANT") return false;
+  return explicitHPCLLubricantSource || lubricantProduct;
+}
+
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "../cloud_sync_supabase";
 import {
   START_DATE,
@@ -2521,9 +2538,14 @@ export function CreditSale({
   const lubricantProductOptions = useMemo(() => {
     const map = new Map();
     (data.purchases || []).filter(p => String(p?.fuel || "").toUpperCase() === "LUBRICANT").forEach(p => {
-      const items = Array.isArray(p.items) && p.items.length ? p.items : [{ description: p.productName || "Mobile Oil (HPCL)", hsn: p.hsn || "" }];
+      // HPCL legacy rows without item lines must never create a fake generic
+      // "Mobile Oil (HPCL)" product option. Recover the saved invoice first.
+      const items = Array.isArray(p.items) && p.items.length
+        ? p.items
+        : (String(p?.source || "").toUpperCase() === "HPCL-LUBRICANT-PDF" ? [] : [{ description: p.productName || "", hsn: p.hsn || "" }]);
       items.forEach(item => {
-        const name = String(item?.description || "").trim();
+        const rawName = String(item?.description || "").trim();
+        const name = normalizeLubricantProductName(rawName);
         if (!name) return;
         const key = name.toLowerCase();
         if (!map.has(key)) map.set(key, { name, hsn: String(item?.hsn || "").trim(), invoiceNo: String(p.invoiceNo || "").trim() });
@@ -4472,6 +4494,72 @@ export function Reports({ data, totals }) {
    Opening stock is optional and can be entered later. Credit Sale rows
    already stored with fuel=LUBRICANT are the authoritative lubricant sales.
 ========================================================= */
+// Normalize HPCL inventory descriptions to the parent product. Pack size remains in the source bill,
+// but stock costing is consolidated at product level so paid + free quantities receive one
+// GST-inclusive effective purchase cost. DEF remains its own product and never mixes with oils.
+const LUBRICANT_PACK_SALE_PRICES = Object.freeze({
+  "HP GEAR OIL EP 140": [{ pack:"210 L Drum", price:61500 }],
+  "HP LAAL GHODA 20W40": [
+    { pack:"1 L", price:295 },
+    { pack:"5 L", price:1475 },
+    { pack:"10 L", price:2950 },
+    { pack:"20 L", price:5900 }
+  ],
+  "HP RACER 4 20W40": [{ pack:"1 L", price:345 }],
+  "HP MILCY TURBO 15W40": [
+    { pack:"1 L", price:325 },
+    { pack:"4×5 L", price:6530 },
+    { pack:"7.5 L", price:2450 },
+    { pack:"10 L", price:3265 }
+  ],
+  "TATA MOTORS HP GENUINE DEF": [{ pack:"20 L Bucket", price:2000 }]
+});
+
+const lubricantSalePriceOptions = value => {
+  const key = normalizeLubricantProductName(value).toUpperCase();
+  return LUBRICANT_PACK_SALE_PRICES[key] || [];
+};
+
+export function normalizeLubricantProductName(value) {
+  let name=String(value||"").replace(/\\s+/g," ").trim();
+  if(!name) return "";
+  name=name.replace(/\\s*[-–]\\s*\\d+(?:\\.\\d+)?\\s*[x×]\\s*\\d+(?:\\.\\d+)?\\s*L(?:\\s*SQ)?\\s*$/i,"");
+  name=name.replace(/\\s+\\d+(?:\\.\\d+)?\\s*L\\s*$/i,"");
+  return name.replace(/\\s+/g," ").trim();
+}
+
+/*
+ * Legacy lubricant sale aliases must map to the actual item-wise stock SKU.
+ * "Mobile Oil (HPCL) 5Ltr Lal godha" is a 5 L sale from the 4x5 L
+ * Laal Ghoda pack line. Keep this mapping explicit; never infer it from
+ * a generic product-name match.
+ */
+function isGenericLegacyLubricantName(value) {
+  const key=String(value||"").replace(/\\s+/g," ").trim().toLowerCase();
+  return key==="mobile oil (hpcl)" || key==="mobile oil" || key==="mobile oil (hpcl) 5ltr";
+}
+
+export function normalizeLubricantSaleItemName(value) {
+  const raw=String(value||"").replace(/\\s+/g," ").trim();
+  const key=raw.toLowerCase().replace(/[×]/g,"x");
+  // Legacy 5L Laal Ghoda sale -> actual item-wise stock SKU.
+  if (
+    key.includes("mobile oil") &&
+    /5\\s*l(?:tr|itre|iter)?\\b/i.test(key) &&
+    /la+al\\s+ghoda/i.test(key)
+  ) {
+    return "HP LAAL GHODA 20W40 - 4X5L";
+  }
+  // Legacy "Mobile Oil (HPCL) Rasher" sale is the old name for
+  // HP RACER 4 20W40. Keep this mapping explicit so the 1 L sale
+  // reduces the Racer item-wise stock, without changing the original
+  // transaction record or sale amount.
+  if (key.includes("mobile oil") && /rasher|racer/i.test(key)) {
+    return "HP RACER 4 20W40 - 10X1L";
+  }
+  return raw;
+}
+
 export function LubricantManagement({ data, update }) {
   const [selectedFY,setSelectedFY]=useState(DEFAULT_FINANCIAL_YEAR);
   const fy=financialYearBounds(selectedFY);
@@ -4488,7 +4576,9 @@ export function LubricantManagement({ data, update }) {
   const lubricantProductOptions = useMemo(() => {
     const map = new Map();
     (data.purchases || []).filter(p => String(p?.fuel || "").toUpperCase() === "LUBRICANT").forEach(p => {
-      const items = Array.isArray(p.items) && p.items.length ? p.items : [{ description: p.productName || "Mobile Oil (HPCL)", hsn: p.hsn || "" }];
+      const items = Array.isArray(p.items) && p.items.length
+        ? p.items
+        : (String(p?.source || "").toUpperCase() === "HPCL-LUBRICANT-PDF" ? [] : [{ description: p.productName || "", hsn: p.hsn || "" }]);
       items.forEach(item => {
         const name = String(item?.description || "").trim();
         if (!name) return;
@@ -4513,6 +4603,11 @@ export function LubricantManagement({ data, update }) {
   const allLubCredits=Array.isArray(data?.credits)?data.credits:[];
   const allLubCash=Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[];
 
+  const previousFY = useMemo(()=>{
+    const y=Number(String(selectedFY).slice(0,4));
+    return Number.isFinite(y) ? `${y-1}-${String(y).slice(-2)}` : "";
+  },[selectedFY]);
+
   const calculatedPreviousClosing=useMemo(()=>{
     if(!previousFYBounds) return {qty:baseOpeningQ,value:baseOpeningV};
     const inPrev=x=>String(x?.date||"")>=previousFYBounds.start && String(x?.date||"")<=previousFYBounds.end;
@@ -4525,6 +4620,82 @@ export function LubricantManagement({ data, update }) {
     const avg=totalQ>0?(baseOpeningV+pv)/totalQ:0;
     return {qty,value:Math.max(0,qty*avg)};
   },[previousFYBounds,baseOpeningQ,baseOpeningV,allLubPurchases,allLubCredits,allLubCash]);
+
+  // IMPORTANT: FY carry-forward must be item-wise. Never split an aggregate
+  // lubricant opening balance across products by guesswork. Where a previous
+  // FY item opening exists, calculate that item's exact closing qty/value from
+  // its own purchases and sales, then use that as the next FY opening.
+  const calculatedPreviousItemClosing=useMemo(()=>{
+    if(!previousFYBounds) return {};
+    const inPrev=x=>String(x?.date||"")>=previousFYBounds.start && String(x?.date||"")<=previousFYBounds.end;
+    const map=new Map();
+    const ensure=(name,hsn="")=>{
+      const clean=String(name||"").trim(); if(!clean) return null;
+      const key=normalizeLubricantProductName(clean).toLowerCase();
+      if(!key) return null;
+      if(!map.has(key)) map.set(key,{name:normalizeLubricantProductName(clean),hsn:String(hsn||"").trim()});
+      return key;
+    };
+    const prevOpening=(data?.lubricantOpeningByFY?.[previousFY]||{});
+    Object.entries(prevOpening).forEach(([key,row])=>{
+      const name=String(row?.name||key).trim();
+      if(name && !isGenericLegacyLubricantName(name)) ensure(name,row?.hsn||"");
+    });
+    allLubPurchases.filter(p=>String(p?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(p)).forEach(p=>{
+      if(Array.isArray(p.items)&&p.items.length){
+        p.items.forEach(x=>ensure(x?.description,x?.hsn));
+      } else if(
+        p?.productName &&
+        String(p?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF" &&
+        !isGenericLegacyLubricantName(p.productName)
+      ) ensure(p.productName,p?.hsn);
+    });
+    allLubCredits.filter(x=>{
+      const name=normalizeLubricantSaleItemName(x?.productName);
+      return String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)&&!isGenericLegacyLubricantName(name);
+    }).forEach(x=>ensure(normalizeLubricantSaleItemName(x?.productName)));
+    allLubCash.filter(x=>{
+      const name=normalizeLubricantSaleItemName(x?.productName);
+      return String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)&&!isGenericLegacyLubricantName(name);
+    }).forEach(x=>ensure(normalizeLubricantSaleItemName(x?.productName)));
+
+    const out={};
+    for(const [key,item] of map){
+      const openingRow=prevOpening[key]||prevOpening[item.name]||{};
+      let openingQtyItem=n(openingRow?.qty), openingValueItem=n(openingRow?.value);
+      let purchaseQty=0,purchaseValue=0;
+      allLubPurchases.filter(p=>String(p?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(p)).forEach(p=>{
+        if(Array.isArray(p.items)&&p.items.length){
+          p.items.forEach(x=>{
+            if(normalizeLubricantProductName(x?.description).toLowerCase()!==key) return;
+            const q=n(x?.inventoryQty)>0?n(x.inventoryQty):0;
+            const lineValue=n(x?.netAmount)>0?n(x.netAmount):n(x?.taxableValue)+n(x?.igstAmount);
+            purchaseQty+=q; purchaseValue+=lineValue>0?lineValue:0;
+          });
+        } else if(
+          String(p?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF" &&
+          !isGenericLegacyLubricantName(p?.productName) &&
+          String(p?.productName||"").trim().toLowerCase()===key
+        ){
+          purchaseQty+=n(p.quantity); purchaseValue+=purchaseLandedValue(p);
+        }
+      });
+      const creditQty=allLubCredits.filter(x=>{
+        const name=normalizeLubricantSaleItemName(x?.productName);
+        return String(x?.fuel||"").toUpperCase()==="LUBRICANT"&&inPrev(x)&&!isGenericLegacyLubricantName(name)&&name.toLowerCase()===key;
+      }).reduce((a,x)=>a+n(x.qty),0);
+      const cashQty=allLubCash.filter(x=>{
+        const name=normalizeLubricantSaleItemName(x?.productName);
+        return String(x?.paymentMode||"").toUpperCase()==="CASH"&&inPrev(x)&&!isGenericLegacyLubricantName(name)&&name.toLowerCase()===key;
+      }).reduce((a,x)=>a+n(x.qty),0);
+      const availableQty=openingQtyItem+purchaseQty;
+      const avgCost=availableQty>0?(openingValueItem+purchaseValue)/availableQty:0;
+      const closingQty=Math.max(0,availableQty-creditQty-cashQty);
+      const closingValue=closingQty*avgCost;
+      if(closingQty>0 || closingValue>0) out[key]={name:item.name,hsn:item.hsn,qty:closingQty,value:closingValue,source:"FY_CLOSING_ITEM_WISE",fromFY:previousFY};
+    }
+    return out;
+  },[previousFYBounds,previousFY,data?.lubricantOpeningByFY,allLubPurchases,allLubCredits,allLubCash]);
 
   const effectiveOpening=openingByFY[selectedFY] || (String(selectedFY).startsWith("2026-") ? calculatedPreviousClosing : {qty:baseOpeningQ,value:baseOpeningV});
 
@@ -4564,28 +4735,47 @@ export function LubricantManagement({ data, update }) {
     };
     purchases.forEach(p=>{
       if(Array.isArray(p.items) && p.items.length){
-        p.items.forEach(item=>add(item?.description,{hsn:item?.hsn}));
+        p.items.forEach(item=>add(normalizeLubricantProductName(item?.description),{hsn:item?.hsn}));
+      } else if(String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF"){
+        // Legacy HPCL rows without item lines are NOT valid item-wise stock.
+        // Do not manufacture "Mobile Oil (HPCL)" or an unclassified SKU here.
+        // The dedicated recovery panel below remains the only path to restore
+        // the actual invoice item lines from the saved source bill.
       } else add(p.productName);
     });
-    sales.forEach(x=>add(x.productName));
-    cashSales.forEach(x=>add(x.productName));
-    return Array.from(map.values()).sort((a,b)=>a.name.localeCompare(b.name));
+    sales.forEach(x=>{
+      const name=normalizeLubricantSaleItemName(x.productName);
+      if(!isGenericLegacyLubricantName(name)) add(name);
+    });
+    cashSales.forEach(x=>{
+      const name=normalizeLubricantSaleItemName(x.productName);
+      if(!isGenericLegacyLubricantName(name)) add(name);
+    });
+    const savedOpen=data?.lubricantOpeningByFY?.[selectedFY]||{};
+    Object.entries(savedOpen).forEach(([key,row])=>add(row?.name||key,{hsn:row?.hsn}));
+    Object.entries(calculatedPreviousItemClosing).forEach(([key,row])=>add(row?.name||key,{hsn:row?.hsn}));
+    return Array.from(map.values())
+      .filter(item=>!isGenericLegacyLubricantName(item.name))
+      .sort((a,b)=>a.name.localeCompare(b.name));
   },[purchases,sales,cashSales]);
 
   const lubricantItemLedger = useMemo(()=>{
     const saved=(data?.lubricantOpeningByFY?.[selectedFY]||{});
     return lubricantStockItems.map(item=>{
       const key=item.name.toLowerCase();
-      const openingRow=saved[key]||saved[item.name]||{};
+      const openingRow=saved[key]||saved[item.name]||calculatedPreviousItemClosing[key]||calculatedPreviousItemClosing[item.name]||{};
       const itemPurchases=purchases.filter(p=>{
-        if(Array.isArray(p.items) && p.items.length) return p.items.some(x=>String(x?.description||"").trim().toLowerCase()===key);
+        if(Array.isArray(p.items) && p.items.length) return p.items.some(x=>normalizeLubricantProductName(x?.description).toLowerCase()===key);
+        // Legacy HPCL purchase rows without items[] are deliberately excluded
+        // from item-wise stock until their original invoice lines are recovered.
+        if(String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF") return false;
         return String(p.productName||"").trim().toLowerCase()===key;
       });
       let purchaseQty=0, purchaseValue=0;
       itemPurchases.forEach(p=>{
         if(Array.isArray(p.items) && p.items.length){
           p.items.forEach(x=>{
-            if(String(x?.description||"").trim().toLowerCase()!==key) return;
+            if(normalizeLubricantProductName(x?.description).toLowerCase()!==key) return;
             const q=n(x?.inventoryQty)>0?n(x.inventoryQty):0;
             purchaseQty+=q;
             const lineValue=n(x?.netAmount)>0?n(x.netAmount):n(x?.taxableValue)+n(x?.igstAmount);
@@ -4596,8 +4786,14 @@ export function LubricantManagement({ data, update }) {
           purchaseValue+=purchaseLandedValue(p);
         }
       });
-      const credit=sales.filter(x=>String(x?.productName||"").trim().toLowerCase()===key);
-      const cash=cashSales.filter(x=>String(x?.productName||"").trim().toLowerCase()===key);
+      const credit=sales.filter(x=>{
+        const name=normalizeLubricantSaleItemName(x?.productName);
+        return !isGenericLegacyLubricantName(name) && name.trim().toLowerCase()===key;
+      });
+      const cash=cashSales.filter(x=>{
+        const name=normalizeLubricantSaleItemName(x?.productName);
+        return !isGenericLegacyLubricantName(name) && name.trim().toLowerCase()===key;
+      });
       const creditQty=credit.reduce((a,x)=>a+n(x.qty),0);
       const cashQty=cash.reduce((a,x)=>a+n(x.qty),0);
       const creditValue=credit.reduce((a,x)=>a+n(x.amount),0);
@@ -4614,18 +4810,36 @@ export function LubricantManagement({ data, update }) {
         closingValue:Math.max(0,closingQtyItem*avgItemCost)
       };
     });
-  },[lubricantStockItems,purchases,sales,cashSales,data?.lubricantOpeningByFY,selectedFY]);
+  },[lubricantStockItems,purchases,sales,cashSales,data?.lubricantOpeningByFY,calculatedPreviousItemClosing,selectedFY]);
 
   const [itemOpeningDraft,setItemOpeningDraft]=useState({});
   useEffect(()=>{
     const saved=data?.lubricantOpeningByFY?.[selectedFY]||{};
     const next={};
     lubricantStockItems.forEach(item=>{
-      const row=saved[item.key]||saved[item.name]||{};
+      const row=saved[item.key]||saved[item.name]||calculatedPreviousItemClosing[item.key]||calculatedPreviousItemClosing[item.name]||{};
       next[item.key]={qty:row.qty??"",value:row.value??""};
     });
     setItemOpeningDraft(next);
-  },[selectedFY,lubricantStockItems,data?.lubricantOpeningByFY]);
+  },[selectedFY,lubricantStockItems,data?.lubricantOpeningByFY,calculatedPreviousItemClosing]);
+
+  const carryForwardItemWiseOpening=async()=>{
+    if(!previousFYBounds || !previousFY) return setMsg("❌ Previous FY उपलब्ध नहीं है।");
+    const rows=Object.entries(calculatedPreviousItemClosing);
+    if(!rows.length){
+      const aggregatePrevious=n(calculatedPreviousClosing.qty);
+      if(aggregatePrevious>0) return setMsg("⚠️ Previous FY में aggregate lubricant stock है, लेकिन item-wise opening उपलब्ध नहीं है। System अनुमान से items में नहीं बाँटेगा। पहले FY "+previousFY+" का item-wise opening दर्ज करें।");
+      return setMsg("ℹ️ Previous FY का item-wise closing stock शून्य है।");
+    }
+    const existing={...(data?.lubricantOpeningByFY||{})};
+    const next={};
+    rows.forEach(([key,row])=>{ next[key]={qty:n(row.qty),value:n(row.value),name:row.name,hsn:row.hsn||"",source:"CARRY_FORWARD",fromFY:previousFY}; });
+    existing[selectedFY]=next;
+    const result=await update({lubricantOpeningByFY:existing});
+    if(result?.ok===false) return setMsg("❌ Item-wise carry-forward save नहीं हुआ: "+(result?.reason||"Mutation rejected"));
+    setItemOpeningDraft(Object.fromEntries(Object.entries(next).map(([k,v])=>[k,{qty:v.qty,value:v.value}])));
+    setMsg(`✅ FY ${previousFY} का closing lubricant stock FY ${selectedFY} में item-wise carry-forward हो गया — ${rows.length} items.`);
+  };
 
   const saveItemWiseOpening=async()=>{
     const existing={...(data?.lubricantOpeningByFY||{})};
@@ -4670,21 +4884,21 @@ export function LubricantManagement({ data, update }) {
 
   const [editingPurchaseId,setEditingPurchaseId]=useState(null);
   const [editingCashSaleId,setEditingCashSaleId]=useState(null);
-  const [cashSale,setCashSale]=useState({date:today,productName:"Mobile Oil (HPCL)",packQty:"",packSize:"",qty:"",rate:"",amount:""});
+  const [cashSale,setCashSale]=useState({date:today,productName:"Mobile Oil (HPCL)",packQty:"",packSize:"",qty:"",rate:"",amount:"",paymentMode:"CASH"});
   const [editingSaleId,setEditingSaleId]=useState(null);
   const [editingSale,setEditingSale]=useState({date:today,parchiNo:"",party:"",vehicle:"",productName:"Mobile Oil (HPCL)",qty:"",amount:""});
 
 
   const resetCashSaleForm=()=>{
     setEditingCashSaleId(null);
-    setCashSale({date:today,productName:"Mobile Oil (HPCL)",packQty:"",packSize:"",qty:"",rate:"",amount:""});
+    setCashSale({date:today,productName:"Mobile Oil (HPCL)",packQty:"",packSize:"",qty:"",rate:"",amount:"",paymentMode:"CASH"});
   };
 
   const saveCashSale=async()=>{
     setMsg("");
     if(!cashSale.date || !isValidISODate(cashSale.date) || cashSale.date<START_DATE || cashSale.date>today) return setMsg("Cash Sale Date valid period में नहीं है।");
     if(!String(cashSale.productName||"").trim()) return setMsg("Uploaded Bill से Product Select करना जरूरी है।");
-    const qty=(n(cashSale.packQty)>0&&n(cashSale.packSize)>0)?rupee(n(cashSale.packQty)*n(cashSale.packSize)):n(cashSale.qty), rate=n(cashSale.rate), inclusiveAmount=rupee(n(cashSale.amount)>0?n(cashSale.amount):qty*rate), taxableAmount=rupee(inclusiveAmount*100/118);
+    const qty=(n(cashSale.packQty)>0&&n(cashSale.packSize)>0)?rupee(n(cashSale.packQty)*n(cashSale.packSize)):n(cashSale.qty), rate=n(cashSale.rate), inclusiveAmount=rupee(qty*rate), taxableAmount=rupee(inclusiveAmount*100/118);
     const gstRate=18, gstAmount=rupee(inclusiveAmount-taxableAmount), amount=inclusiveAmount;
     if(qty<=0) return setMsg("Qty 0 से अधिक होना चाहिए।");
     if(rate<=0 && amount<=0) return setMsg("Rate या Amount भरें।");
@@ -4694,7 +4908,7 @@ export function LubricantManagement({ data, update }) {
     if(lockedMonths.has(String(cashSale.date).slice(0,7))) return setMsg("🔒 "+String(cashSale.date).slice(0,7)+" Accounting Month LOCKED है।");
     if(editingCashSaleId!==null){
       const next=(data.lubricantCashSales||[]).map(x=>String(x.id)===String(editingCashSaleId)?{
-        ...x,date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:finalRate,amount:finalAmount,paymentMode:"CASH"
+        ...x,date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:finalRate,amount:finalAmount,paymentMode:String(cashSale.paymentMode||"CASH").toUpperCase()
       }:x);
       const result=await update({lubricantCashSales:next});
       if(!result?.ok) return setMsg("❌ Lubricant Cash Sale update नहीं हुई: "+(result?.reason||"Mutation rejected"));
@@ -4705,7 +4919,7 @@ export function LubricantManagement({ data, update }) {
     const row={
       id:"LUB-CASH-"+cashSale.date+"-"+now+"-"+Math.random().toString(36).slice(2,7),
       transactionId:"LUBRICANT-CASH-SALE-"+cashSale.date+"-"+now,
-      date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:qty>0?rupee(taxableAmount/qty):finalRate,amount:finalAmount,taxableAmount,gstRate,gstAmount,paymentMode:"CASH",source:"MANUAL_LUBRICANT_CASH"
+      date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:qty>0?rupee(taxableAmount/qty):finalRate,amount:finalAmount,taxableAmount,gstRate,gstAmount,paymentMode:String(cashSale.paymentMode||"CASH").toUpperCase(),source:"MANUAL_LUBRICANT_CASH"
     };
     const result=await update({lubricantCashSales:[...(data.lubricantCashSales||[]),row]});
     if(!result?.ok) return setMsg("❌ Lubricant Cash Sale save नहीं हुई: "+(result?.reason||"Mutation rejected"));
@@ -4716,7 +4930,7 @@ export function LubricantManagement({ data, update }) {
   const editCashSale=row=>{
     if(!row) return;
     setEditingCashSaleId(row.id);
-    setCashSale({date:row.date||today,productName:row.productName||"Mobile Oil (HPCL)",qty:row.qty??"",rate:row.rate??"",amount:row.amount??""});
+    setCashSale({date:row.date||today,productName:row.productName||"Mobile Oil (HPCL)",packQty:row.packQty??"",packSize:row.packSize??"",qty:row.qty??"",rate:row.rate??"",amount:row.amount??"",paymentMode:String(row.paymentMode||"CASH").toUpperCase()});
     setMsg("✏️ Lubricant Cash Sale edit mode में है।");
   };
 
@@ -4895,75 +5109,158 @@ export function LubricantManagement({ data, update }) {
     const lines=raw.split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
     const joined=lines.join(' ');
     const invoice=(joined.match(/INVOICE\s+NUMBER\s*[:.\-]?\s*([A-Z0-9-]+)/i)||joined.match(/INVOICE\s+NO\.?\s*[:.\-]?\s*([A-Z0-9-]+)/i)||[])[1]||'';
-    const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE)\s*[:.\-]?\s*((?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})|(?:\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{4})|(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+\d{4}))/i)||[])[1]||'';
+    const billingDocNo=(joined.match(/BILLING\s+DOC\s+NO\.?\s*[:.\-]?\s*([A-Z0-9-]+)/i)||[])[1]||'';
+    const dateRaw=(joined.match(/(?:DOCUMENT\s+DATE|INVOICE\s+DATE|DATE\.)?\s*[:.\-]?\s*((?:\d{1,2}[\/-]\d{1,2}[\/-]\d{4})|(?:\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{4})|(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+\d{4}))/i)||[])[1]||'';
     const billDate=hpclDate2(dateRaw);
     const gstMatches=[...joined.matchAll(/GSTIN\s*[:.\-]?\s*([0-9A-Z]{15})/gi)].map(m=>m[1]);
     const gst=gstMatches.find(x=>x!=='05ABWFS5610D1Z4')||gstMatches[0]||'';
     const supplier='HINDUSTAN PETROLEUM CORP. LTD.';
     const items=[];
-    const rowRe=/^(\d{1,3})\s+(.+?)\s+(\d{4,10})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i;
-    const parseTail=tail=>{
-      const nums=tail.trim().split(/\s+/).filter(Boolean).map(hpclNum2);
-      if(nums.length>=8) return {totalValue:nums[0],discount:nums[1],taxableValue:nums[2],igstRate:0,igstAmount:nums[4]+nums[6],netAmount:nums[7]};
-      if(nums.length>=6) return {totalValue:nums[0],discount:nums[1],taxableValue:nums[2],igstRate:nums[3],igstAmount:nums[4],netAmount:nums[5]};
-      return null;
-    };
-    const addRow=(m)=>{
-      const lineNo=Number(m[1]), description=m[2].trim(), hsn=String(m[3]), billedQty=hpclNum2(m[4]), unit=m[5].toUpperCase(), parsed=parseTail(m[6]);
-      if(!parsed||!(billedQty>0)||!(parsed.netAmount>0)) return;
-      const pack=description.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
-      const packCount=pack?Number(pack[1]):1, packLitres=pack?Number(pack[2]):(unit==='L'?1:0);
-      const qtyVol=(description+' '+m[6]).match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
-      const inventoryQty=qtyVol?hpclNum2(qtyVol[1]):(packLitres>0?billedQty*packCount:billedQty);
-      items.push({lineNo,description,hsn,billedQty,unit,packSize:pack?pack[1]+' × '+pack[2]+' L':'',inventoryQty,...parsed});
-    };
-    for(const line of lines){ const m=line.match(rowRe); if(m) addRow(m); }
 
-    // HPCL invoices often wrap the product description and Qty/Vol across
-    // separate PDF text lines. Rebuild those fields from the item block so
-    // 8-digit HSNs and EA-pack products are imported with the real product
-    // name and inventory quantity.
-    items.forEach(item=>{
-      const hsnToken=String(item.hsn||'');
-      const rowIndex=lines.findIndex(line=>new RegExp('^\\s*'+String(item.lineNo)+'\\s+').test(line) && line.includes(hsnToken));
-      if(rowIndex<0) return;
-      const block=[];
-      for(let j=rowIndex;j<lines.length;j++){
-        const s=lines[j];
-        if(j>rowIndex && /^\s*\d{1,3}\s+/.test(s) && /\b\d{4,10}\b/.test(s)) break;
-        if(j>rowIndex && /^(Total:|Net Amount|Declarations|PAN No\.|Goods\/Services)/i.test(s)) break;
-        block.push(s);
-      }
-      const qtyMatch=block.join(' ').match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
-      if(qtyMatch) item.inventoryQty=hpclNum2(qtyMatch[1]);
+    // Robust HPCL table reader: native HPCL PDFs can expose the table as
+    // separate text fragments. Do not depend on the PDF text extractor keeping
+    // the SR/description/Qty/financial columns in one exact block.
+    // Find each Qty/Vol line, then pair it with the nearest product description
+    // above and the nearest HSN/EA financial row below.
+    const hardTableRows=[];
+    for(let i=0;i<lines.length;i++){
+      const q=lines[i].match(/^Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L(?:\d+)?$/i);
+      if(!q) continue;
 
-      const isMetaDescription=/^Locn\s+Lot\s+No\.?$/i.test(String(item.description||'').trim());
-      if(isMetaDescription){
-        const desc=[];
-        for(let j=rowIndex-1;j>=0;j--){
-          const s=String(lines[j]||'').trim();
-          if(!s) continue;
-          if(/^\s*\d{1,3}\s+/.test(s) && /\b\d{4,10}\b/.test(s)) break;
-          if(/^(?:Locn\s+Lot\s+No\.?|MRP[0-9A-Z-]+|Qty\s*\/\s*Vol)/i.test(s)) continue;
-          if(/^(?:Taxable|SR\s+Item|Description|HSN\/|Total:|Net Amount|Declarations)/i.test(s)) break;
-          if(/^(?:GSTIN|Recipient|Delivery Address|Billing Doc No\.|Invoice Number|Document Type|Date\.)/i.test(s)) break;
-          desc.unshift(s);
-          if(desc.length>=3) break;
+      // Native HPCL PDF text order is:
+      // Description -> Locn/Lot -> SR+HSN+EA financial row -> MRP -> Qty/Vol.
+      // Therefore the financial row must be searched BACKWARDS from Qty/Vol.
+      let sr=0, fin=null, finIndex=-1;
+      for(let j=i-1;j>=Math.max(0,i-7);j--){
+        const fm=lines[j].match(/^(?:(\d{1,3})\s+)?(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
+        if(!fm) continue;
+        const nums=fm[5].trim().split(/\s+/).map(hpclNum2);
+        if(nums.length>=6){
+          sr=fm[1]?Number(fm[1]):0;
+          fin={
+            hsn:String(fm[2]), billedQty:hpclNum2(fm[3]), unit:fm[4].toUpperCase(),
+            totalValue:nums[0]||0, discount:nums[1]||0, taxableValue:nums[2]||0,
+            igstRate:nums[3]||0, igstAmount:nums[4]||0, netAmount:nums[5]||0
+          };
+          finIndex=j;
+          break;
         }
-        if(desc.length) item.description=desc.join(' ').replace(/\s+/g,' ').trim();
       }
+      if(!fin) continue;
+
+      let desc="";
+      for(let j=finIndex-1;j>=Math.max(0,finIndex-7);j--){
+        if(/^(?:HP|TATA\s+MOTORS\s+HP|DEF\b)/i.test(lines[j])){
+          desc=lines[j].trim();
+          break;
+        }
+      }
+      if(!desc) continue;
+
+      const inventoryQty=hpclNum2(q[1]);
+      if(inventoryQty<=0) continue;
+      const pack=desc.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
+      hardTableRows.push({
+        lineNo:sr||hardTableRows.length+1,
+        description:desc,
+        hsn:fin.hsn,
+        billedQty:fin.billedQty,
+        unit:fin.unit,
+        packSize:pack?pack[1]+' × '+pack[2]+' L':'',
+        inventoryQty,
+        ...fin
+      });
+    }
+    if(hardTableRows.length) items.push(...hardTableRows);
+
+    // HPCL lubricant PDFs place each product over several physical text lines:
+    // SR number -> product description -> Qty/Vol -> HSN/EA financial row.
+    // The old parser treated the EA count (e.g. "3 EA") as litres when Qty/Vol
+    // was on a separate line. Parse the complete block instead.
+    const itemBlocks=[];
+    for(let i=0;i<lines.length;i++){
+      const m=lines[i].match(/^(\d{1,3})$/);
+      if(!m) continue;
+      const next=lines.slice(i+1).findIndex((x,j)=>j>0 && /^\d{1,3}$/.test(x));
+      const endIndex=next>=0 ? i+1+next : Math.min(lines.length,i+12);
+      const block=lines.slice(i,endIndex);
+      if(block.some(x=>/^\d{4,10}\s+\d[\d,]*(?:\.\d+)?\s+(EA|L|KG|PCS)\b/i.test(x))){
+        itemBlocks.push({lineNo:Number(m[1]),block});
+      }
+    }
+
+    const parseFinancialLine=(line)=>{
+      const m=line.match(/^(?:\d{1,3}\s+)?(\d{4,10})\s+(\d[\d,]*(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i);
+      if(!m) return null;
+      const nums=m[4].trim().split(/\s+/).map(hpclNum2);
+      if(nums.length<6) return null;
+      // HSN Qty UoM TotalValue Discount Taxable IGSTRate IGSTAmount NetAmount
+      return {
+        hsn:String(m[1]),
+        billedQty:hpclNum2(m[2]),
+        unit:m[3].toUpperCase(),
+        totalValue:nums[0]||0,
+        discount:nums[1]||0,
+        taxableValue:nums[2]||0,
+        igstRate:nums.length>=6 ? nums[3]||0 : 0,
+        igstAmount:nums.length>=6 ? nums[4]||0 : 0,
+        netAmount:nums.length>=6 ? nums[5]||0 : 0
+      };
+    };
+
+    itemBlocks.forEach(({lineNo,block})=>{
+      const fin=block.map(parseFinancialLine).find(Boolean);
+      if(!fin) return;
+      const qtyLine=block.find(x=>/Qty\s*\/\s*Vol\s+[\d,]+(?:\.\d+)?\s*L/i.test(x));
+      const qtyMatch=qtyLine?.match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
+      const inventoryQty=qtyMatch ? hpclNum2(qtyMatch[1]) : (fin.unit==='L' ? fin.billedQty : 0);
+
+      // Prefer the actual HP/DEF product description, not address/meta lines.
+      const desc=block.find(x=>/^(?:HP|TATA\s+MOTORS\s+HP|DEF\b)/i.test(x.trim()))
+        || block.find(x=>/^[A-Z][A-Z0-9 .&()\/-]{8,}$/.test(x) && !/^(Locn|MRP|Qty\/Vol|Declarations|Total|Net Amount)/i.test(x))
+        || '';
+      if(!desc || inventoryQty<=0 || fin.netAmount<0) return;
+
+      const pack=desc.match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*(L|LTR|LT)\b/i);
+      items.push({
+        lineNo, description:desc.trim(), hsn:fin.hsn, billedQty:fin.billedQty, unit:fin.unit,
+        packSize:pack?pack[1]+' × '+pack[2]+' L':'',
+        inventoryQty, ...fin
+      });
     });
 
+    // Fallback for less-structured HPCL text extraction.
     if(!items.length){
-      const m=joined.match(/\b(\d{1,3})\s+(.+?)\s+(\d{4,10})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+([\d,]+(?:\.\d+)?(?:\s+[\d,]+(?:\.\d+)?){5,7})/i);
-      if(m) addRow(m);
+      const rowRe=/^(\d{1,3})\s+(.+?)\s+(\d{4,10})\s+([\d,]+(?:\.\d+)?)\s+(EA|L|KG|PCS)\s+(.+)$/i;
+      const parseTail=tail=>{
+        const nums=tail.trim().split(/\s+/).filter(Boolean).map(hpclNum2);
+        if(nums.length>=6) return {totalValue:nums[0],discount:nums[1],taxableValue:nums[2],igstRate:nums[3],igstAmount:nums[4],netAmount:nums[5]};
+        return null;
+      };
+      for(const line of lines){
+        const m=line.match(rowRe); if(!m) continue;
+        const parsed=parseTail(m[6]); if(!parsed||!(m[4]&&parsed.netAmount>=0)) continue;
+        const description=m[2].trim();
+        const qtyVol=(description+' '+m[6]).match(/Qty\s*\/\s*Vol\s+([\d,]+(?:\.\d+)?)\s*L/i);
+        const inventoryQty=qtyVol?hpclNum2(qtyVol[1]):(m[5].toUpperCase()==='L'?hpclNum2(m[4]):0);
+        if(inventoryQty<=0) continue;
+        items.push({lineNo:Number(m[1]),description,hsn:String(m[3]),billedQty:hpclNum2(m[4]),unit:m[5].toUpperCase(),packSize:'',inventoryQty,...parsed});
+      }
     }
+
+    const totalMatch=joined.match(/\bTotal:\s*([\d,]+(?:\.\d+)?)\s+[\d,]+(?:\.\d+)?\s+[\d,]+(?:\.\d+)?\s+([\d,]+(?:\.\d+)?)/i);
+    const documentTaxable=totalMatch?hpclNum2(totalMatch[1]):0;
+    const documentNet=totalMatch?hpclNum2(totalMatch[2]):0;
     const totalInventoryQty=items.reduce((a,x)=>a+n(x.inventoryQty),0);
     const totalBasic=items.reduce((a,x)=>a+n(x.totalValue),0);
     const totalTaxable=items.reduce((a,x)=>a+n(x.taxableValue),0);
     const totalTax=items.reduce((a,x)=>a+n(x.igstAmount),0);
     const totalNet=items.reduce((a,x)=>a+n(x.netAmount),0);
-    return {invoiceNo:String(invoice).trim(),date:billDate,supplier,gstin:String(gst).trim(),items,totalInventoryQty,totalBasic,totalTaxable,totalTax,totalNet,fileName,rawText:raw.slice(0,12000)};
+    return {
+      invoiceNo:String(invoice).trim(),billingDocNo:String(billingDocNo).trim(),date:billDate,supplier,gstin:String(gst).trim(),items,
+      totalInventoryQty,totalBasic,totalTaxable,totalTax,totalNet,
+      documentTaxable,documentNet,fileName,rawText:raw.slice(0,12000)
+    };
   };
 
   const extractLubricantPdf = async file => {
@@ -5026,6 +5323,16 @@ export function LubricantManagement({ data, update }) {
       if(!(qty>0)) return setLubBillMsg('❌ Invoice की Inventory Qty 0 है। Bill की Qty/Vol verify करें।');
       if(!(total>0)) return setLubBillMsg('❌ Invoice का Total/Net Amount 0 है। Bill amounts verify करें।');
 
+      // Item-wise save invariant: every HPCL line must have a real description,
+      // positive inventory quantity and positive line value; invoice totals must
+      // reconcile to the parsed lines before the purchase can be saved.
+      const badItem=r.items.find(x=>!String(x?.description||"").trim()||n(x?.inventoryQty)<=0||n(x?.netAmount)<0);
+      if(badItem) return setLubBillMsg('❌ HPCL bill में invalid item line मिली। Item-wise save रोक दिया गया; original bill verify करें।');
+      const lineQty=r.items.reduce((a,x)=>a+n(x?.inventoryQty),0);
+      const lineNet=r.items.reduce((a,x)=>a+n(x?.netAmount),0);
+      if(Math.abs(lineQty-qty)>0.01) return setLubBillMsg('❌ Item-wise Qty और invoice total Qty match नहीं हैं। Save रोक दिया गया।');
+      if(Math.abs(lineNet-total)>0.05) return setLubBillMsg('❌ Item-wise Net Amount और invoice Net Amount match नहीं हैं। Save रोक दिया गया।');
+
       if(!window.confirm(`क्या HPCL Lubricant Purchase Invoice ${invoiceNo} को save करना है?\n\n${r.items.length} item lines\nInventory Qty: ${qty.toFixed(2)} L\nNet Amount: ${money(total)}`)) return setLubBillMsg('↩️ Save cancel किया गया। कोई data save नहीं हुआ।');
 
       const now=Date.now();
@@ -5067,6 +5374,155 @@ export function LubricantManagement({ data, update }) {
       setLubBillMsg(`❌ Lubricant Purchase save नहीं हुआ: ${err?.message||'Unknown error'}`);
     }
   };
+
+  // Legacy HPCL purchase recovery: re-read the bill attachment already stored on the
+  // purchase row. This never invents product quantities. It only promotes successfully
+  // parsed source invoice lines into items[] and then re-signs the purchase row.
+  const reReadSavedHPCLBill=async(row)=>{
+    setLubBillMsg("");
+    if(!row) return;
+    if(!isLegacyHPCLPurchase(row)) return setLubBillMsg("❌ यह पुराना HPCL purchase record नहीं है।");
+    if(Array.isArray(row.items) && row.items.length) return setLubBillMsg("ℹ️ इस bill में item lines पहले से मौजूद हैं। कोई migration जरूरी नहीं।");
+    if(!row.billFileData) return setLubBillMsg("❌ इस पुराने bill के साथ original attachment save नहीं है। इसे फिर से upload करना पड़ेगा; system अनुमान से item split नहीं करेगा।");
+    setLubBillBusy(true);
+    setLubBillMsg("⏳ Saved HPCL bill को दोबारा पढ़कर item lines recover की जा रही हैं...");
+    try{
+      const response=await fetch(row.billFileData);
+      const buffer=await response.arrayBuffer();
+      const type=String(row.billFileType||response.headers.get("content-type")||"application/pdf");
+      const file=new File([buffer],String(row.billFileName||("HPCL-"+row.invoiceNo+".pdf")), {type});
+      let parsed;
+      if(/^application\/pdf$/i.test(type)){
+        const structured=await extractLubricantPdf(file);
+        parsed=parseLubricantStructured(structured,file.name);
+      }else{
+        if(!window.Tesseract){
+          await new Promise((resolve,reject)=>{
+            const sc=document.createElement("script");
+            sc.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+            sc.onload=resolve; sc.onerror=()=>reject(new Error("OCR library load failed"));
+            document.head.appendChild(sc);
+          });
+        }
+        const out=await window.Tesseract.recognize(file,"eng",{logger:m=>{
+          if(m.status==="recognizing text"&&m.progress>0) setLubBillMsg("⏳ OCR "+Math.round(m.progress*100)+"%...");
+        }});
+        parsed=parseLubricantBillLines(out.data.text,file.name);
+      }
+      if(!parsed?.items?.length) return setLubBillMsg("❌ Saved bill पढ़ा गया, लेकिन item table recover नहीं हुई। कोई data change नहीं किया गया।");
+      const savedInvoiceNo=String(row.invoiceNo||"").trim().toUpperCase();
+      const parsedInvoiceNo=String(parsed.invoiceNo||"").trim().toUpperCase();
+      const parsedBillingDocNo=String(parsed.billingDocNo||"").trim().toUpperCase();
+      if(!savedInvoiceNo || (savedInvoiceNo!==parsedInvoiceNo && savedInvoiceNo!==parsedBillingDocNo)){
+        return setLubBillMsg("❌ Re-read invoice/billing document number saved record से match नहीं करता। कोई data change नहीं किया गया।");
+      }
+      if(String(parsed.date||"")!==String(row.date||"")){
+        return setLubBillMsg("❌ Re-read bill date saved record से match नहीं करती। कोई data change नहीं किया गया।");
+      }
+      const qty=n(parsed.totalInventoryQty), total=n(parsed.totalNet||((parsed.totalTaxable||0)+(parsed.totalTax||0)));
+      if(!(qty>0)||!(total>0)) return setLubBillMsg("❌ Re-read से valid Qty/Net Amount नहीं मिला। कोई data change नहीं किया गया।");
+
+      const updated={
+        ...row,
+        productName:parsed.items.map(x=>x.description).join(" | ").slice(0,500),
+        hpclInvoiceNo:String(parsed.invoiceNo||row.hpclInvoiceNo||"").trim(),
+        billingDocNo:String(parsed.billingDocNo||row.billingDocNo||row.invoiceNo||"").trim(),
+        quantity:qty,
+        unit:"L",
+        rate:qty>0?total/qty:0,
+        basicAmount:n(parsed.totalTaxable||parsed.totalBasic),
+        taxAmount:n(parsed.totalTax),
+        totalAmount:total,
+        amount:total,
+        supplier:String(parsed.supplier||row.supplier||"HINDUSTAN PETROLEUM CORP. LTD.").trim(),
+        supplierGstin:String(parsed.gstin||row.supplierGstin||"").trim(),
+        items:parsed.items.map(x=>({...x})),
+        source:"HPCL-LUBRICANT-PDF"
+      };
+      updated.fingerprint=transactionFingerprint("PURCHASE",updated);
+      updated.fingerprintVersion=2;
+
+      const nextPurchases=(Array.isArray(data.purchases)?data.purchases:[]).map(p=>String(p.id)===String(row.id)?updated:p);
+      const beforeScan=scanTransactionIntegrity(data);
+      const candidate=normalizeIntegrityData({...data,purchases:nextPurchases});
+      const afterScan=scanTransactionIntegrity(candidate);
+      const sig=x=>String(x.type||"")+"|"+String(x.collection||"")+"|"+String(x.index??"")+"|"+String(x.reason||"");
+      const beforeErrors=new Set(beforeScan.errors.map(sig));
+      const newErrors=afterScan.errors.filter(x=>!beforeErrors.has(sig(x)));
+      if(newErrors.length) return setLubBillMsg("❌ Migration blocked by Data Integrity Firewall: "+newErrors.slice(0,3).map(x=>x.reason).join(" | "));
+
+      const result=await update({purchases:nextPurchases});
+      if(!result?.ok) return setLubBillMsg("❌ HPCL bill migration save नहीं हुआ: "+(result?.reason||"Mutation rejected"));
+      setLubBillMsg("✅ HPCL bill recover हो गया: "+parsed.items.length+" item lines · "+qty.toFixed(2)+" L · "+money(total)+". अब Item Wise Stock में वास्तविक products दिखेंगे।");
+    }catch(err){
+      console.error("Saved HPCL bill re-read failed",err);
+      setLubBillMsg("❌ Saved HPCL bill re-read failed: "+(err?.message||"Unknown error"));
+    }finally{
+      setLubBillBusy(false);
+    }
+  };
+
+  // Recovery path for old HPCL records where the original PDF was not saved.
+  // The user supplies the original invoice; the parser creates real item lines.
+  const recoverUploadedHPCLBill=async(row,file)=>{
+    if(!row || !file) return;
+    if(!isLegacyHPCLPurchase(row)) return setLubBillMsg("❌ यह पुराना HPCL purchase record नहीं है।");
+    if(Array.isArray(row.items) && row.items.length) return setLubBillMsg("ℹ️ इस bill में item lines पहले से मौजूद हैं।");
+    if(!/^application\/pdf$|^image\/(jpeg|png|webp)$/i.test(String(file.type||"")) && !/\.pdf$/i.test(String(file.name||""))) {
+      return setLubBillMsg("❌ केवल original HPCL PDF/JPG/PNG/WEBP bill upload करें।");
+    }
+    if(file.size>8*1024*1024) return setLubBillMsg("❌ HPCL bill 8 MB से छोटी रखें।");
+    setLubBillBusy(true);
+    setLubBillMsg("⏳ पुराने HPCL bill को पढ़कर item-wise stock recover किया जा रहा है...");
+    try{
+      const dataUrl=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(String(reader.result||""));
+        reader.onerror=()=>reject(new Error("Bill file read failed"));
+        reader.readAsDataURL(file);
+      });
+      if(!dataUrl) throw new Error("Bill file data खाली है");
+      await reReadSavedHPCLBill({...row,billFileData:dataUrl,billFileName:file.name,billFileType:file.type||"application/pdf"});
+    }catch(err){
+      console.error("Uploaded HPCL bill recovery failed",err);
+      setLubBillMsg("❌ HPCL bill recovery failed: "+(err?.message||"Unknown error"));
+    }finally{
+      setLubBillBusy(false);
+    }
+  };
+
+  // Recovery must be visible across ALL financial years. A legacy bill such as
+  // 27-03-2026 belongs to FY 2025-26, while the user may currently be viewing
+  // FY 2026-27. Do not hide the recovery action just because the selected FY changed.
+  const legacyHPCLPurchases=(Array.isArray(allLubPurchases)?allLubPurchases:[])
+    .filter(isLegacyHPCLPurchase)
+    .sort((a,b)=>String(b?.date||"").localeCompare(String(a?.date||"")));
+
+  const autoRecoveredLegacyRef=useRef(new Set());
+  const previousFYLegacyHPCL=useMemo(()=>{
+    if(!previousFYBounds) return [];
+    const inPrev=x=>String(x?.date||"")>=previousFYBounds.start && String(x?.date||"")<=previousFYBounds.end;
+    return allLubPurchases.filter(p=>
+      isLegacyHPCLPurchase(p) &&
+      inPrev(p) &&
+      !!p?.billFileData
+    );
+  },[allLubPurchases,previousFYBounds]);
+
+  useEffect(()=>{
+    if(!previousFYLegacyHPCL.length) return;
+    let cancelled=false;
+    (async()=>{
+      for(const row of previousFYLegacyHPCL){
+        const id=String(row?.id||row?.invoiceNo||"");
+        if(!id || autoRecoveredLegacyRef.current.has(id)) continue;
+        autoRecoveredLegacyRef.current.add(id);
+        if(cancelled) break;
+        await reReadSavedHPCLBill(row);
+      }
+    })();
+    return ()=>{cancelled=true;};
+  },[previousFYLegacyHPCL]);
 
   const bill = c => {
     if (!c || String(c.fuel || "").toUpperCase() !== "LUBRICANT") {
@@ -5165,7 +5621,7 @@ export function LubricantManagement({ data, update }) {
       <p style={{marginTop:0,color:"#64748b"}}>हर HPCL product/SKU का stock अलग दिखेगा। Closing Qty = Opening + Purchase − Credit Sale − Cash Sale.</p>
       {lubricantStockItems.length===0 ? <div className="warning">अभी कोई Lubricant item नहीं मिला। HPCL purchase bill upload/save करने के बाद items यहाँ दिखाई देंगे।</div> :
       <div className="table" style={{overflowX:"auto"}}><table>
-        <thead><tr><th>Item / Product</th><th>Opening Qty</th><th>Purchase Qty</th><th>Credit Sale</th><th>Cash Sale</th><th>Closing Qty</th><th>Avg Cost</th><th>Closing Value</th></tr></thead>
+        <thead><tr><th>Item / Product</th><th>Opening Qty</th><th>Purchase Qty</th><th>Credit Sale</th><th>Cash Sale</th><th>Closing Qty</th><th>Avg Cost</th><th>Rounded Sale Price (GST Incl.)</th><th>Closing Value</th></tr></thead>
         <tbody>
           {lubricantItemLedger.map(item=><tr key={item.key}>
             <td><b>{item.name}</b>{item.hsn&&<small style={{display:"block",color:"#64748b"}}>HSN {item.hsn}</small>}</td>
@@ -5175,6 +5631,15 @@ export function LubricantManagement({ data, update }) {
             <td>{item.cashQty.toFixed(2)} L</td>
             <td><b>{item.closingQty.toFixed(2)} L</b></td>
             <td>{money(item.avgCost)}/L</td>
+            <td>
+              {lubricantSalePriceOptions(item.name).length
+                ? <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {lubricantSalePriceOptions(item.name).map(x=><span key={x.pack} style={{padding:"4px 7px",borderRadius:7,border:"1px solid #cbd5e1",background:"#f8fafc",fontSize:11}}>
+                      <b>{x.pack}</b> · ₹{Number(x.price).toLocaleString("en-IN")}
+                    </span>)}
+                  </div>
+                : "—"}
+            </td>
             <td><b>{money(item.closingValue)}</b></td>
           </tr>)}
           <tr className="total-row">
@@ -5184,6 +5649,7 @@ export function LubricantManagement({ data, update }) {
             <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.creditQty,0).toFixed(2)} L</b></td>
             <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.cashQty,0).toFixed(2)} L</b></td>
             <td><b>{lubricantItemLedger.reduce((a,x)=>a+x.closingQty,0).toFixed(2)} L</b></td>
+            <td>—</td>
             <td>—</td>
             <td><b>{money(lubricantItemLedger.reduce((a,x)=>a+x.closingValue,0))}</b></td>
           </tr>
@@ -5201,7 +5667,35 @@ export function LubricantManagement({ data, update }) {
           <td><input type="number" min="0" step="0.01" value={itemOpeningDraft[item.key]?.value??""} onChange={e=>setItemOpeningDraft(d=>({...d,[item.key]:{...(d[item.key]||{}),value:e.target.value}}))}/></td>
         </tr>)}
       </tbody></table></div>
-      <div className="actions" style={{marginTop:10}}><button type="button" className="btn" onClick={saveItemWiseOpening}>💾 Save Item-wise Opening</button></div>
+      <div className="actions" style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button type="button" className="btn" onClick={carryForwardItemWiseOpening}>↪️ Carry Forward Previous FY Item-wise</button>
+        <button type="button" className="btn" onClick={saveItemWiseOpening}>💾 Save Item-wise Opening</button>
+      </div>
+      {previousFY && <div style={{marginTop:8,padding:"9px 11px",borderRadius:8,background:"#eff6ff",border:"1px solid #bfdbfe",fontSize:12}}>
+        FY {previousFY} closing → FY {selectedFY} opening. System item-wise closing Qty/Value calculate करता है; aggregate stock को किसी item में अनुमान से नहीं बाँटता।
+      </div>}
+    </section>}
+    {legacyHPCLPurchases.length>0&&<section className="panel" style={{marginTop:18,border:"2px solid #f59e0b"}}>
+      <h3>⚠️ पुराने HPCL Bills — Item Lines Recover करें</h3>
+      <p style={{marginTop:0,color:"#92400e"}}>
+        इन पुराने HPCL purchase records में <b>items[] save नहीं हुई थी</b>। System इन्हें किसी product में अनुमान से नहीं बाँटेगा।
+        Original saved bill attachment उपलब्ध हो तो उसे दोबारा पढ़कर वास्तविक item lines recover की जा सकती हैं।
+      </p>
+      {lubBillMsg&&<div className="warning" style={{marginBottom:10}}>{lubBillMsg}</div>}
+      <div className="table" style={{overflowX:"auto"}}><table>
+        <thead><tr><th>Date</th><th>Invoice No.</th><th>Current Qty</th><th>Attachment</th><th>Action</th></tr></thead>
+        <tbody>{legacyHPCLPurchases.map(row=><tr key={String(row.id)}>
+          <td>{row.date}</td><td>{row.invoiceNo||"—"}</td><td>{n(row.quantity).toFixed(2)} L</td>
+          <td>{row.billFileData?<span>✅ Saved</span>:<span>❌ Not saved</span>}</td>
+          <td style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {row.billFileData && <button type="button" className="btn small" disabled={lubBillBusy} onClick={()=>reReadSavedHPCLBill(row)}>🔄 Re-read & Recover</button>}
+            <label className="btn small" style={{display:"inline-block",cursor:lubBillBusy?"not-allowed":"pointer",opacity:lubBillBusy?.6:1}}>
+              📤 Upload & Recover
+              <input type="file" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp" disabled={lubBillBusy} style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0]; if(f) recoverUploadedHPCLBill(row,f); e.target.value="";}} />
+            </label>
+          </td>
+        </tr>)}</tbody>
+      </table></div>
     </section>}
     <section className="panel" style={{marginTop:18}}>
       <h3>📄 HPCL Lubricant Purchase Bill — Full Auto Reading</h3>
@@ -5234,16 +5728,19 @@ export function LubricantManagement({ data, update }) {
         <Field label="Date"><input type="date" min={START_DATE} max={today} value={cashSale.date} onChange={e=>setCashSale({...cashSale,date:e.target.value})}/></Field>
         <Field label="Product (Uploaded Bill से Select करें)"><select value={cashSale.productName} onChange={e=>{const productName=e.target.value;const inferred=inferLubricantPackSizeLitres(productName);setCashSale(x=>({...x,productName,packSize:inferred||x.packSize,qty:n(x.packQty)>0&&inferred>0?rupee(n(x.packQty)*inferred):x.qty}));}}><option value="">Select Product</option>{cashSale.productName&&!lubricantProductOptions.some(x=>x.name===cashSale.productName)&&<option value={cashSale.productName}>{cashSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select><small style={{display:"block",marginTop:4,color:"#64748b"}}>Uploaded HPCL purchase bill के product में से चुनें।</small></Field>
         <Field label="Pack/Balti Qty"><input type="number" min="0" step="1" value={cashSale.packQty} onChange={e=>setCashSale({...cashSale,packQty:e.target.value,qty:n(e.target.value)>0&&n(cashSale.packSize)>0?rupee(n(e.target.value)*n(cashSale.packSize)):""})}/></Field><Field label="Pack Size (L)"><input type="number" min="0" step="0.01" value={cashSale.packSize} onChange={e=>setCashSale({...cashSale,packSize:e.target.value,qty:n(cashSale.packQty)>0&&n(e.target.value)>0?rupee(n(cashSale.packQty)*n(e.target.value)):cashSale.qty})} placeholder="जैसे 10"/></Field><Field label="Total Qty (L)"><input type="number" min="0" step="0.01" value={cashSale.qty} onChange={e=>setCashSale({...cashSale,qty:e.target.value})}/></Field>
-        <Field label="Rate / L"><input type="number" min="0" step="0.01" value={cashSale.rate} onChange={e=>setCashSale({...cashSale,rate:e.target.value})}/></Field>
-        <Field label="Amount"><input type="number" min="0" step="0.01" value={cashSale.amount} onChange={e=>setCashSale({...cashSale,amount:e.target.value})} placeholder="Qty × Rate auto"/></Field>
-        <Field label="Payment"><input value="CASH" readOnly/></Field>
+        <Field label="Rate / L"><input type="number" min="0" step="0.01" value={cashSale.rate} onChange={e=>setCashSale(x=>({...x,rate:e.target.value}))}/></Field>
+        <Field label="Amount (Auto)"><input type="number" min="0" step="0.01" value={(()=>{
+          const autoQty=(n(cashSale.packQty)>0&&n(cashSale.packSize)>0)?rupee(n(cashSale.packQty)*n(cashSale.packSize)):n(cashSale.qty);
+          return autoQty>0&&n(cashSale.rate)>0?rupee(autoQty*n(cashSale.rate)):"";
+        })()} readOnly placeholder="Qty × Rate auto"/></Field>
+        <Field label="Payment"><select value={cashSale.paymentMode||"CASH"} onChange={e=>setCashSale(x=>({...x,paymentMode:e.target.value}))}><option value="CASH">CASH</option><option value="UPI">UPI</option></select></Field>
       </div>
       <div className="actions"><button type="button" className="btn" onClick={saveCashSale}>{editingCashSaleId!==null?'💾 Update Cash Sale':'💵 Save Cash Sale'}</button>{editingCashSaleId!==null&&<button type="button" className="btn gray" onClick={resetCashSaleForm}>Cancel Edit</button>}</div>
     </section>
 
     {cashSales.length>0&&<section className="panel" style={{marginTop:18}}>
       <h3>💵 Lubricant Cash Sale Register</h3>
-      <Table headers={['Date','Product','Qty','Rate','Amount','Payment']} rows={cashSales.map(x=>[x.date,x.productName||'Mobile Oil (HPCL)',n(x.qty).toFixed(2)+' L',money(x.rate),money(x.amount),'CASH'])} rowIds={cashSales.map(x=>x.id)} onEdit={id=>editCashSale(cashSales.find(x=>x.id===id))} onDelete={id=>deleteCashSale(cashSales.find(x=>x.id===id))}/>
+      <Table headers={['Date','Product','Qty','Rate','Amount','Payment']} rows={cashSales.map(x=>[x.date,x.productName||'Mobile Oil (HPCL)',n(x.qty).toFixed(2)+' L',money(x.rate),money(x.amount),String(x.paymentMode||"CASH").toUpperCase()])} rowIds={cashSales.map(x=>x.id)} onEdit={id=>editCashSale(cashSales.find(x=>x.id===id))} onDelete={id=>deleteCashSale(cashSales.find(x=>x.id===id))}/>
     </section>}
 
     {editingSaleId!==null&&<section className="panel" style={{marginTop:18,border:'2px solid #f59e0b'}}><h3>✏️ Edit Lubricant Sale</h3><div className="form"><Field label="Date"><input type="date" min={START_DATE} max={today} value={editingSale.date} onChange={e=>setEditingSale({...editingSale,date:e.target.value})}/></Field><Field label="Parchi No."><input value={editingSale.parchiNo} onChange={e=>setEditingSale({...editingSale,parchiNo:e.target.value})}/></Field><Field label="Party"><select value={editingSale.party} onChange={e=>setEditingSale({...editingSale,party:e.target.value})}><option value="">Select</option>{(data.parties||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select></Field><Field label="Vehicle"><input value={editingSale.vehicle} onChange={e=>setEditingSale({...editingSale,vehicle:e.target.value.toUpperCase()})}/></Field><Field label="Product (Uploaded Bill से Select करें)"><select value={editingSale.productName} onChange={e=>setEditingSale({...editingSale,productName:e.target.value})}><option value="">Select Product</option>{editingSale.productName&&!lubricantProductOptions.some(x=>x.name===editingSale.productName)&&<option value={editingSale.productName}>{editingSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select></Field><Field label="Qty (Optional)"><input type="number" min="0" step="0.01" value={editingSale.qty} onChange={e=>setEditingSale({...editingSale,qty:e.target.value})}/></Field><Field label="Amount"><input type="number" min="0" step="0.01" value={editingSale.amount} onChange={e=>setEditingSale({...editingSale,amount:e.target.value})}/></Field></div><div className="actions"><button type="button" className="btn" onClick={saveEditedSale}>💾 Update Lubricant Sale</button><button type="button" className="btn gray" onClick={resetSaleForm}>Cancel Edit</button></div></section>}
