@@ -4542,12 +4542,20 @@ function isGenericLegacyLubricantName(value) {
 export function normalizeLubricantSaleItemName(value) {
   const raw=String(value||"").replace(/\\s+/g," ").trim();
   const key=raw.toLowerCase().replace(/[×]/g,"x");
+  // Legacy 5L Laal Ghoda sale -> actual item-wise stock SKU.
   if (
     key.includes("mobile oil") &&
     /5\\s*l(?:tr|itre|iter)?\\b/i.test(key) &&
     /la+al\\s+ghoda/i.test(key)
   ) {
     return "HP LAAL GHODA 20W40 - 4X5L";
+  }
+  // Legacy "Mobile Oil (HPCL) Rasher" sale is the old name for
+  // HP RACER 4 20W40. Keep this mapping explicit so the 1 L sale
+  // reduces the Racer item-wise stock, without changing the original
+  // transaction record or sale amount.
+  if (key.includes("mobile oil") && /rasher|racer/i.test(key)) {
+    return "HP RACER 4 20W40 - 10X1L";
   }
   return raw;
 }
