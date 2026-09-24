@@ -9,6 +9,16 @@ function inferLubricantPackSizeLitres(name){
   return 0;
 }
 
+function isLegacyHPCLPurchase(row){
+  if(Array.isArray(row?.items) && row.items.length) return false;
+  const source=String(row?.source||"").toUpperCase();
+  const product=String(row?.productName||"").toLowerCase();
+  const supplier=String(row?.supplier||"").toLowerCase();
+  return source.includes("HPCL") ||
+    /mobile oil.*hpcl|hpcl.*mobile oil|mobile oil \(hpcl\)/i.test(product) ||
+    /hindustan petroleum|hpcl/i.test(supplier);
+}
+
 import { CLOUD_ENABLED, supabase, cloudSignIn, cloudSignOut, cloudGetProfile, cloudLoadState, cloudSaveState, subscribeState } from "../cloud_sync_supabase";
 import {
   START_DATE,
@@ -5299,7 +5309,7 @@ export function LubricantManagement({ data, update }) {
   const reReadSavedHPCLBill=async(row)=>{
     setLubBillMsg("");
     if(!row) return;
-    if(String(row?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF") return setLubBillMsg("❌ यह HPCL Lubricant PDF purchase record नहीं है।");
+    if(!isLegacyHPCLPurchase(row)) return setLubBillMsg("❌ यह पुराना HPCL purchase record नहीं है।");
     if(Array.isArray(row.items) && row.items.length) return setLubBillMsg("ℹ️ इस bill में item lines पहले से मौजूद हैं। कोई migration जरूरी नहीं।");
     if(!row.billFileData) return setLubBillMsg("❌ इस पुराने bill के साथ original attachment save नहीं है। इसे फिर से upload करना पड़ेगा; system अनुमान से item split नहीं करेगा।");
     setLubBillBusy(true);
@@ -5379,7 +5389,7 @@ export function LubricantManagement({ data, update }) {
   // The user supplies the original invoice; the parser creates real item lines.
   const recoverUploadedHPCLBill=async(row,file)=>{
     if(!row || !file) return;
-    if(String(row?.source||"").toUpperCase()!=="HPCL-LUBRICANT-PDF") return setLubBillMsg("❌ यह HPCL Lubricant PDF purchase record नहीं है।");
+    if(!isLegacyHPCLPurchase(row)) return setLubBillMsg("❌ यह पुराना HPCL purchase record नहीं है।");
     if(Array.isArray(row.items) && row.items.length) return setLubBillMsg("ℹ️ इस bill में item lines पहले से मौजूद हैं।");
     if(!/^application\/pdf$|^image\/(jpeg|png|webp)$/i.test(String(file.type||"")) && !/\.pdf$/i.test(String(file.name||""))) {
       return setLubBillMsg("❌ केवल original HPCL PDF/JPG/PNG/WEBP bill upload करें।");
@@ -5407,28 +5417,17 @@ export function LubricantManagement({ data, update }) {
   // Recovery must be visible across ALL financial years. A legacy bill such as
   // 27-03-2026 belongs to FY 2025-26, while the user may currently be viewing
   // FY 2026-27. Do not hide the recovery action just because the selected FY changed.
-  const legacyHPCLPurchases=(Array.isArray(allLubPurchases)?allLubPurchases:[]).filter(p=>{
-    if(String(p?.fuel||"").toUpperCase()!=="LUBRICANT") return false;
-    if(Array.isArray(p?.items)&&p.items.length) return false;
-    const source=String(p?.source||"").toUpperCase();
-    const product=String(p?.productName||"").toLowerCase();
-    const supplier=String(p?.supplier||"").toLowerCase();
-    // Legacy data exists in more than one historical format. Do not require one
-    // exact source string; identify HPCL legacy rows by their stored metadata.
-    return source.includes("HPCL") ||
-      /mobile oil.*hpcl|hpcl.*mobile oil|mobile oil \(hpcl\)/i.test(product) ||
-      /hindustan petroleum|hpcl/i.test(supplier);
-  }).sort((a,b)=>String(b?.date||"").localeCompare(String(a?.date||"")));
+  const legacyHPCLPurchases=(Array.isArray(allLubPurchases)?allLubPurchases:[])
+    .filter(isLegacyHPCLPurchase)
+    .sort((a,b)=>String(b?.date||"").localeCompare(String(a?.date||"")));
 
   const autoRecoveredLegacyRef=useRef(new Set());
   const previousFYLegacyHPCL=useMemo(()=>{
     if(!previousFYBounds) return [];
     const inPrev=x=>String(x?.date||"")>=previousFYBounds.start && String(x?.date||"")<=previousFYBounds.end;
     return allLubPurchases.filter(p=>
-      String(p?.fuel||"").toUpperCase()==="LUBRICANT" &&
-      String(p?.source||"").toUpperCase()==="HPCL-LUBRICANT-PDF" &&
+      isLegacyHPCLPurchase(p) &&
       inPrev(p) &&
-      !(Array.isArray(p?.items)&&p.items.length) &&
       !!p?.billFileData
     );
   },[allLubPurchases,previousFYBounds]);
