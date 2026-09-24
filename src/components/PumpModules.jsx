@@ -2725,22 +2725,22 @@ export function CreditSale({
     };
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${escHtml(invoiceNo)}</title>
     <style>
-      *{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;padding:14mm;color:#111;font-size:12px}
-      .invoice{border:1.5px solid #111;max-width:900px;margin:auto}.head{text-align:center;border-bottom:1px solid #111;padding:10px 12px 8px}
-      .head .om{font-size:14px;font-weight:700}.head h1{font-size:24px;margin:2px 0}.head .dealer{font-size:12px;font-weight:700}.head .addr{font-size:11px;margin-top:4px}
-      .meta{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #111}.meta>div{padding:8px 10px;min-height:70px}.meta>div+div{border-left:1px solid #111}
-      table{width:100%;border-collapse:collapse}th,td{border:1px solid #111;padding:7px}th{text-align:center;font-weight:700}td.num{text-align:right}.items td{height:42px}
-      .bottom{display:grid;grid-template-columns:1.25fr 1fr;border-top:1px solid #111}.bottom>div{padding:9px 10px;min-height:145px}.bottom>div+div{border-left:1px solid #111}
-      .terms{padding:8px 10px;border-top:1px solid #111;font-size:10px;line-height:1.5}.sign{text-align:right;margin-top:28px;font-weight:700}
-      .printbar{text-align:right;margin-bottom:10px}.printbtn{padding:7px 12px;border:1px solid #555;border-radius:6px;background:#eee;cursor:pointer}
-      @media print{.printbar{display:none}@page{size:A4 portrait;margin:10mm}body{padding:0}.invoice{max-width:none}}
+      *{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;padding:10mm;color:#111;font-size:11px;background:#fff}
+      .invoice{border:1px solid #111;max-width:850px;margin:auto;background:#fff}.head{text-align:center;border-bottom:1px solid #111;padding:9px 12px 7px}
+      .head .om{font-size:13px;font-weight:700}.head h1{font-size:21px;margin:3px 0}.head .dealer{font-size:11px;font-weight:700}.head .addr{font-size:10px;margin-top:3px}
+      .meta{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #111}.meta>div{padding:7px 9px;min-height:72px;line-height:1.45}.meta>div+div{border-left:1px solid #111}
+      table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #111;padding:5px 4px;font-size:10px;vertical-align:middle}th{text-align:center;font-weight:700;background:#f3f4f6}td.num{text-align:right;white-space:nowrap}.items td{height:38px;word-break:break-word}.items th:nth-child(1),.items td:nth-child(1){width:10%}.items th:nth-child(2),.items td:nth-child(2){width:9%}.items th:nth-child(3),.items td:nth-child(3){width:10%}.items th:nth-child(4),.items td:nth-child(4){width:8%}.items th:nth-child(5),.items td:nth-child(5){width:28%}.items th:nth-child(6),.items td:nth-child(6){width:9%}.items th:nth-child(7),.items td:nth-child(7){width:12%}.items th:nth-child(8),.items td:nth-child(8){width:14%}
+      .bottom{display:grid;grid-template-columns:1.25fr 1fr;border-top:1px solid #111}.bottom>div{padding:8px 9px;min-height:125px;line-height:1.6}.bottom>div+div{border-left:1px solid #111}
+      .terms{padding:7px 9px;border-top:1px solid #111;font-size:9px;line-height:1.45}.sign{text-align:right;margin-top:18px;font-weight:700}
+      .printbar{text-align:right;margin-bottom:8px}.printbtn{padding:7px 12px;border:1px solid #555;border-radius:6px;background:#eee;cursor:pointer}
+      @media print{.printbar{display:none}@page{size:A4 portrait;margin:8mm}body{padding:0}.invoice{max-width:none}}
     </style></head><body>
     <div class="printbar"><button class="printbtn" onclick="window.focus();window.print()">🖨️ Print / Save PDF</button></div>
     <div class="invoice">
       <div class="head"><div class="om">ॐ श्री गुरुवे नमः:</div><div><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05</div><h1>SATAT FILLING STATION</h1><div class="dealer">DEALER - HINDUSTAN PETROLEUM CORP. LTD.</div><div class="addr">Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div>
       <div class="meta"><div><b>Bill To:</b><br>${escHtml(c.party)}<br>${c.vehicle ? "Vehicle No.: "+escHtml(c.vehicle) : ""}</div><div><b>Tax Invoice</b><br><b>Invoice No.:</b> ${escHtml(invoiceNo || "—")}<br><b>Challan No.:</b> ${escHtml(challanNo || "—")}<br><b>Date:</b> ${escHtml(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
-      <table class="items"><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN Code</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
-      <tbody><tr><td>${escHtml(c.date)}</td><td>${escHtml(c.parchiNo)}</td><td>${escHtml(c.vehicle)}</td><td>${escHtml(c.hsnCode || "")}</td><td>${escHtml(product)}</td><td class="num">${qty ? qty.toFixed(2) : "—"}</td><td class="num">${unitRate ? money(unitRate) : "—"}</td><td class="num">${money(total)}</td></tr></tbody></table>
+      <table class="items"><thead><tr><th>Date</th><th>Challan</th><th>Vehicle</th><th>HSN</th><th>Product / Description</th><th>Qty (L)</th><th>Rate / L</th><th>Amount</th></tr></thead>
+      <tbody><tr><td>${escHtml(c.date || "—")}</td><td>${escHtml(c.parchiNo || "—")}</td><td>${escHtml(c.vehicle || "—")}</td><td>${escHtml(c.hsnCode || "—")}</td><td><b>${escHtml(product)}</b></td><td class="num">${qty ? qty.toFixed(2) : "—"}</td><td class="num">${unitRate ? money(unitRate) : "—"}</td><td class="num"><b>${money(total)}</b></td></tr></tbody></table>
       <div class="bottom"><div><b>Rupees in Words:</b><br>${escHtml(amountInWords)}</div><div><div>Total Amount Before Tax: <b style="float:right">${money(taxable)}</b></div><div>Add: CGST (9%): <b style="float:right">${money(cgst)}</b></div><div>Add: SGST (9%): <b style="float:right">${money(sgst)}</b></div><div>Add: IGST: <b style="float:right">${money(0)}</b></div><div>Tax Amount - GST: <b style="float:right">${money(tax)}</b></div><hr><div><b>Total Amount After Tax:</b><b style="float:right">${money(total)}</b></div></div></div>
       <div class="terms"><b>TERMS &amp; CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
     </div></body></html>`;
