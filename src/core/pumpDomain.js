@@ -774,9 +774,27 @@ export function getPurchaseRate(data, fuel, date) {
 // to override the accounting rule when Assessable + Tax are available.
 export function purchaseLandedValue(p) {
   if (!p) return 0;
-  // HPCL invoice Total Amount is the authoritative landed amount when present.
-  // This prevents the displayed effective rate from drifting when PDF tax-line
-  // parsing is incomplete or rounded. Basic + Tax remains the fallback.
+
+  // Multi-item HPCL invoices keep their own line totals in items[]. A parent
+  // invoice total can be the grand total for MS+HSD or several lubricant SKUs.
+  // Never reuse that grand total as the landed value of an itemized purchase.
+  const items = Array.isArray(p.items) ? p.items : [];
+  if (items.length > 0) {
+    const lineTotal = items.reduce((sum, item) => {
+      const net = n(item?.netAmount);
+      if (net > 0) return sum + net;
+
+      const taxable = n(item?.taxableValue);
+      const tax = n(item?.igstAmount);
+      if (taxable > 0 || tax > 0) return sum + taxable + tax;
+
+      const totalValue = n(item?.totalValue);
+      return totalValue > 0 ? sum + totalValue : sum;
+    }, 0);
+    if (lineTotal > 0) return lineTotal;
+  }
+
+  // For a single-line purchase, the saved invoice total remains authoritative.
   const sourceTotal = n(p.totalAmount ?? p.amount);
   if (sourceTotal > 0) return sourceTotal;
 
