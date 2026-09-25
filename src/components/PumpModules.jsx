@@ -5855,7 +5855,13 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
     // Multi-product HPCL invoice: each product row must keep its own
     // landed total. Never put the whole invoice grand total into every row.
     const lineLandedTotal = (assessable + tax) > 0 ? (assessable + tax) : 0;
-    const billTotal = n(p.totalAmount) || lineLandedTotal || grand;
+    // On multi-product HPCL invoices the trailing TOTAL VALUE is the
+    // invoice grand total and may have been captured into p.totalAmount.
+    // When a product row has its own Assessable + Tax, that line total is
+    // authoritative; never reuse the invoice grand total for that row.
+    const billTotal = products.length > 1
+      ? (lineLandedTotal || n(p.totalAmount) || grand)
+      : (n(p.totalAmount) || lineLandedTotal || grand);
     // Effective purchase rate is this product's landed total divided by
     // this product's own quantity.
     const landedRate = p.quantity > 0 ? billTotal / p.quantity : 0;
