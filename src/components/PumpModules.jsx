@@ -94,6 +94,7 @@ import {
   changedMonthsForArray,
   findLockedMutation
 } from "../core/pumpDomain";
+import { fetchRelconLiveStatus } from "../services/relconLivestatus";
 
 /* =========================================================
    STAFF ATTENDANCE + ELECTRICITY BILL
@@ -769,10 +770,62 @@ export function FuelSale({
   const [msg, setMsg] =
     useState("");
 
+  const [relconState, setRelconState] = useState({
+    loading: false,
+    fetchedAt: "",
+    error: "",
+    mapping: {}
+  });
+
   const existing =
     sales.some(
       s => s.date === date
     );
+
+  async function loadRelconClosings() {
+    setRelconState(x => ({ ...x, loading: true, error: "" }));
+    try {
+      const result = await fetchRelconLiveStatus();
+      const mapping = result.mapping || {};
+      const available = Object.keys(mapping).length;
+
+      if (!available) {
+        throw new Error("RELCON से usable Nozzle_Total नहीं मिला.");
+      }
+
+      setClosings(prev => {
+        const next = { ...prev };
+        Object.entries(mapping).forEach(([logicalNozzle, row]) => {
+          if (row?.closing !== undefined && row?.closing !== null) {
+            next[logicalNozzle] = String(row.closing);
+          }
+        });
+        return next;
+      });
+
+      setEditingNozzles(prev => {
+        const next = { ...prev };
+        Object.keys(mapping).forEach(key => { next[key] = true; });
+        return next;
+      });
+
+      setRelconState({
+        loading: false,
+        fetchedAt: result.fetchedAt,
+        error: "",
+        mapping
+      });
+
+      setMsg(`RELCON से ${available} nozzle की Closing Reading लाई गई — अभी Save नहीं हुई है।`);
+    } catch (error) {
+      setRelconState(x => ({
+        ...x,
+        loading: false,
+        error: error?.message || "RELCON reading नहीं मिल पाई।"
+      }));
+      setMsg("RELCON reading नहीं मिली। कोई meter data save नहीं हुआ।");
+    }
+  }
 
   const oldPay =
     savedPayment(data, date);
@@ -1363,6 +1416,26 @@ export function FuelSale({
             />
 
           </Field>
+
+          <div style={{display:"flex",alignItems:"flex-end",gap:8,flexWrap:"wrap"}}>
+            <button
+              type="button"
+              className="btn"
+              disabled={relconState.loading}
+              onClick={loadRelconClosings}
+            >
+              {relconState.loading ? "⏳ RELCON पढ़ रहा है..." : "⛽ RELCON से Closing Reading लाएँ"}
+            </button>
+            <div style={{fontSize:11,color:"#64748b",maxWidth:320}}>
+              Read-only: केवल <b>Nozzle_Total</b> पढ़ा जाता है। Pump Start/Stop, Shift Close या RELCON में कोई बदलाव नहीं होता।
+              {relconState.fetchedAt && (
+                <div>Last read: {new Date(relconState.fetchedAt).toLocaleTimeString("en-IN")}</div>
+              )}
+              {relconState.error && (
+                <div style={{color:"#b91c1c",fontWeight:700}}>{relconState.error}</div>
+              )}
+            </div>
+          </div>
 
         </div>
 
