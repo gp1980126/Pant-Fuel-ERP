@@ -8,7 +8,12 @@
  * so the browser does not need CORS access to the RELCON controller.
  */
 
-export const RELCON_PROXY_PATH = "/relcon-api/function_livestatus.php";
+export const RELCON_PROXY_PATH = import.meta.env.VITE_RELCON_PROXY_PATH || "/relcon-api/function_livestatus.php";
+
+function isLocalStationMode() {
+  const host = String(window.location.hostname || "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
 
 const PHYSICAL_PUMP_ORDER = {
   HSD: [1, 2, 9, 10],
@@ -110,6 +115,10 @@ export async function fetchRelconLiveStatus({
   endpoint = RELCON_PROXY_PATH,
   signal,
 } = {}) {
+  if (!isLocalStationMode()) {
+    throw new Error("RELCON read केवल StationMitra Local Station Mode में उपलब्ध है। Cloud/Vercel से 192.168.0.188 तक पहुँचना सुरक्षित/संभव नहीं है।");
+  }
+
   const response = await fetch(endpoint, {
     method: "POST",
     credentials: "include",
