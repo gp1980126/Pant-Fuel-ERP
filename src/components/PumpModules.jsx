@@ -5852,12 +5852,13 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
   return products.map(p=>{
     const assessable = n(p.basicAmount);
     const tax = n(p.taxAmount);
-    const billTotal = n(p.totalAmount) || grand || (assessable + tax);
-    // Purchase rate = (Total Assessable Value + Tax) / Ltr (MS/HSD) or Kg (CNG).
-    // This is the landed purchase rate used by the Purchase section.
-    const landedRate = p.quantity > 0
-      ? ((assessable + tax) > 0 ? (assessable + tax) / p.quantity : billTotal / p.quantity)
-      : 0;
+    // Multi-product HPCL invoice: each product row must keep its own
+    // landed total. Never put the whole invoice grand total into every row.
+    const lineLandedTotal = (assessable + tax) > 0 ? (assessable + tax) : 0;
+    const billTotal = n(p.totalAmount) || lineLandedTotal || grand;
+    // Effective purchase rate is this product's landed total divided by
+    // this product's own quantity.
+    const landedRate = p.quantity > 0 ? billTotal / p.quantity : 0;
     return {
       ...p,
       rate: landedRate,
