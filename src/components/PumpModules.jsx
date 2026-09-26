@@ -7009,16 +7009,47 @@ function tankFillingPurchaseRef(row) {
     : `${purchaseRef(row._tankFillingSource)}::ITEM::${row._tankFillingItemIndex}`;
 }
 
+function tankFillingParseArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function tankFillingNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const s = String(value ?? "").replace(/,/g, "").trim();
+  const v = Number(s);
+  return Number.isFinite(v) ? v : 0;
+}
+
+function tankFillingCanonicalFuel(value, productName="") {
+  const direct = String(value || "").trim().toUpperCase();
+  if (direct === "MS" || direct === "HSD") return direct;
+  return tankFillingInferFuel(direct) || tankFillingInferFuel(productName);
+}
+
 function tankFillingPurchaseLines(purchases) {
   const rows = [];
-  (Array.isArray(purchases) ? purchases : []).forEach(p => {
-    const items = Array.isArray(p?.items) ? p.items : [];
+  tankFillingParseArray(purchases).forEach(p => {
+    const items = tankFillingParseArray(p?.items);
     const itemRows = items.map((item, index) => {
-      const fuel = String(item?.fuel || item?.productFuel || "").trim().toUpperCase()
-        || tankFillingInferFuel(item?.productName || item?.description || item?.name)
-        || String(p?.fuel || "").trim().toUpperCase()
-        || tankFillingInferFuel(p?.productName || p?.productName);
-      const quantity = n(item?.quantity ?? item?.inventoryQty ?? item?.qty ?? item?.billedQty);
+      const fuel = tankFillingCanonicalFuel(
+        item?.fuel || item?.productFuel,
+        item?.productName || item?.description || item?.name
+      ) || tankFillingCanonicalFuel(
+        p?.fuel,
+        p?.productName || p?.description
+      );
+      const quantity = tankFillingNumber(
+        item?.quantity ?? item?.inventoryQty ?? item?.qty ?? item?.billedQty
+      );
       if (!fuel || !["MS","HSD"].includes(fuel) || quantity <= 0) return null;
       return {
         ...p,
@@ -7031,12 +7062,23 @@ function tankFillingPurchaseLines(purchases) {
       };
     }).filter(Boolean);
 
-    if (itemRows.length) rows.push(...itemRows);
-    else {
-      const fuel = String(p?.fuel || "").trim().toUpperCase() || tankFillingInferFuel(p?.productName || p?.description);
-      if (["MS","HSD"].includes(fuel) && n(p?.quantity) > 0) {
-        rows.push({ ...p, fuel, _tankFillingSource:p });
-      }
+    if (itemRows.length) {
+      rows.push(...itemRows);
+      return;
+    }
+
+    // Always fall back to the root purchase record when it is a normal
+    // fuel-wise HPCL row. This also handles legacy cloud data and records
+    // whose items array contains non-fuel/lubricant lines.
+    const fuel = tankFillingCanonicalFuel(
+      p?.fuel,
+      p?.productName || p?.description
+    );
+    const quantity = tankFillingNumber(
+      p?.quantity ?? p?.inventoryQty ?? p?.qty ?? p?.billedQty
+    );
+    if (["MS","HSD"].includes(fuel) && quantity > 0) {
+      rows.push({ ...p, fuel, quantity, _tankFillingSource:p });
     }
   });
   return rows;
