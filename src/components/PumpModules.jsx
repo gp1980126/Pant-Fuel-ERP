@@ -6977,6 +6977,72 @@ export function DataQualityBadge({ data }) {
 }
 
 /* =========================================================
+   TANK FILLING PURCHASE OPTION NORMALIZER
+   Keeps legacy/root purchase rows working and also supports
+   item-wise HPCL purchase records without mixing invoice totals.
+========================================================= */
+function tankFillingNormalizeDate(value) {
+  const v = String(value || "").trim().replace(/,/g, " ");
+  if (!v) return "";
+  const raw = v.slice(0, 10);
+  if (/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(raw)) return raw.replace(/\//g, "-");
+  let m = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (m) return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  m = v.match(/\b(JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)\s+(\d{1,2})\s+(\d{4})\b/i);
+  if (m) {
+    const months={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+    return `${m[3]}-${String(months[m[1].slice(0,3).toUpperCase()]).padStart(2,"0")}-${String(m[2]).padStart(2,"0")}`;
+  }
+  return raw;
+}
+
+function tankFillingInferFuel(value) {
+  const s = String(value || "").toUpperCase();
+  if (/\bHSD\b|DIESEL/.test(s)) return "HSD";
+  if (/\bMS\b|MOTOR\s*SPIRIT|PETROL|GASOLINE/.test(s)) return "MS";
+  return "";
+}
+
+function tankFillingPurchaseRef(row) {
+  return row?._tankFillingItemIndex === undefined
+    ? purchaseRef(row)
+    : `${purchaseRef(row._tankFillingSource)}::ITEM::${row._tankFillingItemIndex}`;
+}
+
+function tankFillingPurchaseLines(purchases) {
+  const rows = [];
+  (Array.isArray(purchases) ? purchases : []).forEach(p => {
+    const items = Array.isArray(p?.items) ? p.items : [];
+    const itemRows = items.map((item, index) => {
+      const fuel = String(item?.fuel || item?.productFuel || "").trim().toUpperCase()
+        || tankFillingInferFuel(item?.productName || item?.description || item?.name)
+        || String(p?.fuel || "").trim().toUpperCase()
+        || tankFillingInferFuel(p?.productName || p?.productName);
+      const quantity = n(item?.quantity ?? item?.inventoryQty ?? item?.qty ?? item?.billedQty);
+      if (!fuel || !["MS","HSD"].includes(fuel) || quantity <= 0) return null;
+      return {
+        ...p,
+        fuel,
+        quantity,
+        date: item?.date || p?.date || "",
+        invoiceNo: item?.invoiceNo || p?.invoiceNo || "",
+        _tankFillingSource: p,
+        _tankFillingItemIndex: index
+      };
+    }).filter(Boolean);
+
+    if (itemRows.length) rows.push(...itemRows);
+    else {
+      const fuel = String(p?.fuel || "").trim().toUpperCase() || tankFillingInferFuel(p?.productName || p?.description);
+      if (["MS","HSD"].includes(fuel) && n(p?.quantity) > 0) {
+        rows.push({ ...p, fuel, _tankFillingSource:p });
+      }
+    }
+  });
+  return rows;
+}
+
+/* =========================================================
    STOCK
 ========================================================= */
 
@@ -7395,10 +7461,15 @@ function updateFuelRates() {
     if (!f.purchaseRef) {
       return setMsg("Tank Filling को Purchase Bill से link करना जरूरी है।");
     }
-    const bill = (data.purchases || []).find(p => purchaseRef(p) === String(f.purchaseRef));
+    const purchaseLines = tankFillingPurchaseLines(data.purchases);
+    const bill = purchaseLines.find(p => tankFillingPurchaseRef(p) === String(f.purchaseRef));
     if (!bill) return setMsg("Selected Purchase Bill नहीं मिला।");
-    if (String(bill.date) > String(f.date)) return setMsg("Filling date Purchase Bill date से पहले नहीं हो सकती।");
-    const usedQty = fillingsRows.filter(x => String(x.purchaseRef) === String(f.purchaseRef)).reduce((a,x)=>a+n(x.qty),0);
+    const billDate = tankFillingNormalizeDate(bill.date);
+    const fillingDate = tankFillingNormalizeDate(f.date);
+    if (!billDate || !fillingDate || billDate > fillingDate) return setMsg("Filling date Purchase Bill date से पहले नहीं हो सकती।");
+    const usedQty = fillingsRows
+      .filter(x => String(x.purchaseRef) === String(f.purchaseRef))
+      .reduce((a,x)=>a+n(x.qty),0);
     const remaining = n(bill.quantity) - usedQty;
     if (n(f.qty) > remaining + 0.001) {
       return setMsg(`Bill ${bill.invoiceNo || f.purchaseRef} में केवल ${remaining.toFixed(2)} L balance बाकी है।`);
@@ -7855,36 +7926,26 @@ function updateFuelRates() {
               onChange={e => setF({ ...f, purchaseRef: e.target.value })}
             >
               <option value="">— Select Purchase Bill —</option>
-              {(data.purchases || [])
-                .filter(p => {
-                  const normDate = value => {
-                    const v = String(value || "").trim();
-                    if (!v) return "";
-                    const raw = v.slice(0, 10);
-                    if (/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(raw)) return raw.replace(/\//g, "-");
-                    const m = v.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
-                    return m ? `${m[3]}-${m[2]}-${m[1]}` : raw;
-                  };
-                  const purchaseFuel = String(p?.fuel || "").trim().toUpperCase();
-                  const fillingFuel = String(f?.fuel || "").trim().toUpperCase();
-                  const purchaseDate = normDate(p?.date);
-                  const fillingDate = normDate(f?.date);
-                  return purchaseFuel === fillingFuel && purchaseDate && fillingDate && purchaseDate <= fillingDate;
-                })
-                .slice()
-                .sort((a,b) => {
-                  const da = String(a?.date || "");
-                  const db = String(b?.date || "");
-                  return db.localeCompare(da);
-                })
-                .map(p => {
-                  const ref = purchaseRef(p);
+              {(() => {
+                const fillingFuel = String(f?.fuel || "").trim().toUpperCase();
+                const fillingDate = tankFillingNormalizeDate(f?.date);
+                const options = tankFillingPurchaseLines(data.purchases)
+                  .filter(p => {
+                    const purchaseDate = tankFillingNormalizeDate(p?.date);
+                    return String(p?.fuel || "").trim().toUpperCase() === fillingFuel
+                      && purchaseDate && fillingDate && purchaseDate <= fillingDate;
+                  })
+                  .slice()
+                  .sort((a,b) => tankFillingNormalizeDate(b?.date).localeCompare(tankFillingNormalizeDate(a?.date)));
+                return options.map(p => {
+                  const ref = tankFillingPurchaseRef(p);
                   const used = fillingsRows.filter(x => String(x.purchaseRef) === ref).reduce((a,x)=>a+n(x.qty),0);
                   const remaining = n(p.quantity) - used;
                   return <option key={ref} value={ref} disabled={remaining <= 0.001}>
                     {p.date} · {p.invoiceNo || ref} · {n(p.quantity).toFixed(2)} L · Balance {Math.max(0,remaining).toFixed(2)} L
                   </option>;
-                })}
+                });
+              })()}
             </select>
           </Field>
 
