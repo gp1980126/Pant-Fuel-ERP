@@ -7377,7 +7377,7 @@ function updateFuelRates() {
     useState({
       fuel: "MS",
       qty: "",
-      date: START_DATE,
+      date: todayDate(),
       purchaseRef: ""
     });
 
@@ -7972,19 +7972,20 @@ function updateFuelRates() {
                 const fillingFuel = String(f?.fuel || "").trim().toUpperCase();
                 const fillingDate = tankFillingNormalizeDate(f?.date);
                 const options = tankFillingPurchaseLines(data.purchases)
-                  .filter(p => {
-                    const purchaseDate = tankFillingNormalizeDate(p?.date);
-                    return String(p?.fuel || "").trim().toUpperCase() === fillingFuel
-                      && purchaseDate && fillingDate && purchaseDate <= fillingDate;
-                  })
+                  .filter(p =>
+                    String(p?.fuel || "").trim().toUpperCase() === fillingFuel
+                  )
                   .slice()
                   .sort((a,b) => tankFillingNormalizeDate(b?.date).localeCompare(tankFillingNormalizeDate(a?.date)));
                 return options.map(p => {
                   const ref = tankFillingPurchaseRef(p);
+                  const purchaseDate = tankFillingNormalizeDate(p?.date);
+                  const dateInvalid = !!(purchaseDate && fillingDate && purchaseDate > fillingDate);
                   const used = fillingsRows.filter(x => String(x.purchaseRef) === ref).reduce((a,x)=>a+n(x.qty),0);
                   const remaining = n(p.quantity) - used;
-                  return <option key={ref} value={ref} disabled={remaining <= 0.001}>
-                    {p.date} · {p.invoiceNo || ref} · {n(p.quantity).toFixed(2)} L · Balance {Math.max(0,remaining).toFixed(2)} L
+                  const disabled = remaining <= 0.001 || dateInvalid;
+                  return <option key={ref} value={ref} disabled={disabled}>
+                    {p.date} · {p.invoiceNo || ref} · {n(p.quantity).toFixed(2)} L · Balance {Math.max(0,remaining).toFixed(2)} L{dateInvalid ? " · Purchase date बाद में है" : ""}
                   </option>;
                 });
               })()}
