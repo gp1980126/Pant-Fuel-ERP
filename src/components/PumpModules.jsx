@@ -7857,14 +7857,26 @@ function updateFuelRates() {
               <option value="">— Select Purchase Bill —</option>
               {(data.purchases || [])
                 .filter(p => {
+                  const normDate = value => {
+                    const v = String(value || "").trim();
+                    if (!v) return "";
+                    const raw = v.slice(0, 10);
+                    if (/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(raw)) return raw.replace(/\//g, "-");
+                    const m = v.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
+                    return m ? `${m[3]}-${m[2]}-${m[1]}` : raw;
+                  };
                   const purchaseFuel = String(p?.fuel || "").trim().toUpperCase();
                   const fillingFuel = String(f?.fuel || "").trim().toUpperCase();
-                  const purchaseDate = String(p?.date || "").trim().slice(0, 10);
-                  const fillingDate = String(f?.date || "").trim().slice(0, 10);
+                  const purchaseDate = normDate(p?.date);
+                  const fillingDate = normDate(f?.date);
                   return purchaseFuel === fillingFuel && purchaseDate && fillingDate && purchaseDate <= fillingDate;
                 })
                 .slice()
-                .sort((a,b) => String(b?.date || "").localeCompare(String(a?.date || "")))
+                .sort((a,b) => {
+                  const da = String(a?.date || "");
+                  const db = String(b?.date || "");
+                  return db.localeCompare(da);
+                })
                 .map(p => {
                   const ref = purchaseRef(p);
                   const used = fillingsRows.filter(x => String(x.purchaseRef) === ref).reduce((a,x)=>a+n(x.qty),0);
