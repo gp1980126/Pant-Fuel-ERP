@@ -7855,14 +7855,24 @@ function updateFuelRates() {
               onChange={e => setF({ ...f, purchaseRef: e.target.value })}
             >
               <option value="">— Select Purchase Bill —</option>
-              {(data.purchases || []).filter(p => p.fuel === f.fuel && String(p.date) <= String(f.date)).map(p => {
-                const ref = purchaseRef(p);
-                const used = fillingsRows.filter(x => String(x.purchaseRef) === ref).reduce((a,x)=>a+n(x.qty),0);
-                const remaining = n(p.quantity) - used;
-                return <option key={ref} value={ref} disabled={remaining <= 0.001}>
-                  {p.date} · {p.invoiceNo || ref} · {n(p.quantity).toFixed(2)} L · Balance {Math.max(0,remaining).toFixed(2)} L
-                </option>;
-              })}
+              {(data.purchases || [])
+                .filter(p => {
+                  const purchaseFuel = String(p?.fuel || "").trim().toUpperCase();
+                  const fillingFuel = String(f?.fuel || "").trim().toUpperCase();
+                  const purchaseDate = String(p?.date || "").trim().slice(0, 10);
+                  const fillingDate = String(f?.date || "").trim().slice(0, 10);
+                  return purchaseFuel === fillingFuel && purchaseDate && fillingDate && purchaseDate <= fillingDate;
+                })
+                .slice()
+                .sort((a,b) => String(b?.date || "").localeCompare(String(a?.date || "")))
+                .map(p => {
+                  const ref = purchaseRef(p);
+                  const used = fillingsRows.filter(x => String(x.purchaseRef) === ref).reduce((a,x)=>a+n(x.qty),0);
+                  const remaining = n(p.quantity) - used;
+                  return <option key={ref} value={ref} disabled={remaining <= 0.001}>
+                    {p.date} · {p.invoiceNo || ref} · {n(p.quantity).toFixed(2)} L · Balance {Math.max(0,remaining).toFixed(2)} L
+                  </option>;
+                })}
             </select>
           </Field>
 
