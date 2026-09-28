@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import staticDsr from "../data/dsr_apr_jul_2026.json";
 
 const MONTHS = [
   ["2026-04", "April 2026"],
@@ -17,7 +18,7 @@ const n = value => {
 const fmt = value => n(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function ImportedDsrHistory({ data }) {
-  const source = Array.isArray(data?.dsrHistory) ? data.dsrHistory : [];
+  const source = Array.isArray(data?.dsrHistory) && data.dsrHistory.length ? data.dsrHistory : staticDsr;
   const [month, setMonth] = useState("2026-07");
   const [fuel, setFuel] = useState("ALL");
 
