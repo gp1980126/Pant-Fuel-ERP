@@ -497,8 +497,7 @@ export function AccountingPeriodLock({ data, update, session }) {
 
   if (![USER_ROLES.ADMIN, USER_ROLES.OWNER].includes(session?.role)) {
     return <div className="content"><section className="panel"><h2>🔒 Access Denied</h2><p>Accounting Period Lock केवल Admin / Owner के लिए है।</p></section></div>;
-  }
-  const lockMonth = () => {
+  }  const lockMonth = () => {
     if (!/^\d{4}-\d{2}$/.test(month)) return;
     if (isLocked) return;
     if (!window.confirm(`${month} को FINAL करके LOCK करना है? Lock के बाद इस महीने की Sale, Purchase, Credit, Payment, Filling, DIP, Rate और Recovery में edit/add/delete नहीं होगा।`)) return;
@@ -997,8 +996,7 @@ export function FuelSale({
     CNG: rupee(saleTotals.CNG - (accountedTotal({ ...payments.CNG, credit: creditByFuel.CNG }) + n(payments.CNG?.pumpExpense) + n(payments.CNG?.jump)))
   };
 
-  const totalPayment =    rupee(
-      paymentTotal("MS") +
+  const totalPayment =    rupee(      paymentTotal("MS") +
       paymentTotal("HSD") +
       paymentTotal("CNG")
     );
@@ -1497,7 +1495,6 @@ export function FuelSale({
                         />
                       )}
                   </td>
-
                   <td>
                     {r.qty.toFixed(
                       r.fuel === "CNG"
@@ -1997,7 +1994,6 @@ export function PartyMaster({
     useState(null);
   const [search, setSearch] =
     useState("");
-
   const [page, setPage] =
     useState(1);
 
@@ -2497,8 +2493,7 @@ export function PartyMaster({
 }
 
 /* =========================================================
-   CREDIT SALE
-========================================================= */
+   CREDIT SALE========================================================= */
 
 
 
@@ -2997,8 +2992,7 @@ export function CreditSale({
        <Table
   headers={[
     "Date",
-    "Parchi No",
-    "Party",
+    "Parchi No",    "Party",
     "Vehicle",
     "Fuel",
     "Product",
@@ -3497,8 +3491,7 @@ export function PartyLedger({ data, setPage, update }) {
   }
 
   function printAllPartyPdf() {
-    const rows = outstandingPartySummary.map(row => `
-      <tr>
+    const rows = outstandingPartySummary.map(row => `      <tr>
         <td>${row.party}</td>
         <td>${moneyRupee(row.opening)}</td>
         <td>${moneyRupee(row.sales)}</td>
@@ -3997,8 +3990,7 @@ th{background:#eee}
         {/* =====================================================
             SELECTED PARTY VIEW
            ===================================================== */}
-        {party && (
-          <>
+        {party && (          <>
             <section
               className="panel"
               style={{ marginTop: 18, border: "2px solid #3159a5" }}
@@ -4497,8 +4489,7 @@ const LUBRICANT_PACK_SALE_PRICES = Object.freeze({  "HP GEAR OIL EP 140": [{ pac
     { pack:"10 L", price:2950 },
     { pack:"20 L", price:5900 }
   ],
-  "HP RACER 4 20W40": [{ pack:"1 L", price:345 }],
-  "HP MILCY TURBO 15W40": [
+  "HP RACER 4 20W40": [{ pack:"1 L", price:345 }],  "HP MILCY TURBO 15W40": [
     { pack:"1 L", price:325 },
     { pack:"4×5 L", price:6530 },
     { pack:"7.5 L", price:2450 },
@@ -4997,8 +4988,7 @@ export function LubricantManagement({ data, update }) {
     update({credits:(data.credits||[]).filter(c=>String(c.id)!==String(row.id))}).then?.(result=>{
       if(result?.ok===false) setMsg(`❌ Lubricant Sale delete नहीं हुई: ${result.reason||"Mutation rejected"}`);
       else { if(editingSaleId===row.id) resetSaleForm(); setMsg(`🗑️ Lubricant Sale Parchi ${row.parchiNo||""} delete हो गई।`); }
-    });
-  };
+    });  };
 
   const resetPurchaseForm=()=>{
     setEditingPurchaseId(null);
@@ -5498,7 +5488,6 @@ export function LubricantManagement({ data, update }) {
       !!p?.billFileData
     );
   },[allLubPurchases,previousFYBounds]);
-
   useEffect(()=>{
     if(!previousFYLegacyHPCL.length) return;
     let cancelled=false;
@@ -5997,8 +5986,7 @@ export function Purchase({data,update}){
         <div className="cards" style={{gridTemplateColumns:'repeat(3,1fr)',marginTop:10}}>{fuels.map(f=>{
           const purchaseQ=sumFuel(f).qty;
           const fillingQ=f==='CNG'?null:(data.fillings||[]).filter(x=>x.fuel===f&&x.date>=from&&x.date<=to).reduce((a,x)=>a+n(x.qty),0);
-          const linkedQ=f==='CNG'?0:(data.fillings||[]).filter(x=>x.fuel===f&&x.date>=from&&x.date<=to&&x.purchaseRef).reduce((a,x)=>a+n(x.qty),0);
-          const unlinkedQ=f==='CNG'?0:fillingQ-linkedQ;
+          const linkedQ=f==='CNG'?0:(data.fillings||[]).filter(x=>x.fuel===f&&x.date>=from&&x.date<=to&&x.purchaseRef).reduce((a,x)=>a+n(x.qty),0);          const unlinkedQ=f==='CNG'?0:fillingQ-linkedQ;
           return <div className="card" key={`recon-${f}`}><span>{f} Purchase / Receipt</span><strong>{f==='CNG'?'N/A':`${(purchaseQ-linkedQ).toFixed(2)} L unreceived`}</strong><small>Purchase {purchaseQ.toFixed(f==='CNG'?3:2)} {f==='CNG'?'Kg':'L'} · Linked Receipt {f==='CNG'?'N/A':linkedQ.toFixed(2)+' L'} · Legacy/Unlinked Filling {f==='CNG'?'N/A':unlinkedQ.toFixed(2)+' L'}</small></div>
         })}</div>
       </div>
@@ -6497,8 +6485,7 @@ export function DailySaleSummary({ data }) {
             <thead>
               <tr>
                 {paymentMethods.map(([k, label]) => (
-                  <th key={k}>{label}</th>
-                ))}
+                  <th key={k}>{label}</th>                ))}
                 <th>Receipt Total</th>
                 <th>Density Expense</th>
                 <th>JUMP</th>
@@ -6938,7 +6925,7 @@ export function DataQualityBadge({ data }) {
   const sales = Array.isArray(data?.sales) ? data.sales : [];
   const payments = Array.isArray(data?.dailyPayments) ? data.dailyPayments : [];
   const dips = Array.isArray(data?.dipReadings) ? data.dipReadings : [];
-  const start = START_DATE;
+  const start = '2026-08-01';
   const end = '2026-08-31';
   const issues = [];
   const d = new Date(`${start}T12:00:00`);
@@ -6997,8 +6984,7 @@ export function Stock({
       // are the same values consumed by Stock Register.
       const source = arr.filter(s => String(s?.recoveryStatus || '') !== 'FORENSIC_RECOVERY');
       const candidates = source.length ? source : arr;
-      return candidates.findLast?.(s => s.fingerprintVersion === 1 && s._integrityVerified) ||
-        [...candidates].reverse().find(s => s.fingerprintVersion === 1 && s._integrityVerified) ||
+      return candidates.findLast?.(s => s.fingerprintVersion === 1 && s._integrityVerified) ||        [...candidates].reverse().find(s => s.fingerprintVersion === 1 && s._integrityVerified) ||
         [...candidates].reverse().find(s => s.fingerprintVersion === 1) ||
         candidates[candidates.length - 1];
     });
@@ -7495,7 +7481,6 @@ function updateFuelRates() {
           </small>
 
         </div>
-
 
 
 
@@ -7997,102 +7982,3 @@ export function Field({
   );
 }
 
-
-/* =========================================================
-   COMMON TABLE
-========================================================= */
-
-export function Table({
-  headers,
-  rows,
-  onEdit,
-  onDelete,
-  onPrintBill,
-  showPrintBill,
-  rowIds = []
-}) {
-
-  const hasActions = !!(onEdit || onDelete || onPrintBill);
-
-  return (
-    <div className="table">
-      <table>
-        <thead>
-          <tr>
-            {headers.map(h => (
-              <th key={String(h)}>
-                {h}
-              </th>
-            ))}
-            {hasActions && <th>Action</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length ? (
-            rows.map((r, i) => (
-              <tr key={rowIds[i] ?? i}>
-                {r.map((c, j) => (
-                  <td key={j}>{c}</td>
-                ))}
-                {hasActions && (
-                  <td>
-                    {onEdit && (
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() =>
-                          onEdit(
-                            rowIds[i] ?? i,
-                            r,
-                            i
-                          )
-                        }
-                      >
-                        ✏️ Edit
-                      </button>
-                    )}
-                    {onPrintBill && (!showPrintBill || showPrintBill(rowIds[i] ?? i, r, i)) && (
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => onPrintBill(rowIds[i] ?? i, r, i)}
-                      >
-                        🧾 Sale Bill
-                      </button>
-                    )}
-                    {onDelete && (
-                      <button
-                        type="button"
-                        className="btn red small"
-                        onClick={() =>
-                          onDelete(
-                            rowIds[i] ?? i,
-                            r,
-                            i
-                          )
-                        }
-                      >
-                        🗑️ Delete
-                      </button>
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td
-                colSpan={
-                  headers.length +
-                  (hasActions ? 1 : 0)
-                }
-              >
-                No records found.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
