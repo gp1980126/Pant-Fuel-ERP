@@ -7963,6 +7963,70 @@ function updateFuelRates() {
 
 
 /* =========================================================
+   COMMON TABLE
+========================================================= */
+
+export function Table({
+  headers = [],
+  rows = [],
+  rowIds = [],
+  onEdit,
+  onDelete,
+  onPrintBill,
+  showPrintBill
+}) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: Math.max(640, headers.length * 110) }}>
+        <thead>
+          <tr>
+            {headers.map((h, i) => (
+              <th key={i} style={{ padding: "9px 8px", borderBottom: "1px solid #e5eaf0", background: "#f8fafc", color: "#64748b", textAlign: "left", whiteSpace: "nowrap" }}>
+                {h}
+              </th>
+            ))}
+            {(onEdit || onDelete || onPrintBill) && (
+              <th style={{ padding: "9px 8px", borderBottom: "1px solid #e5eaf0", background: "#f8fafc", color: "#64748b", whiteSpace: "nowrap" }}>
+                Actions
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? rows.map((row, ri) => {
+            const id = rowIds[ri] ?? ri;
+            return (
+              <tr key={String(id)}>
+                {headers.map((_, ci) => (
+                  <td key={ci} style={{ padding: "8px", borderBottom: "1px solid #edf1f5", verticalAlign: "top" }}>
+                    {row?.[ci] ?? "—"}
+                  </td>
+                ))}
+                {(onEdit || onDelete || onPrintBill) && (
+                  <td style={{ padding: "8px", borderBottom: "1px solid #edf1f5", whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {onEdit && <button type="button" className="btn small" onClick={() => onEdit(id)}>✏️ Edit</button>}
+                      {onPrintBill && (showPrintBill ? showPrintBill(id) : true) && <button type="button" className="btn small" onClick={() => onPrintBill(id)}>🧾 Bill</button>}
+                      {onDelete && <button type="button" className="btn small" onClick={() => onDelete(id)}>🗑 Delete</button>}
+                    </div>
+                  </td>
+                )}
+              </tr>
+            );
+          }) : (
+            <tr>
+              <td colSpan={headers.length + ((onEdit || onDelete || onPrintBill) ? 1 : 0)} style={{ padding: 18, textAlign: "center", color: "#94a3b8" }}>
+                No records found.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* =========================================================
    COMMON FIELD
 ========================================================= */
 
