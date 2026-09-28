@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import ImportedDsrHistory from "./ImportedDsrHistory";
 
 function inferLubricantPackSizeLitres(name){
   const v=String(name||"").toUpperCase().replace(/×/g,"X").trim();
@@ -497,7 +498,6 @@ export function AccountingPeriodLock({ data, update, session }) {
   if (![USER_ROLES.ADMIN, USER_ROLES.OWNER].includes(session?.role)) {
     return <div className="content"><section className="panel"><h2>🔒 Access Denied</h2><p>Accounting Period Lock केवल Admin / Owner के लिए है।</p></section></div>;
   }
-
   const lockMonth = () => {
     if (!/^\d{4}-\d{2}$/.test(month)) return;
     if (isLocked) return;
@@ -997,8 +997,7 @@ export function FuelSale({
     CNG: rupee(saleTotals.CNG - (accountedTotal({ ...payments.CNG, credit: creditByFuel.CNG }) + n(payments.CNG?.pumpExpense) + n(payments.CNG?.jump)))
   };
 
-  const totalPayment =
-    rupee(
+  const totalPayment =    rupee(
       paymentTotal("MS") +
       paymentTotal("HSD") +
       paymentTotal("CNG")
@@ -1497,7 +1496,6 @@ export function FuelSale({
                           }
                         />
                       )}
-
                   </td>
 
                   <td>
@@ -1997,7 +1995,6 @@ export function PartyMaster({
 
   const [editId, setEditId] =
     useState(null);
-
   const [search, setSearch] =
     useState("");
 
@@ -2499,7 +2496,6 @@ export function PartyMaster({
   );
 }
 
-
 /* =========================================================
    CREDIT SALE
 ========================================================= */
@@ -2998,7 +2994,6 @@ export function CreditSale({
         <h2>
           Credit Register
         </h2>
-
        <Table
   headers={[
     "Date",
@@ -3497,8 +3492,7 @@ export function PartyLedger({ data, setPage, update }) {
     a.href = url;
     a.download = `All_Party_Outstanding_${todayDate()}.csv`;
     document.body.appendChild(a);
-    a.click();
-    a.remove();
+    a.click();    a.remove();
     URL.revokeObjectURL(url);
   }
 
@@ -3997,8 +3991,7 @@ th{background:#eee}
               <p style={{ marginBottom: 0 }}>
                 <b>Current Outstanding = Opening + Udhari Sale - Payment Received</b>
               </p>
-            </section>
-          </>
+            </section>          </>
         )}
 
         {/* =====================================================
@@ -4497,8 +4490,7 @@ export function Reports({ data, totals }) {
 // Normalize HPCL inventory descriptions to the parent product. Pack size remains in the source bill,
 // but stock costing is consolidated at product level so paid + free quantities receive one
 // GST-inclusive effective purchase cost. DEF remains its own product and never mixes with oils.
-const LUBRICANT_PACK_SALE_PRICES = Object.freeze({
-  "HP GEAR OIL EP 140": [{ pack:"210 L Drum", price:61500 }],
+const LUBRICANT_PACK_SALE_PRICES = Object.freeze({  "HP GEAR OIL EP 140": [{ pack:"210 L Drum", price:61500 }],
   "HP LAAL GHODA 20W40": [
     { pack:"1 L", price:295 },
     { pack:"5 L", price:1475 },
@@ -4997,8 +4989,7 @@ export function LubricantManagement({ data, update }) {
     const result=await update({credits:(data.credits||[]).map(c=>String(c.id)===String(editingSaleId)?nextRow:c)});
     if(!result?.ok) return setMsg(`❌ Lubricant Sale update नहीं हुआ: ${result?.reason||"Mutation rejected"}`);
     resetSaleForm();
-    setMsg(`✅ Lubricant Sale updated: Parchi ${parchi} · ${money(amount)}`);
-  };
+    setMsg(`✅ Lubricant Sale updated: Parchi ${parchi} · ${money(amount)}`);  };
 
   const deleteSale=(row)=>{
     if(!row) return;
@@ -5497,7 +5488,6 @@ export function LubricantManagement({ data, update }) {
   const legacyHPCLPurchases=(Array.isArray(allLubPurchases)?allLubPurchases:[])
     .filter(isLegacyHPCLPurchase)
     .sort((a,b)=>String(b?.date||"").localeCompare(String(a?.date||"")));
-
   const autoRecoveredLegacyRef=useRef(new Set());
   const previousFYLegacyHPCL=useMemo(()=>{
     if(!previousFYBounds) return [];
@@ -5997,8 +5987,7 @@ export function Purchase({data,update}){
     <section className="panel"><h2>🧾 HPCL Purchase PDF Import</h2>
       <p>Bill का पूरा data save होगा: <b>Invoice No, Bill Date, Fuel, Ltr/Kg, Assessable Value, Tax Amount, Tax breakup, Total Amount और Purchase Rate</b>. Existing Fuel Sale में कोई बदलाव नहीं।</p>
       <p style={{marginTop:8,fontWeight:700}}>Purchase Value = HPCL Invoice Total Amount (fallback: Assessable Value + Tax Amount) · Effective Rate = Purchase Value ÷ actual billed Ltr/Kg. Bill Rate अलग है. यदि HPCL bill में Basic/Tax fields नहीं हैं, तो source Total Amount से Effective Rate निकलेगा.</p>
-      <div className="actions" style={{marginTop:12}}><label className="btn">📄 Upload Purchase PDF<input type="file" accept="application/pdf,.pdf" onChange={importPdf} style={{display:'none'}} disabled={busy}/></label><button className="btn" onClick={importSelected}>✅ Import Selected</button></div>
-      {busy&&<div className="notice" style={{marginTop:12}}>PDF processing…</div>}{msg&&<div className="success" style={{marginTop:12}}>{msg}</div>}
+      <div className="actions" style={{marginTop:12}}><label className="btn">📄 Upload Purchase PDF<input type="file" accept="application/pdf,.pdf" onChange={importPdf} style={{display:'none'}} disabled={busy}/></label><button className="btn" onClick={importSelected}>✅ Import Selected</button></div>      {busy&&<div className="notice" style={{marginTop:12}}>PDF processing…</div>}{msg&&<div className="success" style={{marginTop:12}}>{msg}</div>}
     </section>
     {preview.length>0&&<section className="panel" style={{marginTop:18}}><h3>HPCL Bill Preview</h3><div className="table"><table><thead><tr><th>✓</th><th>Bill Date</th><th>Invoice No</th><th>Fuel</th><th>Qty</th><th>Bill Rate</th><th>Effective Rate</th><th>Assessable</th><th>Tax</th><th>Total</th><th>Status</th></tr></thead><tbody>{preview.map((r,i)=><tr key={i}><td><input type="checkbox" checked={!!r.selected} disabled={r.status!=='READY'} onChange={e=>setPreview(p=>p.map((x,j)=>j===i?{...x,selected:e.target.checked}:x))}/></td><td>{r.date}</td><td>{r.invoiceNo}</td><td>{r.fuel}</td><td>{n(r.quantity).toFixed(r.fuel==='CNG'?3:2)} {r.unit}</td><td>{money(r.rate)}</td><td><b>{money(purchaseRate(r))}</b></td><td>{money(r.basicAmount)}</td><td>{money(r.taxAmount)}</td><td>{money(purchaseLandedValue(r))}</td><td>{r.status}</td></tr>)}</tbody></table></div></section>}
     <section className="panel" style={{marginTop:18}}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><div><h3>📚 Purchase Bill Register — Fuel-wise</h3><p style={{margin:0}}>हर bill MS, HSD और CNG में अलग-अलग दिखेगा।</p></div><div style={{display:'flex',gap:10}}><label>From<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>To<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label></div></div>
@@ -6497,7 +6486,6 @@ export function DailySaleSummary({ data }) {
   const totalDifference = rupee(totalSale - totalPayment - totalPumpExpense - totalAdjustment);
 
   const paymentMethods = METHODS;
-
   const fuelCard = fuel => {
     const p = paymentsByFuel[fuel];
     return (
@@ -6719,6 +6707,8 @@ export function DailySaleSummary({ data }) {
 
   return (
     <div className="content">
+
+      <ImportedDsrHistory data={data} />
       <section className="panel">
         <div
           style={{
@@ -6997,8 +6987,7 @@ export function Stock({
   const authoritativeSales = useMemo(() => {
     const groups = new Map();
     salesRows.forEach(s => {
-      const key = `${s.date}|${s.nozzle}`;
-      const arr = groups.get(key) || [];
+      const key = `${s.date}|${s.nozzle}`;      const arr = groups.get(key) || [];
       arr.push(s);
       groups.set(key, arr);
     });
@@ -7497,7 +7486,6 @@ function updateFuelRates() {
           <strong>
             {hsd.toFixed(2)} L
           </strong>
-
           <small>
             Opening {n(data.openingStock?.HSD ?? 7500)}
             {" + "}
@@ -7997,8 +7985,7 @@ export function Field({
   label,
   children
 }) {
-  return (
-    <label className="field">
+  return (    <label className="field">
 
       <span>
         {label}
