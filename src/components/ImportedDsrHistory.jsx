@@ -18,15 +18,14 @@ const fmt = value => n(value).toLocaleString("en-IN", { minimumFractionDigits: 2
 export default function ImportedDsrHistory({ data }) {
   const source = Array.isArray(data?.dsrHistory) && data.dsrHistory.length ? data.dsrHistory : staticDsr;
   const [month, setMonth] = useState("2026-07");
-  const fuelRows = fuel => useMemo(() => source
+  const monthRows = useMemo(() => source
     .filter(r => String(r?.date || "").slice(0, 7) === month)
-    .filter(r => String(r?.fuel || "").toUpperCase() === fuel)
     .sort((a, b) => String(a.date).localeCompare(String(b.date))),
-    [source, month, fuel]
+    [source, month]
   );
 
-  const msRows = fuelRows("MS");
-  const hsdRows = fuelRows("HSD");
+  const msRows = monthRows.filter(r => String(r?.fuel || "").toUpperCase() === "MS");
+  const hsdRows = monthRows.filter(r => String(r?.fuel || "").toUpperCase() === "HSD");
 
   const totalsFor = rows => rows.reduce((a, r) => ({
     received: a.received + n(r.received),
