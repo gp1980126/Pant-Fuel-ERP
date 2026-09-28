@@ -6695,7 +6695,6 @@ export function DailySaleSummary({ data }) {
   return (
     <div className="content">
 
-      <ImportedDsrHistory data={data} />
       <section className="panel">
         <div
           style={{
@@ -7563,6 +7562,7 @@ function updateFuelRates() {
       </section>
 
 
+      <ImportedDsrHistory data={data} />
       {/* =================================================
           DAILY STOCK RECONCILIATION
           Opp. Stock = previous day's physical dip
