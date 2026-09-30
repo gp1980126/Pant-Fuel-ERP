@@ -4902,12 +4902,13 @@ export function LubricantManagement({ data, update }) {
     const row={
       id:"LUB-CASH-"+cashSale.date+"-"+now+"-"+Math.random().toString(36).slice(2,7),
       transactionId:"LUBRICANT-CASH-SALE-"+cashSale.date+"-"+now,
-      date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:qty>0?rupee(taxableAmount/qty):finalRate,amount:finalAmount,taxableAmount,gstRate,gstAmount,paymentMode:String(cashSale.paymentMode||"CASH").toUpperCase(),source:"MANUAL_LUBRICANT_CASH"
+      date:cashSale.date,productName:String(cashSale.productName).trim(),qty,rate:qty>0?rupee(taxableAmount/qty):finalRate,amount:finalAmount,taxableAmount,gstRate,gstAmount,paymentMode:String(cashSale.paymentMode||"CASH").toUpperCase(),fuel:"LUBRICANT",
+      invoiceNo:"LCS-"+String(cashSale.date).replace(/-/g,"")+"-"+String(now).slice(-6),source:"MANUAL_LUBRICANT_CASH"
     };
     const result=await update({lubricantCashSales:[...(data.lubricantCashSales||[]),row]});
     if(!result?.ok) return setMsg("❌ Lubricant Cash Sale save नहीं हुई: "+(result?.reason||"Mutation rejected"));
     resetCashSaleForm();
-    setMsg("✅ Lubricant Cash Sale saved: "+money(finalAmount)+" · "+qty.toFixed(2)+" L · Cash");
+    setMsg("✅ Lubricant Cash Sale saved: "+money(finalAmount)+" · "+qty.toFixed(2)+" L · "+String(cashSale.paymentMode||"CASH").toUpperCase());
   };
 
   const editCashSale=row=>{
@@ -5504,7 +5505,15 @@ export function LubricantManagement({ data, update }) {
   },[previousFYLegacyHPCL]);
 
   const bill = c => {
-    if (!c || String(c.fuel || "").toUpperCase() !== "LUBRICANT") {
+    const isLubricantCashSale =
+      String(c?.source || "").toUpperCase() === "MANUAL_LUBRICANT_CASH" ||
+      (String(c?.paymentMode || "").toUpperCase() !== "" &&
+       String(c?.fuel || "").toUpperCase() !== "LUBRICANT" &&
+       !String(c?.party || "").trim() &&
+       !String(c?.parchiNo || "").trim());
+    const isLubricantSale =
+      String(c?.fuel || "").toUpperCase() === "LUBRICANT" || isLubricantCashSale;
+    if (!c || !isLubricantSale) {
       alert("यह Sale Bill केवल Lubricant / Mobile Oil के लिए है।");
       return;
     }
@@ -5531,7 +5540,13 @@ export function LubricantManagement({ data, update }) {
       if(cr)p.push(u(cr)+" Crore"); if(la)p.push(u(la)+" Lakh"); if(th)p.push(u(th)+" Thousand"); if(x)p.push(u(x));
       return p.join(" ")+" Rupees Only";
     })();
-    const invoiceNo=String(c.invoiceNo||"").trim();
+    const paymentLabel = isLubricantCashSale
+      ? String(c.paymentMode || "CASH").toUpperCase()
+      : "CREDIT / UDHARI";
+    const invoiceNo=String(c.invoiceNo||c.billingDocNo||"").trim() ||
+      (isLubricantCashSale
+        ? "LCS-"+String(c.date||"").replace(/-/g,"")+"-"+String(c.id||"").replace(/[^A-Za-z0-9]/g,"").slice(-6).toUpperCase()
+        : "");
     const challanNo=String(c.parchiNo||"").trim();
     const old=document.getElementById("stationmitra-lubricant-bill-overlay");
     if(old) old.remove();
@@ -5572,10 +5587,10 @@ export function LubricantManagement({ data, update }) {
       </div>
       <div class="bill-paper">
         <div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div>
-        <div class="meta"><div><b>M/s:</b> ${esc(c.party)}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(invoiceNo||"—")}<br><b>Challan No.:</b> ${esc(challanNo||"—")}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> CREDIT / UDHARI</div></div>
+        <div class="meta"><div><b>M/s:</b> ${esc(c.party|| (isLubricantCashSale ? "CASH CUSTOMER" : ""))}<br><b>Vehicle:</b> ${esc(c.vehicle||"")}</div><div><b>TAX INVOICE</b><br><b>Invoice No.:</b> ${esc(invoiceNo||"—")}<br><b>Challan No.:</b> ${esc(challanNo||"—")}<br><b>Date:</b> ${esc(c.date)}<br><b>Payment:</b> ${esc(paymentLabel)}</div></div>
         <table><thead><tr><th>Date</th><th>Challan No.</th><th>Vehicle No.</th><th>HSN</th><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount (GST Incl.)</th></tr></thead><tbody><tr><td>${esc(c.date)}</td><td>${esc(challanNo)}</td><td>${esc(c.vehicle||"")}</td><td>${esc(c.hsnCode||"")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?money(rate):"—"}</td><td class="num">${invoiceMoney(total)}</td></tr></tbody></table>
         <div class="bottom"><div><b>Rupees in Words:</b><br>${esc(amountInWords)}</div><div><b>Assessable / Taxable Value:</b><span style="float:right">${invoiceMoney(taxable)}</span><br><b>Add: CGST (9%):</b><span style="float:right">${invoiceMoney(cgst)}</span><br><b>Add: SGST (9%):</b><span style="float:right">${invoiceMoney(sgst)}</span><br><b>Add: IGST:</b><span style="float:right">₹0.00</span><hr><b>Total Amount After Tax:</b><span style="float:right">${invoiceMoney(total)}</span></div></div>
-        <div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>• Interest 2% will be charged on all bills if not paid within 15 days.<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
+        <div class="terms"><b>TERMS & CONDITIONS :-</b><br>• Once Goods Sold will not be taken back.<br>• All Jurisdiction Disputes will be settled at Haldwani Court.<br>${isLubricantCashSale ? "• Payment received: "+esc(paymentLabel)+"." : "• Interest 2% will be charged on all bills if not paid within 15 days."}<div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div></div>
       </div>`;
     document.body.appendChild(overlay);
     overlay.querySelector('[data-action="close"]').onclick=()=>overlay.remove();
@@ -5719,7 +5734,7 @@ export function LubricantManagement({ data, update }) {
 
     {cashSales.length>0&&<section className="panel" style={{marginTop:18}}>
       <h3>💵 Lubricant Cash Sale Register</h3>
-      <Table headers={['Date','Product','Qty','Rate','Amount','Payment']} rows={cashSales.map(x=>[x.date,x.productName||'Mobile Oil (HPCL)',n(x.qty).toFixed(2)+' L',money(x.rate),money(x.amount),String(x.paymentMode||"CASH").toUpperCase()])} rowIds={cashSales.map(x=>x.id)} onEdit={id=>editCashSale(cashSales.find(x=>x.id===id))} onDelete={id=>deleteCashSale(cashSales.find(x=>x.id===id))}/>
+      <Table headers={['Date','Product','Qty','Rate','Amount','Payment']} rows={cashSales.map(x=>[x.date,x.productName||'Mobile Oil (HPCL)',n(x.qty).toFixed(2)+' L',money(x.rate),money(x.amount),String(x.paymentMode||"CASH").toUpperCase()])} rowIds={cashSales.map(x=>x.id)} onEdit={id=>editCashSale(cashSales.find(x=>x.id===id))} onPrintBill={id=>{const row=cashSales.find(x=>x.id===id);if(row) bill({...row,fuel:"LUBRICANT"});}} showPrintBill={id=>!!cashSales.find(x=>x.id===id)} onDelete={id=>deleteCashSale(cashSales.find(x=>x.id===id))}/>
     </section>}
 
     {editingSaleId!==null&&<section className="panel" style={{marginTop:18,border:'2px solid #f59e0b'}}><h3>✏️ Edit Lubricant Sale</h3><div className="form"><Field label="Date"><input type="date" min={START_DATE} max={today} value={editingSale.date} onChange={e=>setEditingSale({...editingSale,date:e.target.value})}/></Field><Field label="Parchi No."><input value={editingSale.parchiNo} onChange={e=>setEditingSale({...editingSale,parchiNo:e.target.value})}/></Field><Field label="Party"><select value={editingSale.party} onChange={e=>setEditingSale({...editingSale,party:e.target.value})}><option value="">Select</option>{(data.parties||[]).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}</select></Field><Field label="Vehicle"><input value={editingSale.vehicle} onChange={e=>setEditingSale({...editingSale,vehicle:e.target.value.toUpperCase()})}/></Field><Field label="Product (Uploaded Bill से Select करें)"><select value={editingSale.productName} onChange={e=>setEditingSale({...editingSale,productName:e.target.value})}><option value="">Select Product</option>{editingSale.productName&&!lubricantProductOptions.some(x=>x.name===editingSale.productName)&&<option value={editingSale.productName}>{editingSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select></Field><Field label="Qty (Optional)"><input type="number" min="0" step="0.01" value={editingSale.qty} onChange={e=>setEditingSale({...editingSale,qty:e.target.value})}/></Field><Field label="Amount"><input type="number" min="0" step="0.01" value={editingSale.amount} onChange={e=>setEditingSale({...editingSale,amount:e.target.value})}/></Field></div><div className="actions"><button type="button" className="btn" onClick={saveEditedSale}>💾 Update Lubricant Sale</button><button type="button" className="btn gray" onClick={resetSaleForm}>Cancel Edit</button></div></section>}
