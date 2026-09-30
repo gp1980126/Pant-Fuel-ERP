@@ -1321,18 +1321,20 @@ const importData = (event) => {
           <form className="login-card" onSubmit={async e => {
             e.preventDefault(); setLoginError("");
             const form=new FormData(e.currentTarget); const username=String(form.get("email")||"").trim(); const password=String(form.get("password")||"");
-            if (CLOUD_ENABLED) {
-              try {
-                if (!username.includes("@")) { setLoginError("Cloud login में registered email address इस्तेमाल करें।"); return; }
-                const result = await cloudSignIn(username, password);
-                if (!result?.user) throw new Error("Cloud login failed");
-                await hydrateCloudUser(result.user);
-                setPage('Dashboard');
-              } catch (error) {
-                setLoginError(error?.message || "Email/password गलत है या cloud account active नहीं है।");
-              }
+            if (!CLOUD_ENABLED || !supabase) {
+              setLoginError("Cloud configuration उपलब्ध नहीं है। इस ZIP को Cloud Supabase configuration के साथ चलाएँ।");
               return;
             }
+            try {
+              if (!username.includes("@")) { setLoginError("Cloud login में registered email address इस्तेमाल करें।"); return; }
+              const result = await cloudSignIn(username, password);
+              if (!result?.user) throw new Error("Cloud login failed");
+              await hydrateCloudUser(result.user);
+              setPage('Dashboard');
+            } catch (error) {
+              setLoginError(error?.message || "Email/password गलत है या cloud account active नहीं है।");
+            }
+            return;
             const users=Array.isArray(data.users)&&data.users.length?data.users:DEFAULT_USERS;
             const candidate=users.find(x=>((String(x.username||"").trim().toLowerCase()===username.toLowerCase()) || (String(x.email||"").trim().toLowerCase()===username.toLowerCase())) && x.active!==false);
             if(!candidate){setLoginError("Username/Email या password गलत है।");return;}
