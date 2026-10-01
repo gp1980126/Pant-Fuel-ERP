@@ -394,6 +394,8 @@ function App() {
       const incoming = { ...(part || {}) };
       const role = session?.role;
       const policy = ROLE_MUTATION_POLICY[role] || { allow: [], delete: false };
+      const auditMeta = incoming._auditMeta && typeof incoming._auditMeta === "object" ? incoming._auditMeta : null;
+      delete incoming._auditMeta;
       const businessKeys = Object.keys(incoming).filter(k => !["auditLogs","accountingLocks"].includes(k));
 
       if (role === USER_ROLES.VIEW_ONLY && businessKeys.length) {
@@ -467,7 +469,7 @@ function App() {
 
       const changedKeys = Object.keys(incoming).filter(k => k !== 'auditLogs');
       if (changedKeys.length && session?.username) {
-        const action = changedKeys.join(', ');
+        const action = auditMeta?.action || changedKeys.join(', ');
         const previousHash = Array.isArray(d.auditLogs) && d.auditLogs.length
           ? String(d.auditLogs[d.auditLogs.length - 1]?.hash || "GENESIS")
           : "GENESIS";
@@ -478,8 +480,9 @@ function App() {
           username: String(session.username || ''),
           role: String(session.role || ''),
           action,
-          details: `Updated: ${action}`,
-          previousHash
+          details: auditMeta?.details || `Updated: ${action}`,
+          previousHash,
+          ...(auditMeta?.meta && typeof auditMeta.meta === "object" ? { meta: auditMeta.meta } : {})
         };
         const log = { ...unsigned, hash: stableHash(JSON.stringify(unsigned)) };
         next.auditLogs = [...(Array.isArray(d.auditLogs) ? d.auditLogs : []), log];
