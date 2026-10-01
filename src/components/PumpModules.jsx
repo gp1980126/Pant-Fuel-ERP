@@ -6191,34 +6191,53 @@ export function SalePurchaseProfitLoss({ data }) {
 
   const printReport=()=>{
     const body=fuelList.map(f=>`<tr><td>${f}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].openingQty,f)}</td><td>${qtyText(calc[f].purchaseQty,f)}</td><td>${qtyText(calc[f].saleQty,f)}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].closingQty,f)}</td><td>${f==='CNG'?'N/A':money(calc[f].openingValue)}</td><td>${f==='CNG'?money(calc[f].matchedPurchaseCost):money(calc[f].purchaseCost)}</td><td>${f==='CNG'?'N/A':money(calc[f].closingValue)}</td><td>${money(calc[f].cogs)}</td><td>${money(calc[f].sale)}</td><td>${money(calc[f].expense)}</td><td>${money(calc[f].stateTax)}</td><td>${money(calc[f].profit)}</td></tr>`).join('');
-    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Sale Purchase P&L</title><style>
-      body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:11px}
-      th,td{border:1px solid #999;padding:6px;text-align:right}th:first-child,td:first-child{text-align:left}
-      .summary{margin-top:18px;border:1px solid #999;padding:12px}.final{font-size:16px;font-weight:bold}
-      .printbar{text-align:right;margin-bottom:12px}.printbtn{font-size:14px;padding:8px 16px;border:1px solid #555;border-radius:6px;background:#eee}
-      @media print{.printbar{display:none}@page{size:A4 landscape;margin:10mm}}
-    </style></head><body>
-      <div class="printbar"><button class="printbtn" onclick="window.print()">🖨️ Print / Save PDF</button></div>
-      <h2>${PUMP_NAME}</h2><h3>Sale ↔ Purchase P&L</h3><p>${esc(from)} to ${esc(to)}</p>
+    const html=`<div id="stationmitra-print-report">
+      <div class="sm-print-head"><h2>${esc(PUMP_NAME)}</h2><h3>Sale ↔ Purchase P&L</h3><p>${esc(from)} to ${esc(to)}</p></div>
       <table><tr><th>Fuel</th><th>Opening</th><th>Purchase</th><th>Sale</th><th>Closing</th><th>Opening Value</th><th>Purchase Value</th><th>Closing Value</th><th>COGS</th><th>Sale Amount</th><th>Expense</th><th>State Tax</th><th>Operating Profit</th></tr>
       ${body}<tr><th>TOTAL</th><th>${qtyText(calc.total.openingQty,'TOTAL')}</th><th>${qtyText(calc.total.purchaseQty,'TOTAL')}</th><th>${qtyText(calc.total.saleQty,'TOTAL')}</th><th>${qtyText(calc.total.closingQty,'TOTAL')}</th><th>${money(calc.total.openingValue)}</th><th>${money(calc.total.purchaseCost)}</th><th>${money(calc.total.closingValue)}</th><th>${money(calc.total.cogs)}</th><th>${money(calc.total.sale)}</th><th>${money(calc.total.expense)}</th><th>${money(calc.total.stateTax)}</th><th>${money(calc.total.profit)}</th></tr></table>
-      <div class="summary"><div>CNG Matched Purchase Qty: <b>${qtyText(calc.CNG.matchedPurchaseQty,'CNG')}</b></div>
+      <div class="sm-print-summary"><div>CNG Matched Purchase Qty: <b>${qtyText(calc.CNG.matchedPurchaseQty,'CNG')}</b></div>
       <div>CNG Unmatched Sale Qty: <b>${qtyText(calc.CNG.unmatchedSaleQty,'CNG')}</b></div><div>CNG Unmatched Sale Amount: <b>${money(calc.CNG.unmatchedSaleAmount)}</b></div>
       <div>CNG Unmatched Purchase Qty: <b>${qtyText(calc.CNG.unmatchedPurchaseQty,'CNG')}</b></div><div>CNG Unmatched Purchase Cost: <b>${money(calc.CNG.unmatchedPurchaseCost)}</b></div>
       <div>Salary Expense: <b>${money(salaryExpenseForPeriod)}</b></div><div>Electricity Expense: <b>${money(electricityExpenseForPeriod)}</b></div>
-      <div class="final">Final Net Profit: ${money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</div></div>
-    </body></html>`;
+      <div class="sm-print-final">Final Net Profit: ${money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</div></div>
+    </div>`;
 
-    // Replace the current document with the print report. This is initiated
-    // directly by the button click, so popup blockers cannot interfere.
-    // The report itself triggers window.print() after it has loaded.
+    const old=document.getElementById('stationmitra-print-report');
+    if(old) old.remove();
+    const oldStyle=document.getElementById('stationmitra-print-style');
+    if(oldStyle) oldStyle.remove();
+
+    const style=document.createElement('style');
+    style.id='stationmitra-print-style';
+    style.textContent=`
+      #stationmitra-print-report{display:none}
+      @media print{
+        @page{size:A4 landscape;margin:10mm}
+        body>*{display:none!important}
+        #stationmitra-print-report{display:block!important;font-family:Arial,sans-serif;color:#111;padding:0}
+        #stationmitra-print-report table{width:100%;border-collapse:collapse;font-size:9px}
+        #stationmitra-print-report th,#stationmitra-print-report td{border:1px solid #777;padding:5px;text-align:right}
+        #stationmitra-print-report th:first-child,#stationmitra-print-report td:first-child{text-align:left}
+        .sm-print-summary{margin-top:16px;border:1px solid #777;padding:10px;font-size:11px;line-height:1.7}
+        .sm-print-final{font-size:15px;font-weight:bold;margin-top:5px}
+      }`;
+    document.head.appendChild(style);
+    document.body.insertAdjacentHTML('beforeend',html);
+
+    const cleanup=()=>{
+      document.getElementById('stationmitra-print-report')?.remove();
+      document.getElementById('stationmitra-print-style')?.remove();
+      window.removeEventListener('afterprint',cleanup);
+    };
+    window.addEventListener('afterprint',cleanup);
     try{
-      const printableHtml=html.replace('</body>','<script>window.addEventListener("load",function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},250);});<\\/script></body>');
-      document.open();
-      document.write(printableHtml);
-      document.close();
+      // Directly invoked from the user's button click; no popup, tab, iframe,
+      // document replacement, Blob URL, or automatic post-load timer is used.
+      window.focus();
+      window.print();
     }catch(err){
-      alert('Print/PDF तैयार नहीं हो पाया। कृपया Chrome में दोबारा कोशिश करें।');
+      cleanup();
+      alert('Print/PDF नहीं खुल पाया। Chrome में इस page को दोबारा खोलकर Print/PDF दबाएँ।');
     }
   };
 
