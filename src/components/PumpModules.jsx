@@ -6191,10 +6191,45 @@ export function SalePurchaseProfitLoss({ data }) {
 
   const printReport=()=>{
     const body=fuelList.map(f=>`<tr><td>${f}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].openingQty,f)}</td><td>${qtyText(calc[f].purchaseQty,f)}</td><td>${qtyText(calc[f].saleQty,f)}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].closingQty,f)}</td><td>${f==='CNG'?'N/A':money(calc[f].openingValue)}</td><td>${f==='CNG'?money(calc[f].matchedPurchaseCost):money(calc[f].purchaseCost)}</td><td>${f==='CNG'?'N/A':money(calc[f].closingValue)}</td><td>${money(calc[f].cogs)}</td><td>${money(calc[f].sale)}</td><td>${money(calc[f].expense)}</td><td>${money(calc[f].stateTax)}</td><td>${money(calc[f].profit)}</td></tr>`).join('');
-    const w=window.open('', '_blank');
-    if(!w){alert('Print window blocked है. Chrome में Pop-ups and redirects → Allow करें, फिर Print / PDF दबाएँ।');return;}
-    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Sale Purchase P&L</title><style>body{font-family:Arial;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #999;padding:7px;text-align:right}th:first-child,td:first-child{text-align:left}.summary{margin-top:18px;border:1px solid #999;padding:12px}.final{font-size:16px;font-weight:bold}.printbar{text-align:right;margin-bottom:12px}.printbtn{font-size:14px;padding:8px 16px;border:1px solid #555;border-radius:6px;background:#eee;cursor:pointer}@media print{.printbar{display:none}@page{size:A4 landscape;margin:10mm}}</style></head><body><div class="printbar"><button class="printbtn" onclick="window.focus();window.print()">🖨️ Print / Save PDF</button></div><h2>${PUMP_NAME}</h2><h3>Sale ↔ Purchase P&L</h3><p>${esc(from)} to ${esc(to)}</p><table><tr><th>Fuel</th><th>Opening</th><th>Purchase</th><th>Sale</th><th>Closing</th><th>Opening Value</th><th>Purchase Value</th><th>Closing Value</th><th>COGS</th><th>Sale Amount</th><th>Expense</th><th>State Tax</th><th>Operating Profit</th></tr>${body}<tr><th>TOTAL</th><th>${qtyText(calc.total.openingQty,'TOTAL')}</th><th>${qtyText(calc.total.purchaseQty,'TOTAL')}</th><th>${qtyText(calc.total.saleQty,'TOTAL')}</th><th>${qtyText(calc.total.closingQty,'TOTAL')}</th><th>${money(calc.total.openingValue)}</th><th>${money(calc.total.purchaseCost)}</th><th>${money(calc.total.closingValue)}</th><th>${money(calc.total.cogs)}</th><th>${money(calc.total.sale)}</th><th>${money(calc.total.expense)}</th><th>${money(calc.total.stateTax)}</th><th>${money(calc.total.profit)}</th></tr></table><div class="summary"><div>CNG Matched Purchase Qty: <b>${qtyText(calc.CNG.matchedPurchaseQty,'CNG')}</b></div><div>CNG Unmatched Sale Qty: <b>${qtyText(calc.CNG.unmatchedSaleQty,'CNG')}</b></div><div>CNG Unmatched Sale Amount: <b>${money(calc.CNG.unmatchedSaleAmount)}</b></div><div>CNG Unmatched Purchase Qty: <b>${qtyText(calc.CNG.unmatchedPurchaseQty,'CNG')}</b></div><div>CNG Unmatched Purchase Cost: <b>${money(calc.CNG.unmatchedPurchaseCost)}</b></div><div>Salary Expense: <b>${money(salaryExpenseForPeriod)}</b></div><div>Electricity Expense: <b>${money(electricityExpenseForPeriod)}</b></div><div class="final">Final Net Profit: ${money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</div></div><script>window.addEventListener('load',()=>setTimeout(()=>{try{window.focus();window.print();}catch(e){}},500));<\/script></body></html>`;
-    try{w.document.open();w.document.write(html);w.document.close();w.focus();}catch(err){try{w.close();}catch{}alert('Print report खुल नहीं पाया। कृपया दोबारा Print / PDF दबाएँ।');}
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Sale Purchase P&L</title><style>
+      body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse;font-size:11px}
+      th,td{border:1px solid #999;padding:6px;text-align:right}th:first-child,td:first-child{text-align:left}
+      .summary{margin-top:18px;border:1px solid #999;padding:12px}.final{font-size:16px;font-weight:bold}
+      .printbar{text-align:right;margin-bottom:12px}.printbtn{font-size:14px;padding:8px 16px;border:1px solid #555;border-radius:6px;background:#eee}
+      @media print{.printbar{display:none}@page{size:A4 landscape;margin:10mm}}
+    </style></head><body>
+      <div class="printbar"><button class="printbtn" onclick="window.print()">🖨️ Print / Save PDF</button></div>
+      <h2>${PUMP_NAME}</h2><h3>Sale ↔ Purchase P&L</h3><p>${esc(from)} to ${esc(to)}</p>
+      <table><tr><th>Fuel</th><th>Opening</th><th>Purchase</th><th>Sale</th><th>Closing</th><th>Opening Value</th><th>Purchase Value</th><th>Closing Value</th><th>COGS</th><th>Sale Amount</th><th>Expense</th><th>State Tax</th><th>Operating Profit</th></tr>
+      ${body}<tr><th>TOTAL</th><th>${qtyText(calc.total.openingQty,'TOTAL')}</th><th>${qtyText(calc.total.purchaseQty,'TOTAL')}</th><th>${qtyText(calc.total.saleQty,'TOTAL')}</th><th>${qtyText(calc.total.closingQty,'TOTAL')}</th><th>${money(calc.total.openingValue)}</th><th>${money(calc.total.purchaseCost)}</th><th>${money(calc.total.closingValue)}</th><th>${money(calc.total.cogs)}</th><th>${money(calc.total.sale)}</th><th>${money(calc.total.expense)}</th><th>${money(calc.total.stateTax)}</th><th>${money(calc.total.profit)}</th></tr></table>
+      <div class="summary"><div>CNG Matched Purchase Qty: <b>${qtyText(calc.CNG.matchedPurchaseQty,'CNG')}</b></div>
+      <div>CNG Unmatched Sale Qty: <b>${qtyText(calc.CNG.unmatchedSaleQty,'CNG')}</b></div><div>CNG Unmatched Sale Amount: <b>${money(calc.CNG.unmatchedSaleAmount)}</b></div>
+      <div>CNG Unmatched Purchase Qty: <b>${qtyText(calc.CNG.unmatchedPurchaseQty,'CNG')}</b></div><div>CNG Unmatched Purchase Cost: <b>${money(calc.CNG.unmatchedPurchaseCost)}</b></div>
+      <div>Salary Expense: <b>${money(salaryExpenseForPeriod)}</b></div><div>Electricity Expense: <b>${money(electricityExpenseForPeriod)}</b></div>
+      <div class="final">Final Net Profit: ${money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</div></div>
+    </body></html>`;
+
+    // Do not use window.open(): Android/Chrome often blocks popup windows and the old
+    // implementation therefore made Print/PDF appear to do nothing. Print through a
+    // temporary same-page iframe instead; this also works when popups are blocked.
+    const frame=document.createElement('iframe');
+    frame.setAttribute('aria-hidden','true');
+    frame.style.position='fixed'; frame.style.width='1px'; frame.style.height='1px';
+    frame.style.right='0'; frame.style.bottom='0'; frame.style.border='0'; frame.style.opacity='0';
+    document.body.appendChild(frame);
+    let cleaned=false;
+    const cleanup=()=>{if(cleaned)return;cleaned=true;setTimeout(()=>frame.remove(),1000);};
+    try{
+      const doc=frame.contentDocument||frame.contentWindow.document;
+      doc.open(); doc.write(html); doc.close();
+      frame.onload=()=>{
+        setTimeout(()=>{
+          try{frame.contentWindow.focus();frame.contentWindow.print();}catch(err){alert('Print/PDF नहीं खुल पाया। कृपया Chrome में फिर से दबाएँ।');}
+          setTimeout(cleanup,1500);
+        },250);
+      };
+      setTimeout(()=>{if(!cleaned){try{frame.contentWindow.focus();frame.contentWindow.print();}catch(err){} setTimeout(cleanup,1500);}},1000);
+    }catch(err){cleanup();alert('Print/PDF तैयार नहीं हो पाया। कृपया दोबारा कोशिश करें।');}
   };
 
   return <div className="content">
