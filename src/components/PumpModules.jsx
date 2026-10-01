@@ -6198,7 +6198,7 @@ export function SalePurchaseProfitLoss({ data }) {
         <span>Edge में button से dialog न आए तो <b>Ctrl + P</b> दबाएँ.</span>
       </div>
       <div class="sm-print-paper">
-        <div class="sm-print-head"><h2>${esc(PUMP_NAME)}</h2><h3>Sale ↔ Purchase P&L</h3><p>${esc(from)} to ${esc(to)}</p></div>
+        <div class="sm-print-head"><h2>${String(PUMP_NAME)}</h2><h3>Sale ↔ Purchase P&L</h3><p>${String(from)} to ${String(to)}</p></div>
         <table><tr><th>Fuel</th><th>Opening</th><th>Purchase</th><th>Sale</th><th>Closing</th><th>Opening Value</th><th>Purchase Value</th><th>Closing Value</th><th>COGS</th><th>Sale Amount</th><th>Expense</th><th>State Tax</th><th>Operating Profit</th></tr>
         ${body}<tr><th>TOTAL</th><th>${qtyText(calc.total.openingQty,'TOTAL')}</th><th>${qtyText(calc.total.purchaseQty,'TOTAL')}</th><th>${qtyText(calc.total.saleQty,'TOTAL')}</th><th>${qtyText(calc.total.closingQty,'TOTAL')}</th><th>${money(calc.total.openingValue)}</th><th>${money(calc.total.purchaseCost)}</th><th>${money(calc.total.closingValue)}</th><th>${money(calc.total.cogs)}</th><th>${money(calc.total.sale)}</th><th>${money(calc.total.expense)}</th><th>${money(calc.total.stateTax)}</th><th>${money(calc.total.profit)}</th></tr></table>
         <div class="sm-print-summary"><div>CNG Matched Purchase Qty: <b>${qtyText(calc.CNG.matchedPurchaseQty,'CNG')}</b></div>
