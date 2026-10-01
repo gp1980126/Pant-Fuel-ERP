@@ -1570,7 +1570,7 @@ export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
     ):fs.filter(x=>x.fuel===f).reduce((a,x)=>a+n(x.amount),0);
     const expense=canonicalDailyPayments(data).filter(p=>p.date>=from&&p.date<=to).reduce((a,p)=>a+n(p?.[f]?.pumpExpense)+(p?.[f]?.pumpExpense===undefined?n(p?.[f]?.other):0),0);
     const or=openingRate(f,from), cngTaxRate=Number.isFinite(Number(data?.cngStateTaxRate))?Number(data.cngStateTaxRate):0.05, tax=f==='CNG'?sa*cngTaxRate:0; let cq=null,ov=0,cv=0,cogs=0,avg=or,mq=0,mc=0,usq=0,usa=0,upq=0,upc=0;
-    if(f!=='CNG'){cq=oq+pq-sq;ov=oq*or;const av=ov+pc,aq=oq+pq;avg=aq>0?av/aq:or;cv=cq*avg;cogs=Math.max(0,ov+pc-cv);}
+    if(f!=='CNG'){const closingDate=new Date(`${to}T00:00:00Z`);closingDate.setUTCDate(closingDate.getUTCDate()+1);const nextOpeningDate=closingDate.toISOString().slice(0,10);cq=openingQty(f,nextOpeningDate);ov=oq*or;const av=ov+pc,aq=oq+pq;avg=aq>0?av/aq:or;cv=cq*avg;cogs=Math.max(0,ov+pc-cv);}
     else{mq=cng.matchedQty;mc=cng.matchedCost;usq=cng.unmatchedQty;usa=cng.unmatchedAmount;upq=cng.unmatchedPurchaseQty;upc=cng.unmatchedPurchaseCost;cogs=mc;avg=mq>0?mc/mq:0;}
     out[f]={openingQty:oq,purchaseQty:pq,saleQty:sq,closingQty:cq,openingValue:ov,purchaseCost:pc,closingValue:cv,cogs,sale:sa,expense,stateTax:tax,profit:sa-cogs-expense-tax,avgCostRate:avg,matchedPurchaseQty:mq,matchedPurchaseCost:mc,unmatchedSaleQty:usq,unmatchedSaleAmount:usa,unmatchedPurchaseQty:upq,unmatchedPurchaseCost:upc};
   });
