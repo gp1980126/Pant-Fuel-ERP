@@ -6193,8 +6193,8 @@ export function SalePurchaseProfitLoss({ data }) {
     const body=fuelList.map(f=>`<tr><td>${f}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].openingQty,f)}</td><td>${qtyText(calc[f].purchaseQty,f)}</td><td>${qtyText(calc[f].saleQty,f)}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].closingQty,f)}</td><td>${f==='CNG'?'N/A':money(calc[f].openingValue)}</td><td>${f==='CNG'?money(calc[f].matchedPurchaseCost):money(calc[f].purchaseCost)}</td><td>${f==='CNG'?'N/A':money(calc[f].closingValue)}</td><td>${money(calc[f].cogs)}</td><td>${money(calc[f].sale)}</td><td>${money(calc[f].expense)}</td><td>${money(calc[f].stateTax)}</td><td>${money(calc[f].profit)}</td></tr>`).join('');
     const html=`<div id="stationmitra-print-report">
       <div class="sm-print-toolbar">
-        <button type="button" onclick="document.body.classList.add('sm-printing');window.focus();window.print();">🖨️ Print / Save PDF</button>
-        <button type="button" onclick="document.getElementById('stationmitra-print-report')?.remove();document.getElementById('stationmitra-print-style')?.remove();document.body.classList.remove('sm-printing');">✖ Close Preview</button>
+        <button type="button" id="sm-print-now">🖨️ Print / Save PDF</button>
+        <button type="button" id="sm-print-close">✖ Close Preview</button>
         <span>Edge में button से dialog न आए तो <b>Ctrl + P</b> दबाएँ.</span>
       </div>
       <div class="sm-print-paper">
@@ -6236,6 +6236,27 @@ export function SalePurchaseProfitLoss({ data }) {
       }`;
     document.head.appendChild(style);
     document.body.insertAdjacentHTML('beforeend',html);
+
+    const preview=document.getElementById('stationmitra-print-report');
+    const printButton=document.getElementById('sm-print-now');
+    const closeButton=document.getElementById('sm-print-close');
+
+    printButton?.addEventListener('click',()=>{
+      document.body.classList.add('sm-printing');
+      window.focus();
+      setTimeout(()=>window.print(),50);
+    });
+
+    closeButton?.addEventListener('click',()=>{
+      preview?.remove();
+      document.getElementById('stationmitra-print-style')?.remove();
+      document.body.classList.remove('sm-printing');
+    });
+
+    const cleanupPrint=()=>{
+      document.body.classList.remove('sm-printing');
+    };
+    window.addEventListener('afterprint',cleanupPrint,{once:true});
   };
 
   return <div className="content">
