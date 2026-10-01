@@ -6209,27 +6209,30 @@ export function SalePurchaseProfitLoss({ data }) {
       <div class="final">Final Net Profit: ${money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</div></div>
     </body></html>`;
 
-    // Do not use window.open(): Android/Chrome often blocks popup windows and the old
-    // implementation therefore made Print/PDF appear to do nothing. Print through a
-    // temporary same-page iframe instead; this also works when popups are blocked.
-    const frame=document.createElement('iframe');
-    frame.setAttribute('aria-hidden','true');
-    frame.style.position='fixed'; frame.style.width='1px'; frame.style.height='1px';
-    frame.style.right='0'; frame.style.bottom='0'; frame.style.border='0'; frame.style.opacity='0';
-    document.body.appendChild(frame);
-    let cleaned=false;
-    const cleanup=()=>{if(cleaned)return;cleaned=true;setTimeout(()=>frame.remove(),1000);};
+    // Open a real browser tab from the user's click. If the browser blocks the
+    // popup, fall back to the same tab so the report is never silently lost.
+    let win=null;
+    try{ win=window.open('about:blank','_blank'); }catch(err){}
+    if(win){
+      try{
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(()=>{ try{win.print();}catch(err){} },350);
+        return;
+      }catch(err){
+        try{win.close();}catch(_){ }
+      }
+    }
     try{
-      const doc=frame.contentDocument||frame.contentWindow.document;
-      doc.open(); doc.write(html); doc.close();
-      frame.onload=()=>{
-        setTimeout(()=>{
-          try{frame.contentWindow.focus();frame.contentWindow.print();}catch(err){alert('Print/PDF नहीं खुल पाया। कृपया Chrome में फिर से दबाएँ।');}
-          setTimeout(cleanup,1500);
-        },250);
-      };
-      setTimeout(()=>{if(!cleaned){try{frame.contentWindow.focus();frame.contentWindow.print();}catch(err){} setTimeout(cleanup,1500);}},1000);
-    }catch(err){cleanup();alert('Print/PDF तैयार नहीं हो पाया। कृपया दोबारा कोशिश करें।');}
+      const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+      const url=URL.createObjectURL(blob);
+      window.location.assign(url);
+      setTimeout(()=>URL.revokeObjectURL(url),10000);
+    }catch(err){
+      alert('Print/PDF तैयार नहीं हो पाया। कृपया Chrome में दोबारा कोशिश करें।');
+    }
   };
 
   return <div className="content">
