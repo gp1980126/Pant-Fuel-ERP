@@ -7095,6 +7095,7 @@ const [newCNGRate, setNewCNGRate] = useState("");
 
   const [dipDate, setDipDate] = useState(todayDate());
   const [dipValues, setDipValues] = useState({ MS: "", HSD: "" });
+  const [dipReason, setDipReason] = useState("");
   const [dipMsg, setDipMsg] = useState("");
 
   function bookStockAsOf(date) {
@@ -7217,11 +7218,36 @@ const [newCNGRate, setNewCNGRate] = useState("");
     if (dipValues.MS === "" || dipValues.HSD === "") return setDipMsg("MS और HSD दोनों की physical/dip quantity भरें।");
     if (["MS", "HSD"].some(f => n(dipValues[f]) < 0)) return setDipMsg("Dip quantity negative नहीं हो सकती।");
     const rows = Array.isArray(data.dipReadings) ? data.dipReadings : [];
-    const next = [
-      ...rows.filter(x => x.date !== dipDate),
-      { id: savedDip?.id ?? Date.now(), date: dipDate, MS: n(dipValues.MS), HSD: n(dipValues.HSD) }
-    ].sort((a,b) => String(a.date).localeCompare(String(b.date)));
-    update({ dipReadings: next });
+    const old = rows.find(x => x.date === dipDate) || null;
+    const nextRow = { id: old?.id ?? Date.now(), date: dipDate, MS: n(dipValues.MS), HSD: n(dipValues.HSD) };
+    const next = [...rows.filter(x => x.date !== dipDate), nextRow]
+      .sort((a,b) => String(a.date).localeCompare(String(b.date)));
+
+    const oldMS = old ? n(old.MS) : null;
+    const oldHSD = old ? n(old.HSD) : null;
+    const newMS = n(nextRow.MS);
+    const newHSD = n(nextRow.HSD);
+    const meta = {
+      module: "DIP",
+      date: dipDate,
+      old: { MS: oldMS, HSD: oldHSD },
+      new: { MS: newMS, HSD: newHSD },
+      difference: {
+        MS: oldMS === null ? null : newMS - oldMS,
+        HSD: oldHSD === null ? null : newHSD - oldHSD
+      },
+      reason: String(dipReason || "").trim() || (old ? "DIP reading edited" : "DIP reading created"),
+      transactionId: `DIP-${dipDate}-${old?.id ?? nextRow.id}`
+    };
+    update({
+      dipReadings: next,
+      _auditMeta: {
+        action: "DIP_READING",
+        details: `DIP ${dipDate}: MS ${oldMS === null ? "—" : oldMS} → ${newMS}; HSD ${oldHSD === null ? "—" : oldHSD} → ${newHSD}`,
+        meta
+      }
+    });
+    setDipReason("");
     setDipMsg(`Dip reading saved: ${dipDate}`);
   }
 
@@ -7743,6 +7769,9 @@ function updateFuelRates() {
           <Field label="HSD Dip / Physical (L)">
             <input type="number" min="0" step="0.01" value={dipValues.HSD} onChange={e => setDipValues(v => ({ ...v, HSD: e.target.value }))} />
           </Field>
+          <Field label="Reason / Note (optional)">
+            <input type="text" maxLength="200" value={dipReason} onChange={e => setDipReason(e.target.value)} placeholder="जैसे: physical dip correction / re-check" />
+          </Field>
         </div>
 
         <div className="cards" style={{ marginTop: 12 }}>
@@ -7782,6 +7811,45 @@ function updateFuelRates() {
                   <td>{n(r.HSD).toFixed(2)}</td><td>{(n(r.HSD) - book.HSD).toFixed(2)} L</td>
                 </tr>;
               })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* =================================================
+          DIP AUDIT TRAIL
+      ================================================= */}
+      <section className="panel" style={{ marginTop: 18 }}>
+        <h2>DIP Audit Trail</h2>
+        <p>हर DIP create/edit का Old → New record hash-chained Audit Log में सुरक्षित रहता है। Existing DIP record overwrite होने पर भी पुराना value यहाँ दिखाई देगा।</p>
+        <div className="table" style={{ marginTop: 12, overflowX: "auto" }}>
+          <table>
+            <thead><tr>
+              <th>Changed At</th><th>Date</th><th>MS Old</th><th>MS New</th><th>MS Δ</th>
+              <th>HSD Old</th><th>HSD New</th><th>HSD Δ</th><th>Changed By</th><th>Reason</th><th>Transaction ID</th>
+            </tr></thead>
+            <tbody>
+              {(Array.isArray(data.auditLogs) ? data.auditLogs : [])
+                .filter(x => x?.meta?.module === "DIP" && x?.meta?.date)
+                .slice().reverse().map(x => {
+                  const m = x.meta || {};
+                  return <tr key={x.id}>
+                    <td>{x.at ? new Date(x.at).toLocaleString("en-IN") : "—"}</td>
+                    <td><b>{m.date}</b></td>
+                    <td>{m.old?.MS === null || m.old?.MS === undefined ? "—" : n(m.old.MS).toFixed(2)}</td>
+                    <td>{m.new?.MS === null || m.new?.MS === undefined ? "—" : n(m.new.MS).toFixed(2)}</td>
+                    <td>{m.difference?.MS === null || m.difference?.MS === undefined ? "—" : n(m.difference.MS).toFixed(2)}</td>
+                    <td>{m.old?.HSD === null || m.old?.HSD === undefined ? "—" : n(m.old.HSD).toFixed(2)}</td>
+                    <td>{m.new?.HSD === null || m.new?.HSD === undefined ? "—" : n(m.new.HSD).toFixed(2)}</td>
+                    <td>{m.difference?.HSD === null || m.difference?.HSD === undefined ? "—" : n(m.difference.HSD).toFixed(2)}</td>
+                    <td>{x.username || x.userId || "—"}{x.role ? ` (${x.role})` : ""}</td>
+                    <td>{m.reason || "—"}</td>
+                    <td style={{fontFamily:"monospace",fontSize:10}}>{m.transactionId || x.id}</td>
+                  </tr>;
+                })}
+              {!(Array.isArray(data.auditLogs) ? data.auditLogs : []).some(x => x?.meta?.module === "DIP" && x?.meta?.date) && (
+                <tr><td colSpan="11" style={{textAlign:"center",padding:16,color:"#94a3b8"}}>अभी कोई DIP edit/create audit entry नहीं है.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
