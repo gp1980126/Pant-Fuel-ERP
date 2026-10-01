@@ -6209,17 +6209,14 @@ export function SalePurchaseProfitLoss({ data }) {
       <div class="final">Final Net Profit: ${money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</div></div>
     </body></html>`;
 
-    // Use the current tab so Chrome popup blockers cannot stop Print/PDF.
-    // The report is loaded as a temporary blob URL and print is triggered
-    // after the report document is ready. Browser Print can then Save as PDF.
+    // Replace the current document with the print report. This is initiated
+    // directly by the button click, so popup blockers cannot interfere.
+    // The report itself triggers window.print() after it has loaded.
     try{
-      const blob=new Blob([html],{type:'text/html;charset=utf-8'});
-      const url=URL.createObjectURL(blob);
-      window.location.href=url;
-      setTimeout(()=>{
-        try{ window.print(); }catch(err){}
-        setTimeout(()=>URL.revokeObjectURL(url),30000);
-      },700);
+      const printableHtml=html.replace('</body>','<script>window.addEventListener("load",function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},250);});<\\/script></body>');
+      document.open();
+      document.write(printableHtml);
+      document.close();
     }catch(err){
       alert('Print/PDF तैयार नहीं हो पाया। कृपया Chrome में दोबारा कोशिश करें।');
     }
