@@ -6057,37 +6057,30 @@ export function SalePurchaseProfitLoss({ data }) {
   const filteredPurchases=validPeriod?purchases.filter(p=>p.date>=from&&p.date<=to):[];
   const staff=Array.isArray(data?.staff)?data.staff:[];
 
-  // Salary expense is based on the saved monthly salary of each staff member.
-  // For a complete month (e.g. 01-08-2026 to 31-08-2026) the full monthly salary
-  // is charged. If the selected period covers only part of a month, that month's
-  // salary is prorated by calendar days; attendance is not used to silently deduct salary.
+  // Salary = full saved monthly salary. Attendance/leave is NOT used for deduction.
+  // This keeps the P&L salary equal to the staff master total (e.g. ₹91,000).
   const salaryExpenseForPeriod=useMemo(()=>{
     if(!from||!to||from>to) return 0;
-    const monthSet=new Set();
-    let cur=new Date(`${from}T12:00:00`);
-    const end=new Date(`${to}T12:00:00`);
-    while(cur<=end){
-      monthSet.add(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`);
-      cur.setMonth(cur.getMonth()+1);
-    }
-    let total=0;
-    for(const month of monthSet){
-      const [yy,mm]=month.split('-').map(Number);
-      const daysInMonth=new Date(yy,mm,0).getDate();
-      const monthStart=`${month}-01`;
-      const monthEnd=`${month}-${String(daysInMonth).padStart(2,'0')}`;
-      const activeStart=from>monthStart?from:monthStart;
-      const activeEnd=to<monthEnd?to:monthEnd;
-      const days=Math.max(0,Math.round((new Date(`${activeEnd}T12:00:00`)-new Date(`${activeStart}T12:00:00`))/86400000)+1);
-      total += staff.reduce((sum,person)=>sum + (n(person.salary) * days / daysInMonth),0);
-    }
-    return total;
+    return staff.reduce((sum,person)=>sum+n(person.salary),0);
   },[from,to,staff]);
 
-  // Electricity expense comes from saved bills, never from a hard-coded amount.
-  const electricityExpenseForPeriod = (Array.isArray(data?.electricityBills) ? data.electricityBills : [])
-    .filter(b => { const m = String(b?.month || ''); return m >= String(from).slice(0,7) && m <= String(to).slice(0,7); })
-    .reduce((sum, b) => sum + n(b?.amount), 0);
+  // Electricity is a manual P&L adjustment for the selected date range.
+  // It is stored by period so changing the report dates does not overwrite another period.
+  const electricityPeriodKey=`${from}|${to}`;
+  const savedElectricityExpenses=
+    data?.manualElectricityExpenses && typeof data.manualElectricityExpenses==='object'
+      ? data.manualElectricityExpenses
+      : {};
+  const [electricityInput,setElectricityInput]=useState('');
+  useEffect(()=>{
+    const v=savedElectricityExpenses[electricityPeriodKey];
+    setElectricityInput(v===undefined?'':String(v));
+  },[electricityPeriodKey, data?.manualElectricityExpenses]);
+  const electricityExpenseForPeriod=n(electricityInput);
+  const saveElectricityExpense=()=>{
+    if(typeof update!=='function') return;
+    update({manualElectricityExpenses:{...savedElectricityExpenses,[electricityPeriodKey]:Math.max(0,n(electricityInput))}});
+  };
 
   /* CNG: no physical stock. Vehicle/trailer CNG is sold first and the purchase
      bill can be generated later. Match purchase bills to earlier sales FIFO. */
@@ -6217,8 +6210,13 @@ export function SalePurchaseProfitLoss({ data }) {
       <p style={{margin:'4px 0 12px',fontSize:12,color:'#475569'}}>Default period: <b>{fy.start} से 31-08-2026</b>. Purchase Value हमेशा <b>Assessable Value + Tax Amount</b> होगी। Salary और Electricity Expense सीधे Final Net Profit से घटते हैं। DSR Difference का P&L profit पर कोई असर नहीं है।</p>
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12,marginTop:12}}>
         <div className="mini"><span>MS + HSD ACTUAL PURCHASE</span><strong>{money(actualMSHSDPurchaseTotal)}</strong><small>Actual HPCL invoice Total Amount for selected period</small></div>
-        <div className="mini"><span>SALARY EXPENSE</span><strong>{money(salaryExpenseForPeriod)}</strong><small>Selected period staff salary</small></div>
-        <div className="mini"><span>ELECTRICITY EXPENSE</span><strong>{money(electricityExpenseForPeriod)}</strong><small>Saved electricity bills for selected period</small></div>
+        <div className="mini"><span>SALARY EXPENSE</span><strong>{money(salaryExpenseForPeriod)}</strong><small>Full monthly salary — leave/attendance deduction नहीं</small></div>
+        <div className="mini">
+          <span>ELECTRICITY EXPENSE</span>
+          <input type="number" min="0" step="0.01" value={electricityInput} onChange={e=>setElectricityInput(e.target.value)} onBlur={saveElectricityExpense} placeholder="₹ Electricity Expense" style={{marginTop:6,width:'100%',boxSizing:'border-box',fontSize:18,fontWeight:700,padding:'8px 10px',border:'1px solid #94a3b8',borderRadius:8}} />
+          <button type="button" className="btn small" onClick={saveElectricityExpense} style={{marginTop:7}}>💾 Save Electricity Expense</button>
+          <small>इस selected period में बिजली खर्च हाथ से डालें</small>
+        </div>
       </div>
       <div className="mini" style={{marginTop:12}}><span>FINAL NET PROFIT</span><strong>{money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</strong><small>Operating Profit − Salary − Electricity</small></div>
       <div style={{marginTop:12,padding:'10px 12px',borderRadius:10,background:'#f8fafc',fontSize:11,lineHeight:1.6}}>
