@@ -1511,25 +1511,16 @@ export function accountingSnapshot(data, from=START_DATE, to='9999-12-31') {
 export function salaryExpenseForPeriodPure(data, from, to) {
   if(!from || !to || from>to) return 0;
   const staff=Array.isArray(data?.staff)?data.staff:[];
-  const months=new Set();
-  let cur=new Date(`${from}T12:00:00`), end=new Date(`${to}T12:00:00`);
-  while(cur<=end){ months.add(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`); cur.setMonth(cur.getMonth()+1); }
-  let total=0;
-  for(const month of months){
-    const [yy,mm]=month.split('-').map(Number), dim=new Date(yy,mm,0).getDate();
-    const ms=`${month}-01`, me=`${month}-${String(dim).padStart(2,'0')}`;
-    const a=from>ms?from:ms, b=to<me?to:me;
-    const days=Math.max(0,Math.round((new Date(`${b}T12:00:00`)-new Date(`${a}T12:00:00`))/86400000)+1);
-    total += staff.reduce((sum,person)=>sum+n(person.salary)*days/dim,0);
-  }
-  return rupee(total);
+  // Full monthly salary only. Attendance/leave never reduces P&L salary.
+  return rupee(staff.reduce((sum,person)=>sum+n(person.salary),0));
 }
 
 export function electricityExpenseForPeriodPure(data,from,to){
   if(!from || !to || from>to) return 0;
-  return (Array.isArray(data?.electricityBills) ? data.electricityBills : [])
-    .filter(b => { const m=String(b?.month||''); return m>=String(from).slice(0,7) && m<=String(to).slice(0,7); })
-    .reduce((sum,b)=>sum+n(b?.amount),0);
+  const key=`${from}|${to}`;
+  const map=data?.manualElectricityExpenses;
+  if(map && typeof map==='object' && Object.prototype.hasOwnProperty.call(map,key)) return rupee(n(map[key]));
+  return 0;
 }
 
 export function cngSalePurchaseMatchingPure(data,from=START_DATE,to='9999-12-31'){
