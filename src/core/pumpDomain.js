@@ -1556,6 +1556,7 @@ export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
     (Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0) +
     (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[]).filter(x=>before(x.date,d)).reduce((a,x)=>a+n(x.qty),0)
   ):sales.filter(x=>x.fuel===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0);
+  const dsrOpeningForDate=(f,d)=>{const rows=Array.isArray(data?.dsrHistory)?data.dsrHistory:[];const row=rows.find(r=>String(r?.date||'')===String(d)&&String(r?.fuel||'').toUpperCase()===String(f).toUpperCase());if(!row)return null;const q=Number(row?.opStock);return Number.isFinite(q)?q:null;};
   const openingQty=(f,d)=>{if(f==='CNG')return null;const base=f==='MS'?n(data?.openingStock?.MS??9356):f==='HSD'?n(data?.openingStock?.HSD??7500):n(data?.openingStock?.LUBRICANT_QTY);return String(d)===START_DATE?base:base+purchaseQty(f,d)-saleQtyBefore(f,d);};
   const openingRate=(f,d)=>{if(f==='LUBRICANT' && n(data?.openingStock?.LUBRICANT_QTY)>0)return n(data?.openingStock?.LUBRICANT_VALUE)/n(data?.openingStock?.LUBRICANT_QTY);const prior=purchases.filter(p=>p.fuel===f&&before(p.date,d));if(prior.length){const q=prior.reduce((a,p)=>a+n(p.quantity),0),v=prior.reduce((a,p)=>a+purchaseLandedValue(p),0);if(q>0)return v/q;}return fallback[f]||0;};
   const fs=sales.filter(x=>x.date>=from&&x.date<=to), fp=purchases.filter(x=>x.date>=from&&x.date<=to), cng=cngSalePurchaseMatchingPure(data,from,to), out={};
@@ -1570,7 +1571,7 @@ export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
     ):fs.filter(x=>x.fuel===f).reduce((a,x)=>a+n(x.amount),0);
     const expense=canonicalDailyPayments(data).filter(p=>p.date>=from&&p.date<=to).reduce((a,p)=>a+n(p?.[f]?.pumpExpense)+(p?.[f]?.pumpExpense===undefined?n(p?.[f]?.other):0),0);
     const or=openingRate(f,from), cngTaxRate=Number.isFinite(Number(data?.cngStateTaxRate))?Number(data.cngStateTaxRate):0.05, tax=f==='CNG'?sa*cngTaxRate:0; let cq=null,ov=0,cv=0,cogs=0,avg=or,mq=0,mc=0,usq=0,usa=0,upq=0,upc=0;
-    if(f!=='CNG'){const closingDate=new Date(`${to}T00:00:00Z`);closingDate.setUTCDate(closingDate.getUTCDate()+1);const nextOpeningDate=closingDate.toISOString().slice(0,10);cq=openingQty(f,nextOpeningDate);ov=oq*or;const av=ov+pc,aq=oq+pq;avg=aq>0?av/aq:or;cv=cq*avg;cogs=Math.max(0,ov+pc-cv);}
+    if(f!=='CNG'){const closingDate=new Date(`${to}T00:00:00Z`);closingDate.setUTCDate(closingDate.getUTCDate()+1);const nextOpeningDate=closingDate.toISOString().slice(0,10);cq=dsrOpeningForDate(f,nextOpeningDate);if(cq===null)cq=openingQty(f,nextOpeningDate);ov=oq*or;const av=ov+pc,aq=oq+pq;avg=aq>0?av/aq:or;cv=cq*avg;cogs=Math.max(0,ov+pc-cv);}
     else{mq=cng.matchedQty;mc=cng.matchedCost;usq=cng.unmatchedQty;usa=cng.unmatchedAmount;upq=cng.unmatchedPurchaseQty;upc=cng.unmatchedPurchaseCost;cogs=mc;avg=mq>0?mc/mq:0;}
     out[f]={openingQty:oq,purchaseQty:pq,saleQty:sq,closingQty:cq,openingValue:ov,purchaseCost:pc,closingValue:cv,cogs,sale:sa,expense,stateTax:tax,profit:sa-cogs-expense-tax,avgCostRate:avg,matchedPurchaseQty:mq,matchedPurchaseCost:mc,unmatchedSaleQty:usq,unmatchedSaleAmount:usa,unmatchedPurchaseQty:upq,unmatchedPurchaseCost:upc};
   });
