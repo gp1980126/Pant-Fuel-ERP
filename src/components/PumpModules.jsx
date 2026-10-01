@@ -6029,7 +6029,7 @@ export function SalePurchaseProfitLoss({ data }) {
   // This full landed purchase value (including tax) is used for stock valuation and COGS.
   const purchaseCost=(fuel,endDate=null)=>purchases.filter(p=>p.fuel===fuel&&(!endDate||dateBefore(p.date,endDate))).reduce((a,p)=>a+purchaseLandedValue(p),0);
   const saleQtyBefore=(fuel,endDate)=>fuel==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0):sales.filter(s=>s.fuel===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0);
-  // Book opening quantity for the selected period. MS/HSD use the configured opening
+  // Book opening quantity for the selected period. Opening for a new period is the previous period's closing.
   // stock. CNG does not have a physical stock opening/closing field in the current data
   // model (its recorded opening/closing values are dispenser totalizer readings), so
   // CNG stock balance is intentionally not invented from those meter readings.
