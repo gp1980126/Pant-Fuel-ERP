@@ -3305,23 +3305,39 @@ export function PartyLedger({ data, setPage, update }) {
   const openingDebit = selectedOpening?.type === "CREDIT" ? 0 : openingAmount;
   const openingCredit = selectedOpening?.type === "CREDIT" ? openingAmount : 0;
 
+  // Period opening = saved opening outstanding + all prior credit sales - all prior receipts.
+  // A receipt dated after the period starts must remain a receipt in the selected period;
+  // receipts/sales from before From Date are carried into the opening balance.
+  const periodOpeningSigned = useMemo(() => {
+    if (!party) return 0;
+    let balance = openingSigned(selectedOpening);
+    const baseDate = String(selectedOpening?.date || START_DATE);
+    ledgerCreditRows(data.credits)
+      .filter(c => c.party === party && String(c.date || "") >= baseDate && String(c.date || "") < String(from || START_DATE))
+      .forEach(c => { balance += rupee(c.amount); });
+    payments
+      .filter(p => p.party === party && String(p.date || "") >= baseDate && String(p.date || "") < String(from || START_DATE))
+      .forEach(p => { balance -= rupee(p.amount); });
+    return rupee(balance);
+  }, [party, selectedOpening, data.credits, payments, from]);
+
   const entries = useMemo(() => {
     if (!party) return [];
 
     const out = [];
 
-    if (selectedOpening) {
+    if (from) {
       out.push({
-        id: `opening-${selectedOpening.id}`,
-        date: selectedOpening.date || START_DATE,
-        type: selectedOpening.type === "CREDIT" ? "Opening Credit" : "Opening Debit",
+        id: `period-opening-${party}-${from}`,
+        date: from,
+        type: "Period Opening",
         parchiNo: "",
         vehicle: "",
         fuel: "",
         qty: 0,
-        debit: openingDebit,
-        credit: openingCredit,
-        note: "Opening Outstanding"
+        debit: periodOpeningSigned > 0 ? periodOpeningSigned : 0,
+        credit: periodOpeningSigned < 0 ? Math.abs(periodOpeningSigned) : 0,
+        note: "Opening balance carried forward from previous period"
       });
     }
 
@@ -3373,10 +3389,11 @@ export function PartyLedger({ data, setPage, update }) {
     from,
     to,
     openingDebit,
-    openingCredit
+    openingCredit,
+    periodOpeningSigned
   ]);
 
-  const openingOutstanding = party ? openingSigned(selectedOpening) : 0;
+  const openingOutstanding = party ? periodOpeningSigned : 0;
 
   const salesTotal = entries
     .filter(e => e.type === "Udhari Sale")
@@ -3397,7 +3414,14 @@ export function PartyLedger({ data, setPage, update }) {
   const allPartySummary = useMemo(() => {
     return parties.map(name => {
       const opening = openings.find(o => o.party === name) || null;
-      const openingValue = openingSigned(opening);
+      const baseDate = String(opening?.date || START_DATE);
+      let openingValue = openingSigned(opening);
+      ledgerCreditRows(data.credits)
+        .filter(c => c.party === name && String(c.date || "") >= baseDate && String(c.date || "") < String(from || START_DATE))
+        .forEach(c => { openingValue += rupee(c.amount); });
+      payments
+        .filter(p => p.party === name && String(p.date || "") >= baseDate && String(p.date || "") < String(from || START_DATE))
+        .forEach(p => { openingValue -= rupee(p.amount); });
 
       const sales = ledgerCreditRows(data.credits)
         .filter(c => c.party === name && inDateRange(c.date))
