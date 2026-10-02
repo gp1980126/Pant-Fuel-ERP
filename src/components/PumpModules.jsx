@@ -7668,7 +7668,7 @@ function updateFuelRates() {
       ================================================= */}
       <section className="panel" style={{ marginTop: 18 }}>
         <h2>Daily Stock Reconciliation — MS / HSD</h2>
-        <p>MS और HSD का Stock calculation पूरी तरह अलग है। CNG इस reconciliation और DIP से बाहर है। Fuel Sale में stored <b>Qty = Net Sale (Testing के बाद)</b> है; इसलिए Testing को दोबारा subtract नहीं किया जाता।</p>
+        <p>MS और HSD का Stock calculation पूरी तरह अलग है। CNG इस reconciliation और DIP से बाहर है। Fuel Sale में stored <b>Qty = Net Sale (Testing के बाद)</b> है; इसलिए Testing को दोबारा subtract नहीं किया जाता। <b>Book Closing = Opening + Receipt − Net Sale</b> और <b>Short / Excess = Physical Dip − Book Closing</b> है। Dip Difference को Sale नहीं माना जाता।</p>
         {[["MS","MS / Petrol"],["HSD","HSD / Diesel"]].map(([fuel,label]) => (
           <div key={fuel} style={{ marginTop: 18 }}>
             <h3 style={{ marginBottom: 8 }}>{label}</h3>
@@ -7677,7 +7677,7 @@ function updateFuelRates() {
                 <thead>
                   <tr>
                     <th>Date</th><th>Opp. Stock</th><th>Received</th><th>Total Stock</th>
-                    <th>Sales By Mtr (Gross)</th><th>Pump Test</th><th>Net Sale (After Testing)</th><th>Cumm. Net Sale</th><th>Sales By Dip</th><th>Difference (Net − DIP)</th><th>Total Difference</th>
+                    <th>Sales By Mtr (Gross)</th><th>Pump Test</th><th>Net Sale (After Testing)</th><th>Cumm. Net Sale</th><th>Sales By Dip</th><th>Book Closing</th><th>Physical Closing</th><th>Short / Excess</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -7692,19 +7692,13 @@ function updateFuelRates() {
                       return sum + authoritativeSales.filter(y => y.date === x.date && y.fuel === fuel).reduce((a, y) => a + n(y.qty), 0);
                     }, 0);
                     const salesByDip = r.salesByDip ? r.salesByDip[fuel] : null;
-                    // Difference is explicitly Net Sale - Sales By Dip.
-                    // Total Difference is the running/cumulative difference up to this date.
-                    const difference = salesByDip === null ? null : (net - salesByDip);
-                    const totalDifference = salesByDip === null ? null : dailyStockRows
-                      .filter(x => x.date <= r.date)
-                      .reduce((sum, x) => {
-                        const dip = x.salesByDip ? x.salesByDip[fuel] : null;
-                        if (dip === null || dip === undefined) return sum;
-                        const dayNet = salesRows
-                          .filter(y => y.date === x.date && y.fuel === fuel)
-                          .reduce((a, y) => a + n(y.qty), 0);
-                        return sum + (dayNet - n(dip));
-                      }, 0);
+                    // Authoritative accounting reconciliation: opening accounting stock
+                    // + cumulative receipts - cumulative NET sale = book closing stock.
+                    // Physical/DIP is compared to that book closing. Pump testing is
+                    // already excluded from NET sale and must never be subtracted twice.
+                    const bookClosing = bookStockAsOf(r.date)[fuel];
+                    const physicalClosing = historicalDipForDate(r.date)?.[fuel] ?? null;
+                    const shortExcess = physicalClosing === null ? null : physicalClosing - bookClosing;
                     return <tr key={`${r.date}-${fuel}`}>
                       <td><b>{r.date}</b></td>
                       <td>{opening.toFixed(2)} L</td>
@@ -7715,8 +7709,9 @@ function updateFuelRates() {
                       <td><b>{net.toFixed(2)} L</b></td>
                       <td>{cumulativeFuel.toFixed(2)} L</td>
                       <td>{salesByDip === null ? "—" : salesByDip.toFixed(2) + " L"}</td>
-                      <td>{difference === null ? "—" : difference.toFixed(2) + " L"}</td>
-                      <td><b>{totalDifference === null ? "—" : totalDifference.toFixed(2) + " L"}</b></td>
+                      <td>{bookClosing.toFixed(2)} L</td>
+                      <td>{physicalClosing === null ? "—" : physicalClosing.toFixed(2) + " L"}</td>
+                      <td><b>{shortExcess === null ? "—" : `${shortExcess >= 0 ? "+" : ""}${shortExcess.toFixed(2)} L`}</b></td>
                     </tr>;
                   })}
                 </tbody>
@@ -7730,8 +7725,8 @@ function updateFuelRates() {
           DIP-WISE / PHYSICAL STOCK
       ================================================= */}
       <section className="panel" style={{ marginTop: 18 }}>
-        <h2>Dip-wise Physical Stock</h2>
-        <p>हर तारीख की actual physical/dip quantity दर्ज करें। Book Stock और Physical/Dip Stock का फर्क अलग से दिखेगा। Positive = Excess, Negative = Shortage. केवल MS और HSD लागू हैं।</p>
+        <h2>Dip-wise Physical Stock & Reconciliation</h2>
+        <p>हर तारीख की actual physical/dip quantity दर्ज करें। Book Closing और Physical/Dip Stock का फर्क अलग से दिखेगा। <b>Positive = Excess, Negative = Shortage</b>. यह Difference Sale नहीं है। केवल MS और HSD लागू हैं।</p>
 
         <div className="form">
           <Field label="Date">
