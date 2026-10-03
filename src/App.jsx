@@ -170,7 +170,15 @@ export class BootErrorBoundary extends React.Component {
 
 function App() {
   const [data, setData] = useState(safeInitialLoad);
-  const [page, setPageState] = useState("Dashboard");
+  const [page, setPageState] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("page") === "daily-fuel-billing"
+        ? "15-Day Fuel Billing"
+        : "Dashboard";
+    } catch (_) {
+      return "Dashboard";
+    }
+  });
   const [cloudReady, setCloudReady] = useState(!CLOUD_ENABLED);
   const [cloudStatus, setCloudStatus] = useState(CLOUD_ENABLED ? "connecting" : "local");
   const cloudVersionRef = useRef(0);
@@ -1427,9 +1435,14 @@ const importData = (event) => {
                 }
                 onClick={() => {
                   if (x === "15-Day Fuel Billing") {
-                    setPageState("15-Day Fuel Billing");
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("page", "daily-fuel-billing");
+                    window.location.assign(url.toString());
                     return;
                   }
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("page");
+                  window.history.replaceState({}, "", url.toString());
                   setPage(x);
                 }}
                 key={x}
