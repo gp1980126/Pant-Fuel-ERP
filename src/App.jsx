@@ -1436,9 +1436,7 @@ const importData = (event) => {
                 onClick={() => {
                   const url = new URL(window.location.href);
                   if (x === "15-Day Fuel Billing") {
-                    url.searchParams.set("page", "daily-fuel-billing");
-                    window.history.replaceState({}, "", url.toString());
-                    setPageState("15-Day Fuel Billing");
+                    window.location.assign("/daily-fuel-billing.html");
                     return;
                   }
                   url.searchParams.delete("page");
