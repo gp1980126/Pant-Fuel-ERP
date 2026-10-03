@@ -1434,13 +1434,13 @@ const importData = (event) => {
                     : ""
                 }
                 onClick={() => {
+                  const url = new URL(window.location.href);
                   if (x === "15-Day Fuel Billing") {
-                    const url = new URL(window.location.href);
                     url.searchParams.set("page", "daily-fuel-billing");
-                    window.location.assign(url.toString());
+                    window.history.replaceState({}, "", url.toString());
+                    setPageState("15-Day Fuel Billing");
                     return;
                   }
-                  const url = new URL(window.location.href);
                   url.searchParams.delete("page");
                   window.history.replaceState({}, "", url.toString());
                   setPage(x);
