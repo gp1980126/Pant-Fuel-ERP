@@ -258,19 +258,24 @@ export function Fuel15DayBilling({ data }) {
             <td>{(b.items.find(x=>x.fuel==="MS")?.qty || 0).toFixed(2)}</td>
             <td>{(b.items.find(x=>x.fuel==="HSD")?.qty || 0).toFixed(2)}</td>
             <td><b>{money(b.total)}</b></td>
-            <td><button className="btn small" onClick={() => setSelected(i)}>View</button> <button className="btn small" onClick={() => printBill(b)}>Print</button></td>
+            <td><button type="button" className="btn small" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelected(i); }}>View</button> <button type="button" className="btn small" onClick={(e) => { e.preventDefault(); e.stopPropagation(); printBill(b); }}>Print</button></td>
           </tr>)}
         </tbody>
       </table>
     </div>
 
-    {selected !== null && bills[selected] && <div style={{marginTop:16,padding:18,border:"1px solid #dbe3ec",borderRadius:12,background:"#fff"}}>
+    {selected !== null && bills[selected] && <div onClick={() => setSelected(null)} style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.48)",display:"flex",alignItems:"center",justifyContent:"center",padding:18}}>
+<div onClick={(e)=>e.stopPropagation()} style={{width:"min(850px,96vw)",maxHeight:"90vh",overflow:"auto",padding:20,border:"1px solid #dbe3ec",borderRadius:14,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
       {(() => { const b=bills[selected]; return <><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:"0 0 4px"}}>Bill No. {b.billNo}</h3><div style={{fontSize:12,color:"#64748b"}}>{b.party} · {dateText(b.start)} to {dateText(b.end)} · {b.payment}</div></div><button className="btn" onClick={() => printBill(b)}>🖨 Print Bill</button></div>
       <table className="data-table" style={{width:"100%",marginTop:12}}><thead><tr><th>Fuel</th><th>Qty</th><th>Average Rate</th><th>Amount</th></tr></thead><tbody>{b.items.map(x=><tr key={x.fuel}><td>{x.fuel==="MS"?"MS (Petrol)":"HSD (Diesel)"}</td><td>{x.qty.toFixed(2)} L</td><td>{money(x.rate)}</td><td>{money(x.amount)}</td></tr>)}</tbody></table>
       <div style={{textAlign:"right",fontSize:18,fontWeight:900,marginTop:12}}>Grand Total: {money(b.total)}</div>
       <div style={{marginTop:10,fontSize:11,color:"#475569"}}>Payment: <b>{b.payment}</b> · GST: <b>Not Applicable</b></div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:14}}>
+        <button type="button" className="btn" onClick={() => printBill(b)}>🖨 Print Bill</button>
+        <button type="button" className="btn" onClick={() => setSelected(null)}>Close</button>
+      </div>
       </>; })()}
-    </div>}
+    </div></div>}
   </section>;
 }
 
