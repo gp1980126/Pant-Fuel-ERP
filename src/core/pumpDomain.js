@@ -75,11 +75,11 @@ export const ROLE_PERMISSIONS = {
   [USER_ROLES.ADMIN]: ["*"],
   [USER_ROLES.OWNER]: [
     "Dashboard","Accounts","Tally / CA Export","Fuel Sale","Opening Setup","Party Master","Credit Sale",
-    "Party Ledger","Collection Detail","Reports","Purchase","Lubricant","Sale Purchase P&L","Daily Sale Summary","Stock","Staff & Electricity","User Management","Audit Trail","Accounting Period Lock"
+    "Party Ledger","Collection Detail","Reports","Purchase","Lubricant","Sale Purchase P&L","Daily Sale Summary","15-Day Fuel Billing","Stock","Staff & Electricity","User Management","Audit Trail","Accounting Period Lock"
   ],
   [USER_ROLES.MANAGER]: [
     "Dashboard","Accounts","Tally / CA Export","Fuel Sale","Opening Setup","Party Master","Credit Sale",
-    "Party Ledger","Collection Detail","Reports","Daily Sale Summary","Stock","Lubricant","Staff & Electricity"
+    "Party Ledger","Collection Detail","Reports","Daily Sale Summary","15-Day Fuel Billing","Stock","Lubricant","Staff & Electricity"
   ],
   [USER_ROLES.OPERATOR]: [
     "Dashboard","Fuel Sale","Credit Sale","Lubricant","Collection Detail","Daily Sale Summary"
