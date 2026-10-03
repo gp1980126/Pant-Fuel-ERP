@@ -1405,6 +1405,7 @@ const importData = (event) => {
               "Lubricant",
               "Sale Purchase P&L",
               "Daily Sale Summary",
+              "15-Day Fuel Billing",
               "Stock",
               ...(canAccess(session.role, "Staff & Electricity") ? ["Staff & Electricity"] : []),
               ...(canAccess(session.role, "User Management") ? ["User Management"] : []),
@@ -1628,6 +1629,10 @@ const importData = (event) => {
             />
           )}
 
+          {page === "15-Day Fuel Billing" && (
+            <Fuel15DayBilling data={data} />
+          )}
+
           {page === "Stock" && canAccess(session.role, "Stock") && (
             <Stock
               data={data}
@@ -1677,5 +1682,6 @@ import {
   Table
 } from "./components/PumpModules";
 import { TallyExport } from "./components/TallyExport";
+import { Fuel15DayBilling } from "./components/Fuel15DayBilling";
 
 export default App;
