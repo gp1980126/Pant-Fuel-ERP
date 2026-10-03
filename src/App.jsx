@@ -180,8 +180,14 @@ function App() {
   const cloudLastSavedHashRef = useRef("");
   const cloudBaseDataRef = useRef(null);
   const setPage = target => {
-    if (target === "Dashboard" || canAccess(session?.role, target)) setPageState(target);
-    else setPageState("Dashboard");
+    // Daily MS/HSD billing is a read-only report screen. Keep it directly
+    // navigable even if an older cloud profile has a role string that does not
+    // yet contain the new permission entry.
+    if (target === "Dashboard" || target === "15-Day Fuel Billing" || canAccess(session?.role, target)) {
+      setPageState(target);
+    } else {
+      setPageState("Dashboard");
+    }
   };
   const [dark, setDark] = useState(false);
   const [session, setSession] = useState(null);
