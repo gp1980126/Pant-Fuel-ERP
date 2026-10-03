@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { getRate, rupee } from "../core/pumpDomain";
+import { getRate } from "../core/pumpDomain";
 import historicalDsr from "../data/dsr_apr_jul_2026.json";
 
 const START = "2026-04-01";
-const CLOSED_END = "2026-07-31";
+const END = "2026-07-31";
 const MS_HSD = new Set(["MS", "HSD"]);
 
 function num(v) {
@@ -21,25 +21,12 @@ function addDays(s, days) {
   d.setDate(d.getDate() + days);
   return iso(d);
 }
-function monthEnd(s) {
-  const d = new Date(s + "T00:00:00");
-  return iso(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+function dateText(s) {
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
 }
-function periods() {
-  const out = [];
-  let y = 2026, m = 3;
-  while (true) {
-    const mm = String(m + 1).padStart(2, "0");
-    const first = `${y}-${mm}-01`;
-    const mid = `${y}-${mm}-15`;
-    const last = monthEnd(first);
-    if (first > CLOSED_END) break;
-    out.push({ start: first, end: mid });
-    if (mid < CLOSED_END) out.push({ start: addDays(mid, 1), end: last > CLOSED_END ? CLOSED_END : last });
-    m += 1;
-    if (m === 12) { m = 0; y += 1; }
-  }
-  return out.filter(x => x.start <= CLOSED_END);
+function money(v) {
+  return `₹${round2(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function emptyFuel() {
@@ -66,45 +53,186 @@ function finalizeFuel(fuelMap) {
 function buildBills(data) {
   const result = [];
   let billSeq = 304;
-
   const sales = Array.isArray(data?.sales) ? data.sales : [];
-
   const historical = Array.isArray(historicalDsr) ? historicalDsr : [];
 
-  const totalSalesForDate = date => {
+  const salesForDate = date => {
     const map = {};
-    const historicalRows = historical.filter(r => r.date === date && MS_HSD.has(r.fuel));
-    historicalRows.forEach(r => {
-      const rate = num(getRate(data, r.fuel, date));
-      addFuel(map, r.fuel, r.netSales, num(r.netSales) * rate);
-    });
+
+    // Apr-Jul historical DSR is the authoritative meter-sales source.
+    historical
+      .filter(r => r.date === date && MS_HSD.has(r.fuel))
+      .forEach(r => {
+        const rate = num(getRate(data, r.fuel, date));
+        addFuel(map, r.fuel, r.netSales, num(r.netSales) * rate);
+      });
+
+    // Safety fallback if a date is not present in historical DSR.
     if (Object.keys(map).length === 0) {
-      sales.filter(r => r.date === date && MS_HSD.has(r.fuel))
+      sales
+        .filter(r => r.date === date && MS_HSD.has(r.fuel))
         .forEach(r => addFuel(map, r.fuel, r.qty, r.amount));
     }
+
     return map;
   };
 
-  const dates = [];
-  let cursor = START;
-  while (cursor <= CLOSED_END) {
-    dates.push(cursor);
-    cursor = addDays(cursor, 1);
-  }
-
-  for (const date of dates) {
-    const items = finalizeFuel(totalSalesForDate(date));
+  for (let date = START; date <= END; date = addDays(date, 1)) {
+    const items = finalizeFuel(salesForDate(date));
     const total = round2(items.reduce((s, x) => s + x.amount, 0));
     if (total <= 0.005) continue;
+
     result.push({
       billNo: String(billSeq++),
       type: "CASH",
       party: "CASH SALE",
-      start: date,
-      end: date,
+      date,
       payment: "Cash",
       gst: "Not Applicable",
       items,
       total
     });
   }
+
+  return result;
+}
+
+export function Fuel15DayBilling({ data }) {
+  const [selected, setSelected] = useState(null);
+  const bills = useMemo(() => buildBills(data), [data]);
+
+  const printBill = bill => {
+    const rows = bill.items.map(x => `
+      <tr>
+        <td>${x.fuel === "MS" ? "MS (Petrol)" : "HSD (Diesel)"}</td>
+        <td style="text-align:right">${x.qty.toFixed(2)}</td>
+        <td style="text-align:right">${money(x.rate)}</td>
+        <td style="text-align:right">${money(x.amount)}</td>
+      </tr>`).join("");
+
+    const w = window.open("", "_blank", "width=900,height=1000");
+    if (!w) return;
+
+    w.document.write(`<!doctype html><html><head><title>Fuel Bill ${bill.billNo}</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:28px;color:#111}
+        .paper{max-width:760px;margin:auto;border:1px solid #bbb;padding:28px}
+        h1{text-align:center;margin:0 0 4px;font-size:22px}
+        h2{text-align:center;margin:0 0 20px;font-size:15px}
+        .meta{display:flex;justify-content:space-between;margin:14px 0;font-size:13px}
+        table{width:100%;border-collapse:collapse;margin-top:18px}
+        th,td{border:1px solid #aaa;padding:9px}
+        th{background:#f3f3f3}
+        .total{text-align:right;font-size:17px;font-weight:800;margin-top:16px}
+        .note{margin-top:18px;font-size:12px}
+        .sign{margin-top:55px;text-align:right;font-size:12px}
+        @media print{body{padding:0}.paper{border:0}}
+      </style></head>
+      <body><div class="paper">
+        <h1>SATAT FILLING STATION</h1>
+        <h2>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</h2>
+        <div class="meta">
+          <div><b>Bill No.:</b> ${bill.billNo}</div>
+          <div><b>Bill Date:</b> ${dateText(bill.date)}</div>
+        </div>
+        <div><b>M/s:</b> ${bill.party}</div>
+        <div style="margin-top:8px"><b>Sale Date:</b> ${dateText(bill.date)}</div>
+        <table>
+          <thead><tr><th>Product</th><th>Qty (Ltr)</th><th>Rate</th><th>Amount</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="total">Grand Total: ${money(bill.total)}</div>
+        <div class="note">
+          <b>Payment:</b> Cash<br/>
+          <b>GST:</b> Not Applicable — MS/HSD are shown without GST in this fuel bill.
+        </div>
+        <div class="sign">Authorized Signatory</div>
+      </div></body></html>`);
+
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+  const totalAmount = bills.reduce((s, b) => s + b.total, 0);
+
+  return <section className="panel" style={{ marginTop: 12 }}>
+    <div className="section-title">
+      <div>
+        <h2>Daily MS / HSD Cash Billing</h2>
+        <small>01 Apr 2026 से 31 Jul 2026 · हर दिन अलग Cash Bill · Bill No. 304 से</small>
+      </div>
+    </div>
+
+    <div className="cards" style={{ gridTemplateColumns: "repeat(3,minmax(0,1fr))", marginBottom: 14 }}>
+      <div className="card"><span>Daily Bills</span><b>{bills.length}</b></div>
+      <div className="card"><span>First Bill</span><b>{bills[0]?.billNo || "—"}</b></div>
+      <div className="card"><span>Total Billing</span><b>{money(totalAmount)}</b></div>
+    </div>
+
+    <div style={{padding:"10px 12px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,fontSize:12,marginBottom:12,lineHeight:1.55}}>
+      <b>Billing Rule:</b> 01 Apr–31 Jul 2026 की हर तारीख की पूरी MS + HSD बिक्री एक ही Cash Bill में है.
+      Credit/Party bills इस billing list में नहीं हैं. <b>CNG पूरी तरह excluded है.</b> Bill numbering 304 से लगातार है.
+    </div>
+
+    <div style={{overflowX:"auto"}}>
+      <table className="data-table" style={{width:"100%",minWidth:850}}>
+        <thead>
+          <tr>
+            <th>Bill No.</th><th>Sale Date</th><th>Party</th><th>Payment</th>
+            <th>MS Qty</th><th>HSD Qty</th><th>Total</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bills.map((b, i) => <tr key={b.billNo + "-" + b.date}>
+            <td><b>{b.billNo}</b></td>
+            <td>{dateText(b.date)}</td>
+            <td>{b.party}</td>
+            <td><span style={{padding:"3px 7px",borderRadius:99,background:"#ecfdf3",color:"#166534",fontWeight:800,fontSize:10}}>CASH</span></td>
+            <td>{(b.items.find(x=>x.fuel==="MS")?.qty || 0).toFixed(2)}</td>
+            <td>{(b.items.find(x=>x.fuel==="HSD")?.qty || 0).toFixed(2)}</td>
+            <td><b>{money(b.total)}</b></td>
+            <td>
+              <button type="button" className="btn small" onClick={() => setSelected(i)}>View</button>{" "}
+              <button type="button" className="btn small" onClick={() => printBill(b)}>Print</button>
+            </td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+
+    {selected !== null && bills[selected] && <div onClick={() => setSelected(null)} style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.48)",display:"flex",alignItems:"center",justifyContent:"center",padding:18}}>
+      <div onClick={e => e.stopPropagation()} style={{width:"min(850px,96vw)",maxHeight:"90vh",overflow:"auto",padding:20,border:"1px solid #dbe3ec",borderRadius:14,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+        {(() => {
+          const b = bills[selected];
+          return <>
+            <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+              <div>
+                <h3 style={{margin:"0 0 4px"}}>Bill No. {b.billNo}</h3>
+                <div style={{fontSize:12,color:"#64748b"}}>{b.party} · {dateText(b.date)} · Cash</div>
+              </div>
+              <button className="btn" onClick={() => printBill(b)}>🖨 Print Bill</button>
+            </div>
+            <table className="data-table" style={{width:"100%",marginTop:12}}>
+              <thead><tr><th>Fuel</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+              <tbody>{b.items.map(x => <tr key={x.fuel}>
+                <td>{x.fuel==="MS" ? "MS (Petrol)" : "HSD (Diesel)"}</td>
+                <td>{x.qty.toFixed(2)} L</td>
+                <td>{money(x.rate)}</td>
+                <td>{money(x.amount)}</td>
+              </tr>)}</tbody>
+            </table>
+            <div style={{textAlign:"right",fontSize:18,fontWeight:900,marginTop:12}}>Grand Total: {money(b.total)}</div>
+            <div style={{marginTop:10,fontSize:11,color:"#475569"}}>Payment: <b>Cash</b> · CNG: <b>Excluded</b> · GST: <b>Not Applicable</b></div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:14}}>
+              <button type="button" className="btn" onClick={() => printBill(b)}>🖨 Print Bill</button>
+              <button type="button" className="btn" onClick={() => setSelected(null)}>Close</button>
+            </div>
+          </>;
+        })()}
+      </div>
+    </div>}
+  </section>;
+}
+
+export default Fuel15DayBilling;
