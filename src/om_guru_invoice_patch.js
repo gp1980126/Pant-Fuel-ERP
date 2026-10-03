@@ -9,13 +9,15 @@ function patchOmGuruInvoice(root = document) {
     "#stationmitra-lubricant-bill-overlay .bill-paper .meta > div:first-child",
     "#stationmitra-lubricant-sale-viewer .sm-bill-paper .meta > div:first-child",
   ];
+  const isOmGuru = new RegExp("M/s\\s*:\\s*OM GURU", "i");
+  const vehicleRe = new RegExp("Vehicle(?: No\\.)?\\s*:\\s*([^\\n]*)", "i");
 
   for (const selector of selectors) {
     root.querySelectorAll?.(selector).forEach((box) => {
       if (box.dataset.omGuruInvoicePatched === "1") return;
-      if (!/M\\/s\\s*:\\s*OM GURU/i.test(box.textContent || "")) return;
+      if (!isOmGuru.test(box.textContent || "")) return;
 
-      const vehicleMatch = (box.textContent || "").match(/Vehicle(?: No\\.)?\\s*:\\s*([^\\n]*)/i);
+      const vehicleMatch = (box.textContent || "").match(vehicleRe);
       const vehicle = vehicleMatch?.[1]?.trim();
       box.innerHTML =
         "<b>M/s:</b> OM GURU" +
