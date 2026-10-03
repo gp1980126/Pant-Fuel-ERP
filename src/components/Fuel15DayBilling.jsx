@@ -53,33 +53,52 @@ function finalizeFuel(fuelMap) {
 function buildBills(data) {
   const result = [];
   let billSeq = 304;
-  const sales = Array.isArray(data?.sales) ? data.sales : [];
   const historical = Array.isArray(historicalDsr) ? historicalDsr : [];
 
-  const salesForDate = date => {
-    const map = {};
+  // IMPORTANT: do not repeatedly scan/sort the full cloud state while
+  // rendering this report. The Apr-Jul DSR is already the authoritative
+  // daily meter-sales source for this screen.
+  const rateHistory = Array.isArray(data?.rateHistory)
+    ? [...data.rateHistory]
+        .filter(r => r && r.date)
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    : [];
 
-    // Apr-Jul historical DSR is the authoritative meter-sales source.
-    historical
-      .filter(r => r.date === date && MS_HSD.has(r.fuel))
-      .forEach(r => {
-        const rate = num(getRate(data, r.fuel, date));
-        addFuel(map, r.fuel, r.netSales, num(r.netSales) * rate);
-      });
-
-    // Safety fallback if a date is not present in historical DSR.
-    if (Object.keys(map).length === 0) {
-      sales
-        .filter(r => r.date === date && MS_HSD.has(r.fuel))
-        .forEach(r => addFuel(map, r.fuel, r.qty, r.amount));
+  const baseRates = data?.rates || {};
+  const rateAt = (fuel, date) => {
+    let value = Number(baseRates[fuel]) || 0;
+    for (let i = rateHistory.length - 1; i >= 0; i -= 1) {
+      const row = rateHistory[i];
+      if (String(row.date) <= date && row[fuel] !== undefined && row[fuel] !== "") {
+        const n = Number(row[fuel]);
+        if (Number.isFinite(n) && n > 0) value = n;
+        break;
+      }
     }
-
-    return map;
+    return value;
   };
 
+  // Group the small static DSR file once instead of filtering it for every day.
+  const daily = new Map();
+  historical.forEach(r => {
+    if (!MS_HSD.has(r?.fuel) || !r?.date) return;
+    const key = String(r.date);
+    if (!daily.has(key)) daily.set(key, []);
+    daily.get(key).push(r);
+  });
+
   for (let date = START; date <= END; date = addDays(date, 1)) {
-    const items = finalizeFuel(salesForDate(date));
-    const total = round2(items.reduce((s, x) => s + x.amount, 0));
+    const rows = daily.get(date) || [];
+    const map = {};
+
+    rows.forEach(r => {
+      const qty = num(r.netSales);
+      const rate = rateAt(r.fuel, date);
+      addFuel(map, r.fuel, qty, qty * rate);
+    });
+
+    const items = finalizeFuel(map);
+    const total = round2(items.reduce((sum, x) => sum + x.amount, 0));
     if (total <= 0.005) continue;
 
     result.push({
@@ -96,7 +115,6 @@ function buildBills(data) {
 
   return result;
 }
-
 export function Fuel15DayBilling({ data }) {
   const [selected, setSelected] = useState(null);
   const bills = useMemo(() => buildBills(data), [data]);
