@@ -55,28 +55,36 @@ function buildBills(data) {
   let billSeq = 304;
   const historical = Array.isArray(historicalDsr) ? historicalDsr : [];
 
-  // IMPORTANT: do not repeatedly scan/sort the full cloud state while
-  // rendering this report. The Apr-Jul DSR is already the authoritative
-  // daily meter-sales source for this screen.
-  const rateHistory = Array.isArray(data?.rateHistory)
-    ? [...data.rateHistory]
-        .filter(r => r && r.date)
-        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-    : [];
+  // Keep only the tiny set of historical rate changes needed for Apr-Jul.
+  // Never sort or copy the complete cloud state.
+  const rateChanges = [];
+  const sourceRates = Array.isArray(data?.rateHistory) ? data.rateHistory : [];
+  for (let i = 0; i < sourceRates.length; i += 1) {
+    const r = sourceRates[i];
+    if (!r?.date || String(r.date) > END) continue;
+    if (r.MS !== undefined || r.HSD !== undefined) {
+      rateChanges.push({
+        date: String(r.date),
+        MS: r.MS === undefined ? null : num(r.MS),
+        HSD: r.HSD === undefined ? null : num(r.HSD)
+      });
+    }
+  }
+  rateChanges.sort((x, y) => x.date.localeCompare(y.date));
 
   const baseRates = data?.rates || {};
-  const rateAt = (fuel, date) => {
-    let value = Number(baseRates[fuel]) || 0;
-    for (let i = rateHistory.length - 1; i >= 0; i -= 1) {
-      const row = rateHistory[i];
-      if (String(row.date) <= date && row[fuel] !== undefined && row[fuel] !== "") {
-        const n = Number(row[fuel]);
-        if (Number.isFinite(n) && n > 0) value = n;
-        break;
-      }
+  const dailyRates = new Map();
+  let msRate = num(baseRates.MS);
+  let hsdRate = num(baseRates.HSD);
+  let ri = 0;
+  for (let date = START; date <= END; date = addDays(date, 1)) {
+    while (ri < rateChanges.length && rateChanges[ri].date <= date) {
+      if (rateChanges[ri].MS !== null && rateChanges[ri].MS > 0) msRate = rateChanges[ri].MS;
+      if (rateChanges[ri].HSD !== null && rateChanges[ri].HSD > 0) hsdRate = rateChanges[ri].HSD;
+      ri += 1;
     }
-    return value;
-  };
+    dailyRates.set(date, { MS: msRate, HSD: hsdRate });
+  }
 
   // Group the small static DSR file once instead of filtering it for every day.
   const daily = new Map();
@@ -93,7 +101,7 @@ function buildBills(data) {
 
     rows.forEach(r => {
       const qty = num(r.netSales);
-      const rate = rateAt(r.fuel, date);
+      const rate = dailyRates.get(date)?.[r.fuel] || 0;
       addFuel(map, r.fuel, qty, qty * rate);
     });
 
