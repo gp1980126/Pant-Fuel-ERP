@@ -1425,9 +1425,13 @@ const importData = (event) => {
                     ? "active"
                     : ""
                 }
-                onClick={() =>
-                  setPage(x)
-                }
+                onClick={() => {
+                  if (x === "15-Day Fuel Billing") {
+                    setPageState("15-Day Fuel Billing");
+                    return;
+                  }
+                  setPage(x);
+                }}
                 key={x}
               >
                 {x}
