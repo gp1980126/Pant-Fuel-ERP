@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import historicalDsr from "../data/dsr_apr_jul_2026.json";
 import historicalCng from "../data/cng_apr_jul_2026.json";
-import { authoritativeSalesRows, todayDate } from "../core/pumpDomain";
+import { authoritativeSalesRows, todayDate, getRate } from "../core/pumpDomain";
 
 const MS_RATE = 99.79;
 const HSD_RATE = 95.32;
@@ -24,7 +24,7 @@ const addDays = (s, days=1) => {
 };
 const emptyFuel = () => ({qty:0, amount:0});
 
-function buildHistoricalBills() {
+function buildHistoricalBills(data) {
   const daily = new Map();
   (Array.isArray(historicalDsr) ? historicalDsr : []).forEach(r => {
     const date = String(r?.date || "");
@@ -32,7 +32,7 @@ function buildHistoricalBills() {
     if (!date || !MS_HSD.has(fuel)) return;
     if (!daily.has(date)) daily.set(date,{MS:emptyFuel(),HSD:emptyFuel(),CNG:emptyFuel()});
     daily.get(date)[fuel].qty += num(r.netSales);
-    daily.get(date)[fuel].amount += num(r.netSales) * (fuel === "MS" ? MS_RATE : HSD_RATE);
+    daily.get(date)[fuel].amount += num(r.netSales);
   });
   (Array.isArray(historicalCng) ? historicalCng : []).forEach(r => {
     const date = String(r?.date || "");
@@ -91,6 +91,12 @@ function buildLiveBills(data) {
   let no=426;
   for(let date=START; date<=END; date=addDays(date)){
     const sale=saleByDate.get(date)||{MS:emptyFuel(),HSD:emptyFuel(),CNG:emptyFuel()};
+    // Billing must use the rate stored in StationMitra's rate/rateHistory for that date.
+    for (const fuel of ["MS","HSD","CNG"]) {
+      const rate = getRate(data, fuel, date);
+      sale[fuel].rate = rate;
+      sale[fuel].amount = round2(sale[fuel].qty * rate);
+    }
     const rows=creditByDate.get(date)||[];
     const creditRaw={MS:0,HSD:0,CNG:0}, creditQty={MS:0,HSD:0,CNG:0};
     rows.forEach(c=>{creditRaw[c.fuel]+=c.amount;creditQty[c.fuel]+=c.qty;});
@@ -128,7 +134,7 @@ export function Fuel15DayBilling({data}) {
   const [selected,setSelected]=useState(null);
   const [billPage,setBillPage]=useState(0);
   const PAGE_SIZE=25;
-  const bills=useMemo(()=>[...buildHistoricalBills(),...buildLiveBills(data)], [data]);
+  const bills=useMemo(()=>[...buildHistoricalBills(data),...buildLiveBills(data)], [data]);
   const totalAmount=bills.reduce((s,b)=>s+b.total,0);
   const liveBills=bills.filter(b=>b.type==="DAILY_AUTO");
   const lubricantHsnFor=(row)=>{
@@ -215,7 +221,7 @@ export function Fuel15DayBilling({data}) {
       <div style="text-align:center;font-size:12px"><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05<br>DEALER - HINDUSTAN PETROLEUM CORP. LTD.<br>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div>
       <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}<br><b>HSN Code:</b> ${hsn}<br><b>Party GSTIN:</b> ${partyGstin}<br><b>Party Address:</b> ${partyAddress}<br><b>Party GSTIN:</b> ${partyGstin}<br><b>Party Address:</b> ${partyAddress}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
       <table><thead><tr><th>HSN Code</th><th>Product</th><th>Qty (L)</th><th>Rate (Incl. GST)</th><th>Taxable Value</th><th>GST 18%</th><th>Total</th></tr></thead>
-      <tbody><tr><td>${hsn}</td><td>${x.product}</td><td class="num">${x.qty.toFixed(2)}</td><td class="num">${money(rate)}</td><td class="num">${money(taxable)}</td><td class="num">${money(tax)}</td><td class="num">${money(total)}</td></tr></tbody></table>
+      <tbody><tr><td>${hsn}</td><td>${x.product}</td><td class="num">${x.qty.toFixed(2)}</td><td class="num">${money(b.sale[f].rate ?? rate)}</td><td class="num">${money(taxable)}</td><td class="num">${money(tax)}</td><td class="num">${money(total)}</td></tr></tbody></table>
       <div class="taxbox"><b>GST Break-up</b><br>Taxable Value: ${money(taxable)}<br>CGST @ 9%: ${money(cgst)}<br>SGST @ 9%: ${money(sgst)}<br>Rounding Adjustment: ${money(taxRounding)}<br>IGST @ 0%: ₹0.00</div>
       <div class="total">Grand Total: ${money(total)}</div>
       <div style="margin-top:8px;font-size:12px"><b>Amount in words:</b> Rupees ${Math.round(total).toLocaleString("en-IN")} Only</div>
