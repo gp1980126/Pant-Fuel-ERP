@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daily MS / HSD Billing · 01 Aug 2026 onwards</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#f5f7fb;color:#172033}.top{background:#0879b8;color:#fff;padding:18px;display:flex;justify-content:space-between;align-items:center;gap:12px}.wrap{padding:18px;max-width:1250px;margin:auto}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}.card,.panel{background:#fff;border:1px solid #dce3ec;border-radius:12px;padding:14px}.card span{display:block;color:#64748b;font-size:12px}.card b{font-size:20px}.note{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:14px;font-size:13px;line-height:1.5}.status{margin-bottom:12px;padding:10px 12px;border-radius:9px;background:#eef8ff;border:1px solid #c9e7fb;color:#075985;font-size:12px}.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #dbe3ec;padding:8px;font-size:12px}th{background:#eef4f8;position:sticky;top:0}.r{text-align:right}.btn{border:0;border-radius:7px;padding:7px 10px;background:#0879b8;color:#fff;cursor:pointer;font-weight:700}.g{background:#64748b}.small{font-size:11px;padding:5px 8px}.tag{display:inline-block;padding:3px 7px;border-radius:99px;background:#eef2ff;color:#3730a3;font-weight:800;font-size:10px}.zero{color:#94a3b8}.modal{position:fixed;inset:0;background:rgba(0,0,0,.48);display:flex;align-items:center;justify-content:center;padding:15px;z-index:99}.paper{background:#fff;width:min(850px,96vw);max-height:92vh;overflow:auto;border-radius:12px;padding:20px}.meta{display:flex;justify-content:space-between;gap:10px;margin:12px 0}.closebar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px}@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.top{align-items:flex-start}.meta{display:block}}@media(max-width:520px){.cards{grid-template-columns:1fr}.wrap{padding:10px}}
+</style>
+</head>
+<body>
+<div class="top"><div><b style="font-size:22px">SATAT FILLING STATION</b><div>Daily MS / HSD Billing · 01 Aug 2026 से आज तक</div></div><button class="btn g" onclick="location.href='/'">← Back</button></div>
+<div class="wrap">
+<div id="status" class="status">Cloud data load हो रहा है…</div>
+<div class="cards">
+<div class="card"><span>Daily Bills</span><b id="n">0</b></div>
+<div class="card"><span>First Bill</span><b>426</b></div>
+<div class="card"><span>Last Bill</span><b id="last">—</b></div>
+<div class="card"><span>Total Billing</span><b id="t">₹0.00</b></div>
+</div>
+<div class="note"><b>Daily Billing Rule:</b> 01/08/2026 से आज तक हर तारीख का एक consolidated MS + HSD bill auto-generate होगा। Meter sale पूरी quantity/amount में रहेगी; उसी दिन की Credit Sale उसी bill में <b>Credit</b> के रूप में और बाकी <b>Cash</b> के रूप में दिखेगी। <b>CNG excluded</b> है। Bill No. 426 से date-wise लगातार रहेगा। यह screen केवल TEST/Cloud data को पढ़ती है, कोई Cloud data save/change नहीं करती।</div>
+<div class="panel"><div class="tablewrap"><table><thead><tr><th>Bill No.</th><th>Date</th><th>Party / Type</th><th>Payment</th><th class="r">MS Qty</th><th class="r">HSD Qty</th><th class="r">Credit</th><th class="r">Cash</th><th class="r">Total</th><th>Action</th></tr></thead><tbody id="b"></tbody></table></div></div>
+</div>
+<div id="modal" style="display:none"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://vzfmhppgninuinvmwyjn.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ2emZtaHBwZ25pbnVpbnZtd3lqbiIsInJlZiI6InZ6Zm1ocHBnbmludm1ueXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyNTAzMzMsImV4cCI6MjEwNDgyNjMzM30.V2pl_mnWbbmYwYnvaIyCpk6pLWA7HVDts-bVlAVV3z0';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const START='2026-08-01', BILL_START=426;
+const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
+const money=v=>'₹'+n(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const dateText=s=>{const [y,m,d]=s.split('-');return d+'/'+m+'/'+y};
+const localISO=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const todayISO=()=>localISO(new Date());
+const addDay=s=>{const [y,m,d]=s.split('-').map(Number);const x=new Date(y,m-1,d+1);return localISO(x)};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function daysBetween(start,end){
+  const out=[]; for(let d=start,i=0;d<=end;d=addDay(d),i++) out.push({date:d,no:BILL_START+i}); return out;
+}
+function groupSales(sales){
+  const g={};
+  (sales||[]).forEach(x=>{
+    const date=String(x?.date||''); const fuel=String(x?.fuel||'').toUpperCase();
+    if(!date||!['MS','HSD'].includes(fuel)) return;
+    g[date]??={MS:{qty:0,amount:0},HSD:{qty:0,amount:0}};
+    g[date][fuel].qty+=n(x.qty);
+    g[date][fuel].amount+=n(x.amount);
+  }); return g;
+}
+function groupCredits(credits){
+  const g={};
+  (credits||[]).forEach(x=>{
+    const date=String(x?.date||''); const fuel=String(x?.fuel||'').toUpperCase();
+    if(!date||!['MS','HSD'].includes(fuel)) return;
+    g[date]??={MS:{qty:0,amount:0},HSD:{qty:0,amount:0}};
+    g[date][fuel].qty+=n(x.qty); g[date][fuel].amount+=n(x.amount);
+  }); return g;
+}
+let BILLS=[];
+function build(sales,credits){
+  const sg=groupSales(sales), cg=groupCredits(credits), today=todayISO(), rows=daysBetween(START,today);
+  return rows.map(x=>{
+    const s=sg[x.date]||{MS:{qty:0,amount:0},HSD:{qty:0,amount:0}};
+    const c=cg[x.date]||{MS:{qty:0,amount:0},HSD:{qty:0,amount:0}};
+    const creditAmount=Math.min(s.MS.amount,c.MS.amount)+Math.min(s.HSD.amount,c.HSD.amount);
+    const cashAmount=Math.max(0,s.MS.amount-c.MS.amount)+Math.max(0,s.HSD.amount-c.HSD.amount);
+    const total=s.MS.amount+s.HSD.amount;
+    return {...x,s,c,creditAmount,cashAmount,total,creditQty:c.MS.qty+c.HSD.qty};
+  });
+}
+function render(){
+  document.getElementById('n').textContent=BILLS.length;
+  document.getElementById('last').textContent=BILLS.length?BILLS[BILLS.length-1].no:'—';
+  document.getElementById('t').textContent=money(BILLS.reduce((a,x)=>a+x.total,0));
+  document.getElementById('b').innerHTML=BILLS.map((x,i)=>`
+    <tr class="${x.total<=0?'zero':''}">
+      <td><b>${x.no}</b></td><td>${dateText(x.date)}</td><td>Daily Consolidated Sale</td>
+      <td><span class="tag">${x.creditAmount>0?'CASH + CREDIT':'CASH'}</span></td>
+      <td class="r">${x.s.MS.qty.toFixed(2)}</td><td class="r">${x.s.HSD.qty.toFixed(2)}</td>
+      <td class="r">${money(x.creditAmount)}</td><td class="r">${money(x.cashAmount)}</td><td class="r"><b>${money(x.total)}</b></td>
+      <td><button class="btn small" onclick="viewBill(${i})">View</button> <button class="btn small" onclick="printBill(${i})">Print</button></td>
+    </tr>`).join('');
+}
+function billHtml(x){
+  const fuelRows=['MS','HSD'].filter(f=>x.s[f].qty||x.s[f].amount).map(f=>{
+    const cAmt=Math.min(x.s[f].amount,x.c[f].amount), cash=Math.max(0,x.s[f].amount-x.c[f].amount);
+    const rate=x.s[f].qty?x.s[f].amount/x.s[f].qty:0;
+    return '<tr><td>'+(f==='MS'?'MS (Petrol)':'HSD (Diesel)')+'</td><td class="r">'+x.s[f].qty.toFixed(2)+'</td><td class="r">'+money(rate)+'</td><td class="r">'+money(x.s[f].amount)+'</td><td class="r">'+money(cAmt)+'</td><td class="r">'+money(cash)+'</td></tr>';
+  }).join('');
+  const creditRows=['MS','HSD'].flatMap(f=>(x.c[f].amount>0?[[''+f,x.c[f].qty,x.c[f].amount]]:[])).map(r=>'<tr><td>'+r[0]+'</td><td>'+money(r[1])+' L</td><td colspan="2">'+money(r[2])+'</td></tr>').join('');
+  return '<div class="paper"><div class="closebar"><button class="btn" onclick="printBillByObj(window.__billIndex)">🖨 Print</button><button class="btn g" onclick="closeModal()">Close</button></div>'+
+  '<h2 style="text-align:center;margin:0">SATAT FILLING STATION</h2><h4 style="text-align:center;margin:4px 0 16px">DEALER - HINDUSTAN PETROLEUM CORP. LTD.</h4>'+
+  '<div class="meta"><div><b>Bill No.:</b> '+x.no+'</div><div><b>Bill Date:</b> '+dateText(x.date)+'</div></div>'+
+  '<div><b>Type:</b> Daily Consolidated MS/HSD Sale</div><table style="margin-top:14px"><thead><tr><th>Product</th><th>Qty (L)</th><th>Rate</th><th>Total</th><th>Credit</th><th>Cash</th></tr></thead><tbody>'+billRows+'</tbody></table>'+
+  '<div style="text-align:right;font-weight:800;font-size:17px;margin-top:14px">Grand Total: '+money(x.total)+'</div>'+
+  '<div style="margin-top:12px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0"><b>Payment:</b> Cash '+money(x.cashAmount)+' + Credit '+money(x.creditAmount)+' = '+money(x.total)+'<br><b>CNG:</b> Excluded · <b>GST:</b> Not Applicable</div>'+
+  (x.creditAmount>0?'<h4 style="margin:16px 0 8px">Credit Sale Included</h4><table><thead><tr><th>Fuel</th><th>Credit Qty</th><th colspan="2">Credit Amount</th></tr></thead><tbody>'+creditRows+'</tbody></table>':'')+
+  '</div>';
+}
+function viewBill(i){window.__billIndex=i;document.getElementById('modal').style.display='flex';document.getElementById('modal').innerHTML=billHtml(BILLS[i])}
+function closeModal(){document.getElementById('modal').style.display='none';document.getElementById('modal').innerHTML=''}
+function printBillByObj(i){printBill(i)}
+function printBill(i){
+  const x=BILLS[i], rows=['MS','HSD'].filter(f=>x.s[f].qty||x.s[f].amount).map(f=>{
+    const ca=Math.min(x.s[f].amount,x.c[f].amount),cash=Math.max(0,x.s[f].amount-x.c[f].amount),rate=x.s[f].qty?x.s[f].amount/x.s[f].qty:0;
+    return '<tr><td>'+(f==='MS'?'MS (Petrol)':'HSD (Diesel)')+'</td><td style="text-align:right">'+x.s[f].qty.toFixed(2)+'</td><td style="text-align:right">'+money(rate)+'</td><td style="text-align:right">'+money(x.s[f].amount)+'</td><td style="text-align:right">'+money(ca)+'</td><td style="text-align:right">'+money(cash)+'</td></tr>';
+  }).join('');
+  const w=window.open('','_blank','width=900,height=1000'); if(!w)return;
+  w.document.write('<!doctype html><html><head><title>Bill '+x.no+'</title><style>body{font-family:Arial;padding:28px}.paper{max-width:800px;margin:auto}.meta{display:flex;justify-content:space-between}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #999;padding:8px}th{background:#eee}.total{text-align:right;font-size:18px;font-weight:800;margin-top:15px}</style></head><body><div class="paper"><h1 style="text-align:center">SATAT FILLING STATION</h1><h3 style="text-align:center">DEALER - HINDUSTAN PETROLEUM CORP. LTD.</h3><div class="meta"><div><b>Bill No.:</b> '+x.no+'</div><div><b>Bill Date:</b> '+dateText(x.date)+'</div></div><p><b>Type:</b> Daily Consolidated MS/HSD Sale</p><table><thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Total</th><th>Credit</th><th>Cash</th></tr></thead><tbody>'+rows+'</tbody></table><div class="total">Grand Total: '+money(x.total)+'</div><p><b>Payment:</b> Cash '+money(x.cashAmount)+' + Credit '+money(x.creditAmount)+' = '+money(x.total)+'</p><p><b>CNG:</b> Excluded &nbsp; <b>GST:</b> Not Applicable</p></div></body></html>');
+  w.document.close();w.focus();w.print();
+}
+async function load(){
+ try{
+  const {data:{session},error:ae}=await sb.auth.getSession(); if(ae)throw ae;
+  if(!session){document.getElementById('status').innerHTML='<b>Login session नहीं मिला.</b> पहले StationMitra में login करें, फिर यह page खोलें.';return}
+  const uid=session.user.id;
+  const {data:profile,error:pe}=await sb.from('profiles').select('pump_id').eq('id',uid).maybeSingle(); if(pe)throw pe;
+  if(!profile?.pump_id)throw new Error('Pump profile नहीं मिला');
+  const {data:pump,error:pu}=await sb.from('sm_pumps').select('station_id').eq('id',profile.pump_id).maybeSingle(); if(pu)throw pu;
+  const stationId=String(pump?.station_id||'').trim(); if(!stationId)throw new Error('Station ID नहीं मिला');
+  const {data:row,error:se}=await sb.from('app_state').select('data,version,updated_at').eq('station_id',stationId).maybeSingle(); if(se)throw se;
+  if(!row?.data)throw new Error('Cloud app state नहीं मिला');
+  const data=row.data||{};
+  BILLS=build(Array.isArray(data.sales)?data.sales:[],Array.isArray(data.credits)?data.credits:[]);
+  render();
+  document.getElementById('status').innerHTML='<b>Cloud data loaded:</b> '+BILLS.length+' daily bills · 01/08/2026 से '+dateText(todayISO())+' तक · Read-only';
+ }catch(e){console.error(e);document.getElementById('status').innerHTML='<b>❌ Data load failed:</b> '+esc(e?.message||e)}
+}
+load();
+</script>
+</body></html>
