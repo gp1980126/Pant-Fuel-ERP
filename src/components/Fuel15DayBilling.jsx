@@ -127,7 +127,7 @@ export function Fuel15DayBilling({data}) {
   const lubricantHsnFor=(row)=>{
     const direct=String(row?.hsnCode||row?.hsn||"").trim();
     if(direct) return direct;
-    const product=String(row?.productName||"").trim().toLowerCase();
+    const product=String(row?.product||row?.productName||"").trim().toLowerCase();
     if(!product) return "";
     const purchases=Array.isArray(data?.purchases)?data.purchases:[];
     for(const p of purchases){
@@ -138,6 +138,16 @@ export function Fuel15DayBilling({data}) {
       if(String(p?.productName||"").trim().toLowerCase()===product && p?.hsn) return String(p.hsn).trim();
     }
     return "";
+  };
+  const lubricantPartyInfo=(row)=>{
+    const name=String(row?.party||"").trim().toLowerCase();
+    const parties=Array.isArray(data?.parties)?data.parties:[];
+    const p=parties.find(x=>String(x?.name||"").trim().toLowerCase()===name);
+    return {
+      gstin:String(p?.gst||p?.gstin||row?.partyGstin||"").trim(),
+      address:String(p?.address||p?.addr||p?.billingAddress||row?.partyAddress||"").trim(),
+      mobile:String(p?.mobile||"").trim()
+    };
   };
   const lubricantBills=useMemo(()=>{
     const rows=[
@@ -150,7 +160,7 @@ export function Fuel15DayBilling({data}) {
     rows.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.id).localeCompare(String(b.id)));
     const counters={};
     return rows.map(x=>{
-      x.hsnCode=lubricantHsnFor(x);
+      x.hsnCode=lubricantHsnFor(x);\n      x.partyInfo=lubricantPartyInfo(x);
       const y=Number(String(x.date).slice(0,4));
       const fyStart=String(x.date).slice(5,10)>="04-01"?y:y-1;
       const key=String(fyStart);
@@ -168,9 +178,9 @@ export function Fuel15DayBilling({data}) {
     const total=round2(x.amount);
     const taxable=round2(total*100/(100+gstRate));
     const tax=round2(total-taxable);
-    const cgst=round2(tax/2), sgst=round2(tax-cgst);
+    const cgst=round2(Math.ceil(tax*50)/100), sgst=round2(tax-cgst);
     const rate=x.qty>0?round2(total/x.qty):0;
-    const hsn=x.hsnCode||lubricantHsnFor(x)||"Not available";
+    const hsn=x.hsnCode||lubricantHsnFor(x)||"Not available";\n    const partyInfo=x.partyInfo||lubricantPartyInfo(x);\n    const partyGstin=partyInfo.gstin||"Not provided";\n    const partyAddress=partyInfo.address||"Address not provided in Party Master";
     const w=window.open("","_blank","width=900,height=1000");
     if(!w){window.alert("Print window blocked है. Chrome में pop-ups Allow करें.");return;}
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${x.billNo}</title><style>
@@ -182,7 +192,7 @@ export function Fuel15DayBilling({data}) {
     </style></head><body><div class="paper">
       <h1>SATAT FILLING STATION</h1><h2>TAX INVOICE — LUBRICANT / MOBILE OIL</h2>
       <div style="text-align:center;font-size:12px"><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05<br>DEALER - HINDUSTAN PETROLEUM CORP. LTD.<br>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div>
-      <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}<br><b>HSN Code:</b> ${hsn}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
+      <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}<br><b>HSN Code:</b> ${hsn}<br><b>Party GSTIN:</b> ${partyGstin}<br><b>Party Address:</b> ${partyAddress}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
       <table><thead><tr><th>HSN Code</th><th>Product</th><th>Qty (L)</th><th>Rate (Incl. GST)</th><th>Taxable Value</th><th>GST 18%</th><th>Total</th></tr></thead>
       <tbody><tr><td>${hsn}</td><td>${x.product}</td><td class="num">${x.qty.toFixed(2)}</td><td class="num">${money(rate)}</td><td class="num">${money(taxable)}</td><td class="num">${money(tax)}</td><td class="num">${money(total)}</td></tr></tbody></table>
       <div class="taxbox"><b>GST Break-up</b><br>Taxable Value: ${money(taxable)}<br>CGST @ 9%: ${money(cgst)}<br>SGST @ 9%: ${money(sgst)}<br>IGST @ 0%: ₹0.00</div>
