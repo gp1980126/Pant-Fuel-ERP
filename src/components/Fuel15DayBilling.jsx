@@ -181,7 +181,10 @@ export function Fuel15DayBilling({data}) {
     const tax=round2(total-taxable);
     const cgst=round2(Math.ceil(tax*50)/100), sgst=round2(tax-cgst);
     const rate=x.qty>0?round2(total/x.qty):0;
-    const hsn=x.hsnCode||lubricantHsnFor(x)||"Not available";\n    const partyInfo=x.partyInfo||lubricantPartyInfo(x);\n    const partyGstin=partyInfo.gstin||"Not provided";\n    const partyAddress=partyInfo.address||"Address not provided in Party Master";
+    const hsn=x.hsnCode||lubricantHsnFor(x)||"Not available";
+    const partyInfo=x.partyInfo||lubricantPartyInfo(x);
+    const partyGstin=partyInfo.gstin||"Not provided";
+    const partyAddress=partyInfo.address||"Address not provided in Party Master";
     const w=window.open("","_blank","width=900,height=1000");
     if(!w){window.alert("Print window blocked है. Chrome में pop-ups Allow करें.");return;}
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${x.billNo}</title><style>
