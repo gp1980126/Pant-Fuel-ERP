@@ -4308,6 +4308,7 @@ export function Reports({ data, totals }) {
   // appear as additional sales in monthly/daily product reports.
   const sales = authoritativeSalesRows(data);
   const payments = Array.isArray(data?.dailyPayments) ? data.dailyPayments : [];
+  const purchases = Array.isArray(data?.purchases) ? data.purchases : [];
   // Credit recoveries/duplicate representations are also excluded from credit-sale
   // reporting while the original credit transaction remains authoritative.
   const credits = ledgerCreditRows(Array.isArray(data?.credits) ? data.credits : []);
@@ -4319,13 +4320,13 @@ export function Reports({ data, totals }) {
 
   const months = useMemo(() => {
     const set = new Set();
-    [...sales, ...payments, ...credits].forEach(x => {
+    [...sales, ...payments, ...credits, ...purchases].forEach(x => {
       const d = String(x?.date || "");
       if (/^\d{4}-\d{2}/.test(d)) set.add(d.slice(0,7));
     });
     if (!set.size) set.add(START_DATE.slice(0,7));
     return [...set].sort().reverse();
-  }, [sales, payments, credits]);
+  }, [sales, payments, credits, purchases]);
   const [month, setMonth] = useState(months[0] || START_DATE.slice(0,7));
   useEffect(() => {
     if (!months.includes(month)) setMonth(months[0] || START_DATE.slice(0,7));
@@ -4340,6 +4341,62 @@ export function Reports({ data, totals }) {
   const monthSales = useMemo(() => sales.filter(x => inMonth(x?.date)), [sales, month]);
   const monthPayments = useMemo(() => payments.filter(x => inMonth(x?.date)), [payments, month]);
   const monthCredits = useMemo(() => credits.filter(x => inMonth(x?.date)), [credits, month]);
+  const monthPurchases = useMemo(() => purchases.filter(x => inMonth(x?.date)), [purchases, month]);
+
+  // Product-wise purchase rows. Lubricant invoices with item lines are exploded
+  // into separate SKUs; normal fuel purchases use the saved productName.
+  const purchaseProductRows = useMemo(() => {
+    const map = new Map();
+    const add = (product, hsn, fuel, qty, basic, tax, total, entries, unit) => {
+      const name = String(product || "Unknown Product").trim() || "Unknown Product";
+      const key = String(fuel || "").toUpperCase()+"|"+name.toUpperCase()+"|"+String(hsn || "").trim();
+      const prev = map.get(key) || {product:name,hsn:String(hsn || "").trim(),fuel:String(fuel || "").toUpperCase(),qty:0,basic:0,tax:0,total:0,entries:0,unit:unit || "L"};
+      prev.qty += n(qty);
+      prev.basic += n(basic);
+      prev.tax += n(tax);
+      prev.total += n(total);
+      prev.entries += n(entries || 1);
+      map.set(key, prev);
+    };
+
+    monthPurchases.forEach(p => {
+      const fuel = String(p?.fuel || "").toUpperCase();
+      if (fuel === "LUBRICANT" && Array.isArray(p?.items) && p.items.length) {
+        p.items.forEach(item => {
+          const qty = n(item?.inventoryQty ?? item?.quantity ?? item?.billedQty);
+          const basic = n(item?.taxableValue ?? item?.basicAmount);
+          const tax = n(item?.igstAmount ?? item?.taxAmount);
+          const total = n(item?.netAmount) || (basic + tax);
+          add(item?.description || p?.productName, item?.hsn, fuel, qty, basic, tax, total, 1, item?.unit || "L");
+        });
+      } else {
+        add(
+          p?.productName || fuel || "Unknown Product",
+          p?.hsn || p?.hsnCode || "",
+          fuel,
+          p?.quantity,
+          p?.basicAmount,
+          p?.taxAmount,
+          purchaseLandedValue(p),
+          1,
+          p?.unit || (fuel === "CNG" ? "Kg" : "L")
+        );
+      }
+    });
+
+    return Array.from(map.values()).sort((a,b) =>
+      String(a.fuel).localeCompare(String(b.fuel)) ||
+      String(a.product).localeCompare(String(b.product))
+    );
+  }, [monthPurchases]);
+
+  const purchaseProductTotals = useMemo(() => purchaseProductRows.reduce((a,r) => ({
+    qty:a.qty+n(r.qty), basic:a.basic+n(r.basic), tax:a.tax+n(r.tax), total:a.total+n(r.total), entries:a.entries+n(r.entries)
+  }), {qty:0,basic:0,tax:0,total:0,entries:0}), [purchaseProductRows]);
+
+  const purchaseProductUnit = row => String(row?.unit || "").toUpperCase() === "KG" ? "Kg" : "L";
+  const purchaseProductQtyText = row => n(row?.qty).toFixed(purchaseProductUnit(row)==="Kg" ? 3 : 2)+" "+purchaseProductUnit(row);
+  const purchaseProductRate = row => n(row?.qty) > 0 ? n(row?.total) / n(row?.qty) : 0;
 
   const salesByFuel = fuels.reduce((out, fuel) => {
     const rows = monthSales.filter(x => String(x?.fuel || "").toUpperCase() === fuel);
@@ -4487,10 +4544,44 @@ export function Reports({ data, totals }) {
   return <div className="content">
     <section className="panel">
       <div className="pro-panel-head" style={{alignItems:"center"}}><div><h2 style={{marginBottom:4}}>📅 Reports — Monthly View</h2><span style={{color:"#6b7280"}}>सभी product-wise reports अब चुने हुए पूरे महीने के आधार पर दिखेंगे.</span></div><label style={{minWidth:170}}>Month<select value={month} onChange={e=>setMonth(e.target.value)} style={{width:"100%"}}>{months.map(m=><option key={m} value={m}>{m}</option>)}</select></label></div>
-      <div className="cards" style={{marginTop:14}}><div className="card"><span>Monthly Sale</span><strong>{money(monthSaleTotal)}</strong></div><div className="card"><span>Monthly Credit</span><strong>{money(monthCreditTotal)}</strong></div><div className="card"><span>Payment Receipts</span><strong>{money(monthReceiptTotal)}</strong></div><div className="card"><span>Sale Entries</span><strong>{monthSales.length}</strong></div></div>
+      <div className="cards" style={{marginTop:14}}><div className="card"><span>Monthly Sale</span><strong>{money(monthSaleTotal)}</strong></div><div className="card"><span>Monthly Purchase</span><strong>{money(purchaseProductTotals.total)}</strong></div><div className="card"><span>Monthly Credit</span><strong>{money(monthCreditTotal)}</strong></div><div className="card"><span>Payment Receipts</span><strong>{money(monthReceiptTotal)}</strong></div><div className="card"><span>Sale Entries</span><strong>{monthSales.length}</strong></div></div>
     </section>
 
     <section className="panel" style={{marginTop:18}}><h2>📊 Product-wise Sale Summary — {month}</h2><p style={{marginTop:0,color:"#6b7280"}}>पूरे selected month में MS / HSD / CNG का consolidated product-wise sale.</p><Actions items={[["🖨️ Print / PDF",saleSummaryPrint],["📊 Excel",()=>downloadCsv(`Product_Wise_Sale_Summary_${month}.csv`,[[PUMP_NAME],[`Product-wise Sale Summary — ${month}`],[],["Product","Sale Qty","Sale Amount","Entries"],...fuels.map(f=>[f,salesByFuel[f].qty,salesByFuel[f].amount,salesByFuel[f].entries]),[],["TOTAL","",monthSaleTotal,monthSales.length]])],["💬 WhatsApp",saleSummaryWhatsApp]]}/><div className="table" style={{marginTop:14}}><table><thead><tr><th>Product</th><th>Sale Qty</th><th>Sale Amount</th><th>Entries</th></tr></thead><tbody>{fuels.map(f=><tr key={f}><td><b>{f}</b></td><td>{qtyText(f,salesByFuel[f].qty)}</td><td>{money(salesByFuel[f].amount)}</td><td>{salesByFuel[f].entries}</td></tr>)}<tr className="total-row"><td>TOTAL</td><td>—</td><td>{money(monthSaleTotal)}</td><td>{monthSales.length}</td></tr></tbody></table></div></section>
+
+    <section className="panel" style={{marginTop:18}}>
+      <h2>🧾 Product-wise Purchase Report — {month}</h2>
+      <p style={{marginTop:0,color:"#6b7280"}}>Selected month की सभी purchase bills actual product-wise दिखेंगी। HPCL Lubricant bill में हर item/SKU अलग line में आएगा, साथ में HSN, Qty, Assessable Value, Tax और Total Amount।</p>
+      <Actions items={[
+        ["🖨️ Print / PDF",()=>{
+          const rows=purchaseProductRows.map(r=>"<tr><td><b>"+esc(r.product)+"</b></td><td>"+esc(r.fuel||"—")+"</td><td>"+esc(r.hsn||"—")+"</td><td>"+purchaseProductQtyText(r)+"</td><td>"+money(purchaseProductRate(r))+"</td><td>"+money(r.basic)+"</td><td>"+money(r.tax)+"</td><td>"+money(r.total)+"</td><td>"+r.entries+"</td></tr>").join("");
+          openPrint("Product-wise Purchase Report","<h2>Product-wise Purchase Report — "+month+"</h2><table><thead><tr><th>Product</th><th>Type</th><th>HSN</th><th>Qty</th><th>Effective Rate</th><th>Assessable</th><th>Tax</th><th>Total</th><th>Entries</th></tr></thead><tbody>"+(rows||"<tr><td colspan=\"9\">No purchase records found.</td></tr>")+"<tr class=\"total\"><td colspan=\"3\">TOTAL</td><td>"+purchaseProductTotals.qty.toFixed(2)+"</td><td>—</td><td>"+money(purchaseProductTotals.basic)+"</td><td>"+money(purchaseProductTotals.tax)+"</td><td>"+money(purchaseProductTotals.total)+"</td><td>"+purchaseProductTotals.entries+"</td></tr></tbody></table>");
+        }],
+        ["📊 Excel",()=>downloadCsv("Product_Wise_Purchase_Report_"+month+".csv",[
+          [PUMP_NAME],["Product-wise Purchase Report — "+month],[],
+          ["Product","Type","HSN","Qty","Unit","Effective Rate","Assessable Value","Tax Amount","Total Amount","Entries"],
+          ...purchaseProductRows.map(r=>[r.product,r.fuel,r.hsn,r.qty,purchaseProductUnit(r),purchaseProductRate(r),r.basic,r.tax,r.total,r.entries]),
+          [],["TOTAL","","",purchaseProductTotals.qty,"","",purchaseProductTotals.basic,purchaseProductTotals.tax,purchaseProductTotals.total,purchaseProductTotals.entries]
+        ])],
+        ["💬 WhatsApp",()=>share([
+          "*"+PUMP_NAME+"*","*Product-wise Purchase Report — "+month+"*",
+          ...purchaseProductRows.map(r=>r.product+(r.hsn?" | HSN "+r.hsn:"")+": "+purchaseProductQtyText(r)+" | Rate "+money(purchaseProductRate(r))+" | Total "+money(r.total)),
+          "*TOTAL PURCHASE: "+money(purchaseProductTotals.total)+"*"
+        ].join("\n"))]
+      ]}/>
+      <div className="table" style={{marginTop:14,overflowX:"auto"}}>
+        <table>
+          <thead><tr><th>Product</th><th>Type</th><th>HSN</th><th>Qty</th><th>Effective Rate</th><th>Assessable Value</th><th>Tax Amount</th><th>Total Amount</th><th>Entries</th></tr></thead>
+          <tbody>
+            {purchaseProductRows.map(r=><tr key={r.fuel+"|"+r.product+"|"+r.hsn}>
+              <td><b>{r.product}</b></td><td>{r.fuel||"—"}</td><td>{r.hsn||"—"}</td><td>{purchaseProductQtyText(r)}</td><td>{money(purchaseProductRate(r))}</td>
+              <td>{money(r.basic)}</td><td>{money(r.tax)}</td><td>{money(r.total)}</td><td>{r.entries}</td>
+            </tr>)}
+            <tr className="total-row"><td colSpan="3">TOTAL PURCHASE</td><td>{purchaseProductTotals.qty.toFixed(2)}</td><td>—</td><td>{money(purchaseProductTotals.basic)}</td><td>{money(purchaseProductTotals.tax)}</td><td>{money(purchaseProductTotals.total)}</td><td>{purchaseProductTotals.entries}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
     <section className="panel" style={{marginTop:18}}><h2>📅 Product-wise Daily Sale Summary — {month}</h2><p style={{marginTop:0,color:"#6b7280"}}>Selected month के हर दिन MS / HSD / CNG की अलग-अलग sale.</p><Actions items={[["🖨️ Print / PDF — All",dailyPrint],["📊 Excel — All",dailyExcel],["💬 WhatsApp — All",dailyWhatsApp]]}/>{fuels.map(f=>{ const rows=dailyProductRows.filter(r=>r.fuel===f); const totalQty=rows.reduce((a,r)=>a+n(r.qty),0); const totalAmount=rows.reduce((a,r)=>a+n(r.amount),0); return <div key={f} className="table" style={{marginTop:14}}><h3>{f}</h3><table><thead><tr><th>Date</th><th>Product</th><th>Sale Qty</th><th>Sale Amount</th></tr></thead><tbody>{rows.map(r=><tr key={`${r.date}-${r.fuel}`}><td>{r.date}</td><td><b>{f}</b></td><td>{qtyText(f,r.qty)}</td><td>{money(r.amount)}</td></tr>)}<tr className="total-row"><td colSpan="2"><b>TOTAL {f}</b></td><td><b>{qtyText(f,totalQty)}</b></td><td><b>{money(totalAmount)}</b></td></tr></tbody></table><Actions items={[["🖨️ Print / PDF",()=>dailyPrintFuel(f)],["📊 Excel",()=>dailyExcelFuel(f)],["💬 WhatsApp",()=>dailyWhatsAppFuel(f)]]}/></div>; })}</section>
 
