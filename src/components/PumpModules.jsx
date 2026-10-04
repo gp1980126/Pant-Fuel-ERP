@@ -1984,6 +1984,7 @@ export function PartyMaster({
     name:"",
     mobile:"",
     gst:"",
+    address:"",
     limit:""
   };
 
@@ -2117,6 +2118,7 @@ export function PartyMaster({
       name:p.name || "",
       mobile:p.mobile || "",
       gst:p.gst || "",
+      address:p.address || "",
       limit:p.limit || ""
     });
 
@@ -2197,6 +2199,14 @@ export function PartyMaster({
               }
             />
 
+          </Field>
+
+          <Field label="ADDRESS">
+            <input
+              value={f.address}
+              onChange={e => setF({...f,address:e.target.value})}
+              placeholder="Party billing address"
+            />
           </Field>
 
           <Field label="GST">
