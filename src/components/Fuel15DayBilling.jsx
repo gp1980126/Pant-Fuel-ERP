@@ -160,7 +160,8 @@ export function Fuel15DayBilling({data}) {
     rows.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.id).localeCompare(String(b.id)));
     const counters={};
     return rows.map(x=>{
-      x.hsnCode=lubricantHsnFor(x);\n      x.partyInfo=lubricantPartyInfo(x);
+      x.hsnCode=lubricantHsnFor(x);
+      x.partyInfo=lubricantPartyInfo(x);
       const y=Number(String(x.date).slice(0,4));
       const fyStart=String(x.date).slice(5,10)>="04-01"?y:y-1;
       const key=String(fyStart);
