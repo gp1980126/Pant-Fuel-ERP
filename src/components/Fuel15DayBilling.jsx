@@ -306,7 +306,7 @@ export function Fuel15DayBilling({data}) {
         {(()=>{const b=bills[selected];return <>
           <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:"0 0 4px"}}>Bill No. {b.billNo}</h3><div style={{fontSize:12,color:"#64748b"}}>{dateText(b.date)} · {b.payment}</div></div><button className="btn" onClick={()=>printBill(b)}>🖨 Print Bill</button></div>
           <table className="data-table" style={{width:"100%",marginTop:12}}><thead><tr><th>Fuel</th><th>Qty</th><th>Rate</th><th>Total</th><th>Credit</th><th>Cash</th></tr></thead><tbody>
-            {["MS","HSD"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=><tr key={f}><td>{f==="MS"?"MS (Petrol)":"HSD (Diesel)"}</td><td>{b.sale[f].qty.toFixed(2)} L</td><td>{money(b.sale[f].qty?b.sale[f].amount/b.sale[f].qty:0)}</td><td>{money(b.sale[f].amount)}</td><td>{money(b.creditAmountByFuel[f])}</td><td>{money(b.cashAmountByFuel[f])}</td></tr>)}
+            {["MS","HSD","CNG"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=><tr key={f}><td>{f==="MS"?"MS (Petrol)":"HSD (Diesel)"}</td><td>{b.sale[f].qty.toFixed(2)} L</td><td>{money(b.sale[f].qty?b.sale[f].amount/b.sale[f].qty:0)}</td><td>{money(b.sale[f].amount)}</td><td>{money(b.creditAmountByFuel[f])}</td><td>{money(b.cashAmountByFuel[f])}</td></tr>)}
           </tbody></table>
           <div style={{textAlign:"right",fontSize:18,fontWeight:900,marginTop:12}}>Grand Total: {money(b.total)}</div>
           <div style={{marginTop:10,fontSize:11,color:"#475569"}}>Payment: <b>Cash {money(b.cashAmount)} + Credit {money(b.creditAmount)} = {money(b.total)}</b> · CNG: <b>Excluded</b> · GST: <b>Not Applicable</b></div>
