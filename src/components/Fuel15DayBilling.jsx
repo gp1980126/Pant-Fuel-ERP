@@ -149,7 +149,8 @@ export function Fuel15DayBilling({data}) {
     ].filter(x=>x.date);
     rows.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.id).localeCompare(String(b.id)));
     const counters={};
-    return rows.map(x=>{\n      x.hsnCode=lubricantHsnFor(x);
+    return rows.map(x=>{
+      x.hsnCode=lubricantHsnFor(x);
       const y=Number(String(x.date).slice(0,4));
       const fyStart=String(x.date).slice(5,10)>="04-01"?y:y-1;
       const key=String(fyStart);
