@@ -7805,7 +7805,7 @@ function updateFuelRates() {
                 <thead>
                   <tr>
                     <th>Date</th><th>Opp. Stock</th><th>Received</th><th>Total Stock</th>
-                    <th>Sales By Mtr (Gross)</th><th>Pump Test</th><th>Net Sale (After Testing)</th><th>Cumm. Net Sale</th><th>Sales By Dip</th>
+                    <th>Sales By Mtr (Gross)</th><th>Pump Test</th><th>Net Sale (After Testing)</th><th>Cumm. Net Sale</th><th>Sales By Dip</th><th>Difference</th><th>Cumm. Difference</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -7820,6 +7820,14 @@ function updateFuelRates() {
                       return sum + authoritativeSales.filter(y => y.date === x.date && y.fuel === fuel).reduce((a, y) => a + n(y.qty), 0);
                     }, 0);
                     const salesByDip = r.salesByDip ? r.salesByDip[fuel] : null;
+                    // Difference follows the DSR convention: Net Sale - Sales By Dip.
+                    const difference = salesByDip === null ? null : net - n(salesByDip);
+                    const cumulativeDifference = dailyStockRows.filter(x => x.date <= r.date).reduce((sum, x) => {
+                      const xSales = authoritativeSales.filter(y => y.date === x.date && y.fuel === fuel);
+                      const xNet = xSales.reduce((a, y) => a + n(y.qty), 0);
+                      const xDip = x.salesByDip ? x.salesByDip[fuel] : null;
+                      return xDip === null || xDip === undefined ? sum : sum + (xNet - n(xDip));
+                    }, 0);
 
                     return <tr key={`${r.date}-${fuel}`}>
                       <td><b>{r.date}</b></td>
@@ -7831,6 +7839,8 @@ function updateFuelRates() {
                       <td><b>{net.toFixed(2)} L</b></td>
                       <td>{cumulativeFuel.toFixed(2)} L</td>
                       <td>{salesByDip === null ? "—" : salesByDip.toFixed(2) + " L"}</td>
+                      <td>{difference === null ? "—" : difference.toFixed(2) + " L"}</td>
+                      <td>{salesByDip === null ? "—" : cumulativeDifference.toFixed(2) + " L"}</td>
                     </tr>;
                   })}
                 </tbody>
