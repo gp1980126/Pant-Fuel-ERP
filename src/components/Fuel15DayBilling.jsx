@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import historicalDsr from "../data/dsr_apr_jul_2026.json";
+import historicalCng from "../data/cng_apr_jul_2026.json";
 import { authoritativeSalesRows, todayDate } from "../core/pumpDomain";
 
 const MS_RATE = 99.79;
@@ -29,28 +30,34 @@ function buildHistoricalBills() {
     const date = String(r?.date || "");
     const fuel = String(r?.fuel || "").toUpperCase();
     if (!date || !MS_HSD.has(fuel)) return;
-    if (!daily.has(date)) daily.set(date,{MS:emptyFuel(),HSD:emptyFuel()});
+    if (!daily.has(date)) daily.set(date,{MS:emptyFuel(),HSD:emptyFuel(),CNG:emptyFuel()});
     daily.get(date)[fuel].qty += num(r.netSales);
     daily.get(date)[fuel].amount += num(r.netSales) * (fuel === "MS" ? MS_RATE : HSD_RATE);
+  });
+  (Array.isArray(historicalCng) ? historicalCng : []).forEach(r => {
+    const date = String(r?.date || "");
+    if (!date) return;
+    if (!daily.has(date)) daily.set(date,{MS:emptyFuel(),HSD:emptyFuel(),CNG:emptyFuel()});
+    daily.get(date).CNG.qty += num(r.qty);
+    daily.get(date).CNG.amount += num(r.amount);
   });
 
   const out = [];
   let no = 304;
   for (let date="2026-04-01"; date<="2026-07-31"; date=addDays(date)) {
-    const sale = daily.get(date) || {MS:emptyFuel(),HSD:emptyFuel()};
-    const total = round2(sale.MS.amount + sale.HSD.amount);
+    const sale = daily.get(date) || {MS:emptyFuel(),HSD:emptyFuel(),CNG:emptyFuel()};
+    const total = round2(sale.MS.amount + sale.HSD.amount + sale.CNG.amount);
     out.push({
       billNo:String(no++), date, type:"HISTORICAL_CASH",
       party:"CASH SALE", payment:"Cash", sale,
       creditRows:[], creditAmount:0, cashAmount:total,
-      creditAmountByFuel:{MS:0,HSD:0},
-      cashAmountByFuel:{MS:sale.MS.amount,HSD:sale.HSD.amount},
+      creditAmountByFuel:{MS:0,HSD:0,CNG:0},
+      cashAmountByFuel:{MS:sale.MS.amount,HSD:sale.HSD.amount,CNG:sale.CNG.amount},
       total
     });
   }
   return out;
 }
-
 function buildLiveBills(data) {
   const START = "2026-08-01";
   const END = todayDate();
@@ -218,9 +225,9 @@ export function Fuel15DayBilling({data}) {
   };
 
   const printBill=b=>{
-    const fuelRows=["MS","HSD"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=>{
+    const fuelRows=["MS","HSD","CNG"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=>{
       const rate=b.sale[f].qty?b.sale[f].amount/b.sale[f].qty:0;
-      return `<tr><td>${f==="MS"?"MS (Petrol)":"HSD (Diesel)"}</td><td style="text-align:right">${b.sale[f].qty.toFixed(2)}</td><td style="text-align:right">${money(rate)}</td><td style="text-align:right">${money(b.sale[f].amount)}</td><td style="text-align:right">${money(b.creditAmountByFuel[f])}</td><td style="text-align:right">${money(b.cashAmountByFuel[f])}</td></tr>`;
+      return `<tr><td>${f==="MS"?"MS (Petrol)":f==="HSD"?"HSD (Diesel)":"CNG"}</td><td style="text-align:right">${b.sale[f].qty.toFixed(2)}</td><td style="text-align:right">${money(rate)}</td><td style="text-align:right">${money(b.sale[f].amount)}</td><td style="text-align:right">${money(b.creditAmountByFuel[f])}</td><td style="text-align:right">${money(b.cashAmountByFuel[f])}</td></tr>`;
     }).join("");
 
     const creditRows=b.creditRows.map(c=>`<tr><td>${c.party}</td><td>${c.parchiNo||"—"}</td><td>${c.fuel}</td><td style="text-align:right">${c.qty.toFixed(2)} L</td><td style="text-align:right">${money(c.amount)}</td></tr>`).join("");
@@ -237,9 +244,9 @@ export function Fuel15DayBilling({data}) {
       <h1>SATAT FILLING STATION</h1><h2>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</h2>
       <div class="meta"><div><b>Bill No.:</b> ${b.billNo}</div><div><b>Bill Date:</b> ${dateText(b.date)}</div></div>
       <div><b>Type:</b> ${b.type==="DAILY_AUTO"?"Daily Consolidated MS/HSD Sale":"Historical Cash Sale"}</div>
-      <table><thead><tr><th>Product</th><th>Qty (L)</th><th>Rate</th><th>Total</th><th>Credit</th><th>Cash</th></tr></thead><tbody>${fuelRows}</tbody></table>
+      <table><thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Total</th><th>Credit</th><th>Cash</th></tr></thead><tbody>${fuelRows}</tbody></table>
       <div class="total">Grand Total: ${money(b.total)}</div>
-      <div class="note"><b>Payment:</b> Cash ${money(b.cashAmount)} + Credit ${money(b.creditAmount)} = ${money(b.total)}<br/><b>GST:</b> Not Applicable — MS/HSD<br/><b>CNG:</b> Excluded</div>
+      <div class="note"><b>Payment:</b> Cash ${money(b.cashAmount)} + Credit ${money(b.creditAmount)} = ${money(b.total)}<br/><b>GST:</b> Not Applicable — MS/HSD/CNG</div>
       ${b.creditRows.length?`<h3>Credit Sale Included — Party Wise</h3><table><thead><tr><th>Party</th><th>Parchi No.</th><th>Fuel</th><th>Credit Qty</th><th>Credit Amount</th></tr></thead><tbody>${creditRows}</tbody></table>`:""}
       <div class="sign">Authorized Signatory</div></div></body></html>`);
     w.document.close();w.focus();w.print();
@@ -261,7 +268,7 @@ export function Fuel15DayBilling({data}) {
     <div style={{padding:"10px 12px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,fontSize:12,marginBottom:12,lineHeight:1.6}}>
       <b>01/08/2026 से Auto Rule:</b> हर calendar day का MS + HSD meter sale एक consolidated bill में आएगा.
       उसी दिन की <b>Credit Sale</b> उसमें Credit के रूप में घटेगी और बाकी <b>Cash</b> रहेगा.
-      Credit Party, Parchi No., Fuel और Qty अलग से View/Print में दिखेंगे. <b>CNG excluded</b> है.
+      Credit Party, Parchi No., Fuel और Qty अलग से View/Print में दिखेंगे. <b>01/08/2026 से CNG इस historical billing में शामिल नहीं है; August onward CNG software data से रहेगा.</b>.
       यह screen केवल data पढ़ती है; कोई billing record Cloud में save नहीं करती.
     </div>
 
