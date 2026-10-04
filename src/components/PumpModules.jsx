@@ -7805,7 +7805,7 @@ function updateFuelRates() {
                 <thead>
                   <tr>
                     <th>Date</th><th>Opp. Stock</th><th>Received</th><th>Total Stock</th>
-                    <th>Sales By Mtr (Gross)</th><th>Pump Test</th><th>Net Sale (After Testing)</th><th>Cumm. Net Sale</th><th>Sales By Dip</th><th>Physical Closing</th><th>Short / Excess</th>
+                    <th>Sales By Mtr (Gross)</th><th>Pump Test</th><th>Net Sale (After Testing)</th><th>Cumm. Net Sale</th><th>Sales By Dip</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -7820,13 +7820,7 @@ function updateFuelRates() {
                       return sum + authoritativeSales.filter(y => y.date === x.date && y.fuel === fuel).reduce((a, y) => a + n(y.qty), 0);
                     }, 0);
                     const salesByDip = r.salesByDip ? r.salesByDip[fuel] : null;
-                    // Authoritative accounting reconciliation: opening accounting stock
-                    // + cumulative receipts - cumulative NET sale = book closing stock.
-                    // Physical/DIP is compared to that book closing. Pump testing is
-                    // already excluded from NET sale and must never be subtracted twice.
-                    const bookClosing = bookStockAsOf(r.date)[fuel];
-                    const physicalClosing = historicalDipForDate(r.date)?.[fuel] ?? null;
-                    const shortExcess = physicalClosing === null ? null : physicalClosing - bookClosing;
+
                     return <tr key={`${r.date}-${fuel}`}>
                       <td><b>{r.date}</b></td>
                       <td>{opening.toFixed(2)} L</td>
@@ -7838,8 +7832,6 @@ function updateFuelRates() {
                       <td>{cumulativeFuel.toFixed(2)} L</td>
                       <td>{salesByDip === null ? "—" : salesByDip.toFixed(2) + " L"}</td>
                       <td>{bookClosing.toFixed(2)} L</td>
-                      <td>{physicalClosing === null ? "—" : physicalClosing.toFixed(2) + " L"}</td>
-                      <td><b>{shortExcess === null ? "—" : `${shortExcess >= 0 ? "+" : ""}${shortExcess.toFixed(2)} L`}</b></td>
                     </tr>;
                   })}
                 </tbody>
