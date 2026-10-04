@@ -7783,7 +7783,20 @@ function updateFuelRates() {
       ================================================= */}
       <section className="panel" style={{ marginTop: 18 }}>
         <h2>Daily Stock Reconciliation — MS / HSD</h2>
-        <p>MS और HSD का Stock calculation पूरी तरह अलग है। CNG इस reconciliation और DIP से बाहर है। Fuel Sale में stored <b>Qty = Net Sale (Testing के बाद)</b> है; इसलिए Testing को दोबारा subtract नहीं किया जाता। <b>Book Closing = Opening + Receipt − Net Sale</b> और <b>Short / Excess = Physical Dip − Book Closing</b> है। Dip Difference को Sale नहीं माना जाता।</p>
+        <p>01-08-2026 से MS/HSD की primary reconciliation physical stock के आधार पर है: <b>Opening + Purchase − Physical Closing = Stock Consumption</b>. इसके बाद <b>Net Sale = Stock Consumption − Pump Test</b>. Book Closing और DSR Difference को Sale नहीं माना जाता। CNG इस reconciliation और DIP से बाहर है.</p>
+        {["MS","HSD"].map(fuel => {
+          const periodRows = dailyStockRows.filter(r => r.date >= START_DATE);
+          const opening = periodRows.length ? n(periodRows[0].opening[fuel]) : 0;
+          const purchase = periodRows.reduce((s,r) => s + n(r.receivedByFuel[fuel]), 0);
+          const last = periodRows.at(-1);
+          const physicalClosing = last ? (last.closingOpeningDip?.[fuel] ?? historicalDipForDate(last.date)?.[fuel] ?? null) : null;
+          const pumpTest = periodRows.reduce((s,r) => s + authoritativeSales.filter(x => x.date === r.date && x.fuel === fuel).reduce((a,x) => a + n(x.testing),0),0);
+          const stockConsumption = physicalClosing === null ? null : opening + purchase - n(physicalClosing);
+          const reconciledNet = stockConsumption === null ? null : stockConsumption - pumpTest;
+          return <div key={fuel} className="notice" style={{marginTop:12}}>
+            <b>{fuel} — 01-08-2026 से अब तक:</b> Opening {opening.toFixed(2)} L + Purchase {purchase.toFixed(2)} L − Physical Closing {physicalClosing === null ? "—" : n(physicalClosing).toFixed(2) + " L"} = <b>{stockConsumption === null ? "—" : stockConsumption.toFixed(2) + " L Stock Consumption"}</b>; Pump Test {pumpTest.toFixed(2)} L; Net Sale = <b>{reconciledNet === null ? "—" : reconciledNet.toFixed(2) + " L"}</b>.
+          </div>;
+        })}
         {[["MS","MS / Petrol"],["HSD","HSD / Diesel"]].map(([fuel,label]) => (
           <div key={fuel} style={{ marginTop: 18 }}>
             <h3 style={{ marginBottom: 8 }}>{label}</h3>
