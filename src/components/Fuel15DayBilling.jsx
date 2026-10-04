@@ -180,9 +180,9 @@ export function Fuel15DayBilling({data}) {
     </style></head><body><div class="paper">
       <h1>SATAT FILLING STATION</h1><h2>TAX INVOICE — LUBRICANT / MOBILE OIL</h2>
       <div style="text-align:center;font-size:12px"><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05<br>DEALER - HINDUSTAN PETROLEUM CORP. LTD.<br>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div>
-      <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
+      <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}<br><b>HSN Code:</b> ${hsn}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
       <table><thead><tr><th>HSN Code</th><th>Product</th><th>Qty (L)</th><th>Rate (Incl. GST)</th><th>Taxable Value</th><th>GST 18%</th><th>Total</th></tr></thead>
-      <tbody><tr><td>${x.product}</td><td class="num">${x.qty.toFixed(2)}</td><td class="num">${money(rate)}</td><td class="num">${money(taxable)}</td><td class="num">${money(tax)}</td><td class="num">${money(total)}</td></tr></tbody></table>
+      <tbody><tr><td>${hsn}</td><td>${x.product}</td><td class="num">${x.qty.toFixed(2)}</td><td class="num">${money(rate)}</td><td class="num">${money(taxable)}</td><td class="num">${money(tax)}</td><td class="num">${money(total)}</td></tr></tbody></table>
       <div class="taxbox"><b>GST Break-up</b><br>Taxable Value: ${money(taxable)}<br>CGST @ 9%: ${money(cgst)}<br>SGST @ 9%: ${money(sgst)}<br>IGST @ 0%: ₹0.00</div>
       <div class="total">Grand Total: ${money(total)}</div>
       <div style="margin-top:8px;font-size:12px"><b>Amount in words:</b> Rupees ${Math.round(total).toLocaleString("en-IN")} Only</div>
