@@ -125,21 +125,54 @@ export function Fuel15DayBilling({data}) {
   const totalAmount=bills.reduce((s,b)=>s+b.total,0);
   const liveBills=bills.filter(b=>b.type==="DAILY_AUTO");
   const lubricantBills=useMemo(()=>{
-    const credit=(Array.isArray(data?.credits)?data.credits:[])
-      .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT")
-      .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),billNo:String(x.parchiNo||x.invoiceNo||x.id||"—"),party:String(x.party||"Credit Party"),product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:"CREDIT",parchiNo:String(x.parchiNo||"")}));
-    const cash=(Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[])
-      .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),billNo:String(x.invoiceNo||x.id||"—"),party:"CASH SALE",product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:String(x.paymentMode||"CASH").toUpperCase(),parchiNo:""}));
-    return [...credit,...cash].filter(x=>x.date).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.id).localeCompare(String(a.id)));
+    const rows=[
+      ...(Array.isArray(data?.credits)?data.credits:[])
+        .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT")
+        .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),party:String(x.party||"Credit Party"),product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:"CREDIT",parchiNo:String(x.parchiNo||""),gstRate:num(x.gstRate)>0?num(x.gstRate):18,kind:"CREDIT"})),
+      ...(Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[])
+        .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),party:"CASH CUSTOMER",product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:String(x.paymentMode||"CASH").toUpperCase(),parchiNo:"",gstRate:num(x.gstRate)>0?num(x.gstRate):18,kind:"CASH"}))
+    ].filter(x=>x.date);
+    rows.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.id).localeCompare(String(b.id)));
+    const counters={};
+    return rows.map(x=>{
+      const y=Number(String(x.date).slice(0,4));
+      const fyStart=String(x.date).slice(5,10)>="04-01"?y:y-1;
+      const key=String(fyStart);
+      counters[key]=(counters[key]||0)+1;
+      const fyLabel=String(fyStart)+"-"+String(fyStart+1).slice(-2);
+      return {...x,billNo:"LUB-"+fyLabel+"-"+String(counters[key]).padStart(4,"0")};
+    }).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.id).localeCompare(String(a.id)));
   },[data?.credits,data?.lubricantCashSales]);
   const billPageCount=Math.max(1,Math.ceil(bills.length/PAGE_SIZE));
   const visibleBills=bills.slice(billPage*PAGE_SIZE,(billPage+1)*PAGE_SIZE);
   useEffect(()=>{setBillPage(p=>Math.min(p,billPageCount-1));},[billPageCount]);
 
   const printLubricantBill=x=>{
-    const w=window.open("","_blank","width=850,height=900");
+    const gstRate=num(x.gstRate)>0?num(x.gstRate):18;
+    const total=round2(x.amount);
+    const taxable=round2(total*100/(100+gstRate));
+    const tax=round2(total-taxable);
+    const cgst=round2(tax/2), sgst=round2(tax-cgst);
+    const rate=x.qty>0?round2(total/x.qty):0;
+    const w=window.open("","_blank","width=900,height=1000");
     if(!w){window.alert("Print window blocked है. Chrome में pop-ups Allow करें.");return;}
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Lubricant Bill ${x.billNo}</title><style>body{font-family:Arial;padding:28px;color:#111}.paper{max-width:760px;margin:auto;border:1px solid #aaa;padding:25px}h1,h2{text-align:center}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #aaa;padding:8px;font-size:12px}th{background:#f3f3f3}.total{text-align:right;font-size:18px;font-weight:800;margin-top:14px}</style></head><body><div class="paper"><h1>SATAT FILLING STATION</h1><h2>LUBRICANT SALES BILL</h2><p><b>Bill No.:</b> ${x.billNo} &nbsp;&nbsp; <b>Date:</b> ${dateText(x.date)}</p><p><b>Party:</b> ${x.party}<br><b>Payment:</b> ${x.payment}</p><table><tr><th>Product</th><th>Qty</th><th>Amount</th></tr><tr><td>${x.product}</td><td>${x.qty.toFixed(2)} L</td><td>${money(x.amount)}</td></tr></table><div class="total">Grand Total: ${money(x.amount)}</div><p>GST as recorded in Lubricant Sale · Fuel billing से अलग bill.</p><p style="margin-top:60px;text-align:right">Authorized Signatory</p></div></body></html>`);
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${x.billNo}</title><style>
+      body{font-family:Arial,sans-serif;padding:24px;color:#111}.paper{max-width:820px;margin:auto;border:1px solid #222;padding:24px}
+      h1{text-align:center;margin:0 0 4px;font-size:24px}h2{text-align:center;margin:0 0 18px;font-size:16px}.meta{display:grid;grid-template-columns:1fr 1fr}
+      .meta>div{padding:9px;border:1px solid #555}.meta>div+div{border-left:0}table{width:100%;border-collapse:collapse;margin-top:16px}
+      th,td{border:1px solid #555;padding:8px;font-size:12px}th{background:#eee}.num{text-align:right}.total{font-size:18px;font-weight:800;text-align:right;margin-top:14px}
+      .taxbox{margin-top:14px;border:1px solid #555;padding:10px}.sign{text-align:right;margin-top:60px;font-weight:700}@media print{body{padding:0}.paper{border:0}}
+    </style></head><body><div class="paper">
+      <h1>SATAT FILLING STATION</h1><h2>TAX INVOICE — LUBRICANT / MOBILE OIL</h2>
+      <div style="text-align:center;font-size:12px"><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05<br>DEALER - HINDUSTAN PETROLEUM CORP. LTD.<br>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div>
+      <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
+      <table><thead><tr><th>Product</th><th>Qty (L)</th><th>Rate (Incl. GST)</th><th>Taxable Value</th><th>GST 18%</th><th>Total</th></tr></thead>
+      <tbody><tr><td>${x.product}</td><td class="num">${x.qty.toFixed(2)}</td><td class="num">${money(rate)}</td><td class="num">${money(taxable)}</td><td class="num">${money(tax)}</td><td class="num">${money(total)}</td></tr></tbody></table>
+      <div class="taxbox"><b>GST Break-up</b><br>Taxable Value: ${money(taxable)}<br>CGST @ 9%: ${money(cgst)}<br>SGST @ 9%: ${money(sgst)}<br>IGST @ 0%: ₹0.00</div>
+      <div class="total">Grand Total: ${money(total)}</div>
+      <div style="margin-top:8px;font-size:12px"><b>Amount in words:</b> Rupees ${Math.round(total).toLocaleString("en-IN")} Only</div>
+      <div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div>
+    </div></body></html>`);
     w.document.close();w.focus();w.print();
   };
 
@@ -215,7 +248,7 @@ export function Fuel15DayBilling({data}) {
     <section className="panel" style={{marginTop:18}}>
       <div className="section-title"><div><h3>🛢️ Lubricant Sales Bills</h3><small>Lubricant Credit + Cash/UPI sales अलग bill register में. Fuel Bill No. 304–668 numbering को नहीं बदला गया.</small></div></div>
       <div style={{overflowX:"auto"}}><table className="data-table" style={{width:"100%",minWidth:900}}><thead><tr><th>Bill / Parchi</th><th>Date</th><th>Party</th><th>Product</th><th>Qty</th><th>Payment</th><th>Total</th><th>Action</th></tr></thead><tbody>
-        {lubricantBills.map(x=><tr key={x.id+"-"+x.date}><td><b>{x.billNo}</b></td><td>{dateText(x.date)}</td><td>{x.party}</td><td>{x.product}</td><td>{x.qty.toFixed(2)} L</td><td>{x.payment}</td><td><b>{money(x.amount)}</b></td><td><button type="button" className="btn small" onClick={()=>window.alert("Lubricant Bill "+x.billNo+"\nDate: "+dateText(x.date)+"\nParty: "+x.party+"\nProduct: "+x.product+"\nQty: "+x.qty.toFixed(2)+" L\nPayment: "+x.payment+"\nTotal: "+money(x.amount))}>View</button>{" "}<button type="button" className="btn small" onClick={()=>printLubricantBill(x)}>Print</button></td></tr>)}
+        {lubricantBills.map(x=><tr key={x.id+"-"+x.date}><td><b>{x.billNo}</b></td><td>{dateText(x.date)}</td><td>{x.party}</td><td>{x.product}</td><td>{x.qty.toFixed(2)} L</td><td>{x.payment}</td><td><b>{money(x.amount)}</b></td><td><button type="button" className="btn small" onClick={()=>printLubricantBill(x)}>View / GST Bill</button>{" "}<button type="button" className="btn small" onClick={()=>printLubricantBill(x)}>Print</button></td></tr>)}
         {!lubricantBills.length&&<tr><td colSpan="8" style={{textAlign:"center",padding:20,color:"#64748b"}}>अभी कोई Lubricant Credit/Cash Sale bill नहीं मिला।</td></tr>}
       </tbody></table></div>
     </section>
