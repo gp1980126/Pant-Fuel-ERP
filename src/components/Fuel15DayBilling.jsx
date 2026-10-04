@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import historicalDsr from "../data/dsr_apr_jul_2026.json";
 import { authoritativeSalesRows, todayDate } from "../core/pumpDomain";
 
@@ -119,9 +119,29 @@ function buildLiveBills(data) {
 
 export function Fuel15DayBilling({data}) {
   const [selected,setSelected]=useState(null);
+  const [billPage,setBillPage]=useState(0);
+  const PAGE_SIZE=25;
   const bills=useMemo(()=>[...buildHistoricalBills(),...buildLiveBills(data)], [data]);
   const totalAmount=bills.reduce((s,b)=>s+b.total,0);
   const liveBills=bills.filter(b=>b.type==="DAILY_AUTO");
+  const lubricantBills=useMemo(()=>{
+    const credit=(Array.isArray(data?.credits)?data.credits:[])
+      .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT")
+      .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),billNo:String(x.parchiNo||x.invoiceNo||x.id||"—"),party:String(x.party||"Credit Party"),product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:"CREDIT",parchiNo:String(x.parchiNo||"")}));
+    const cash=(Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[])
+      .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),billNo:String(x.invoiceNo||x.id||"—"),party:"CASH SALE",product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:String(x.paymentMode||"CASH").toUpperCase(),parchiNo:""}));
+    return [...credit,...cash].filter(x=>x.date).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.id).localeCompare(String(a.id)));
+  },[data?.credits,data?.lubricantCashSales]);
+  const billPageCount=Math.max(1,Math.ceil(bills.length/PAGE_SIZE));
+  const visibleBills=bills.slice(billPage*PAGE_SIZE,(billPage+1)*PAGE_SIZE);
+  useEffect(()=>{setBillPage(p=>Math.min(p,billPageCount-1));},[billPageCount]);
+
+  const printLubricantBill=x=>{
+    const w=window.open("","_blank","width=850,height=900");
+    if(!w){window.alert("Print window blocked है. Chrome में pop-ups Allow करें.");return;}
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Lubricant Bill ${x.billNo}</title><style>body{font-family:Arial;padding:28px;color:#111}.paper{max-width:760px;margin:auto;border:1px solid #aaa;padding:25px}h1,h2{text-align:center}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #aaa;padding:8px;font-size:12px}th{background:#f3f3f3}.total{text-align:right;font-size:18px;font-weight:800;margin-top:14px}</style></head><body><div class="paper"><h1>SATAT FILLING STATION</h1><h2>LUBRICANT SALES BILL</h2><p><b>Bill No.:</b> ${x.billNo} &nbsp;&nbsp; <b>Date:</b> ${dateText(x.date)}</p><p><b>Party:</b> ${x.party}<br><b>Payment:</b> ${x.payment}</p><table><tr><th>Product</th><th>Qty</th><th>Amount</th></tr><tr><td>${x.product}</td><td>${x.qty.toFixed(2)} L</td><td>${money(x.amount)}</td></tr></table><div class="total">Grand Total: ${money(x.amount)}</div><p>GST as recorded in Lubricant Sale · Fuel billing से अलग bill.</p><p style="margin-top:60px;text-align:right">Authorized Signatory</p></div></body></html>`);
+    w.document.close();w.focus();w.print();
+  };
 
   const printBill=b=>{
     const fuelRows=["MS","HSD"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=>{
@@ -174,14 +194,31 @@ export function Fuel15DayBilling({data}) {
     <div style={{overflowX:"auto"}}>
       <table className="data-table" style={{width:"100%",minWidth:1050}}>
         <thead><tr><th>Bill No.</th><th>Date</th><th>Party / Type</th><th>Payment</th><th>MS Qty</th><th>HSD Qty</th><th>Credit</th><th>Cash</th><th>Total</th><th>Action</th></tr></thead>
-        <tbody>{bills.map((b,i)=><tr key={b.billNo+"-"+b.date}>
+        <tbody>{visibleBills.map((b,i)=><tr key={b.billNo+"-"+b.date}>
           <td><b>{b.billNo}</b></td><td>{dateText(b.date)}</td><td>{b.party}</td>
           <td><span style={{padding:"3px 7px",borderRadius:99,background:b.creditAmount?"#eef2ff":"#ecfdf3",color:b.creditAmount?"#3730a3":"#166534",fontWeight:800,fontSize:10}}>{b.payment.toUpperCase()}</span></td>
           <td>{b.sale.MS.qty.toFixed(2)}</td><td>{b.sale.HSD.qty.toFixed(2)}</td><td>{money(b.creditAmount)}</td><td>{money(b.cashAmount)}</td><td><b>{money(b.total)}</b></td>
-          <td><button type="button" className="btn small" onClick={()=>setSelected(i)}>View</button>{" "}<button type="button" className="btn small" onClick={()=>printBill(b)}>Print</button></td>
+          <td><button type="button" className="btn small" onClick={()=>setSelected(billPage*PAGE_SIZE+i)}>View</button>{" "}<button type="button" className="btn small" onClick={()=>printBill(b)}>Print</button></td>
         </tr>)}</tbody>
       </table>
     </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginTop:12,flexWrap:"wrap"}}>
+        <span style={{fontSize:12,color:"#64748b"}}>Showing {bills.length?billPage*PAGE_SIZE+1:0}–{Math.min((billPage+1)*PAGE_SIZE,bills.length)} of {bills.length} fuel bills</span>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <button type="button" className="btn small" disabled={billPage===0} onClick={()=>setBillPage(p=>Math.max(0,p-1))}>← Previous</button>
+          <b style={{fontSize:12}}>Page {billPage+1} / {billPageCount}</b>
+          <button type="button" className="btn small" disabled={billPage>=billPageCount-1} onClick={()=>setBillPage(p=>Math.min(billPageCount-1,p+1))}>Next →</button>
+        </div>
+      </div>
+
+
+    <section className="panel" style={{marginTop:18}}>
+      <div className="section-title"><div><h3>🛢️ Lubricant Sales Bills</h3><small>Lubricant Credit + Cash/UPI sales अलग bill register में. Fuel Bill No. 304–668 numbering को नहीं बदला गया.</small></div></div>
+      <div style={{overflowX:"auto"}}><table className="data-table" style={{width:"100%",minWidth:900}}><thead><tr><th>Bill / Parchi</th><th>Date</th><th>Party</th><th>Product</th><th>Qty</th><th>Payment</th><th>Total</th><th>Action</th></tr></thead><tbody>
+        {lubricantBills.map(x=><tr key={x.id+"-"+x.date}><td><b>{x.billNo}</b></td><td>{dateText(x.date)}</td><td>{x.party}</td><td>{x.product}</td><td>{x.qty.toFixed(2)} L</td><td>{x.payment}</td><td><b>{money(x.amount)}</b></td><td><button type="button" className="btn small" onClick={()=>window.alert("Lubricant Bill "+x.billNo+"\nDate: "+dateText(x.date)+"\nParty: "+x.party+"\nProduct: "+x.product+"\nQty: "+x.qty.toFixed(2)+" L\nPayment: "+x.payment+"\nTotal: "+money(x.amount))}>View</button>{" "}<button type="button" className="btn small" onClick={()=>printLubricantBill(x)}>Print</button></td></tr>)}
+        {!lubricantBills.length&&<tr><td colSpan="8" style={{textAlign:"center",padding:20,color:"#64748b"}}>अभी कोई Lubricant Credit/Cash Sale bill नहीं मिला।</td></tr>}
+      </tbody></table></div>
+    </section>
 
     {selected!==null && bills[selected] && <div onClick={()=>setSelected(null)} style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.48)",display:"flex",alignItems:"center",justifyContent:"center",padding:18}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"min(900px,96vw)",maxHeight:"90vh",overflow:"auto",padding:20,border:"1px solid #dbe3ec",borderRadius:14,background:"#fff",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
