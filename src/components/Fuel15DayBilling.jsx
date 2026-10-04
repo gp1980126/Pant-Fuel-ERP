@@ -46,6 +46,12 @@ function buildHistoricalBills(data) {
   let no = 304;
   for (let date="2026-04-01"; date<="2026-07-31"; date=addDays(date)) {
     const sale = daily.get(date) || {MS:emptyFuel(),HSD:emptyFuel(),CNG:emptyFuel()};
+    // Use the StationMitra rate/rateHistory for the selected date, not a hard-coded rate.
+    for (const fuel of ["MS","HSD","CNG"]) {
+      const rate = getRate(data, fuel, date);
+      sale[fuel].rate = rate;
+      sale[fuel].amount = round2(sale[fuel].qty * rate);
+    }
     const total = round2(sale.MS.amount + sale.HSD.amount + sale.CNG.amount);
     out.push({
       billNo:String(no++), date, type:"HISTORICAL_CASH",
@@ -110,7 +116,7 @@ function buildLiveBills(data) {
       HSD:Math.min(sale.HSD.qty,creditQty.HSD), CNG:Math.min(sale.CNG.qty,creditQty.CNG)
     };
     const total=round2(sale.MS.amount+sale.HSD.amount+sale.CNG.amount);
-    const creditAmount=round2(creditAmountByFuel.MS+creditAmountByFuel.HSD);
+    const creditAmount=round2(creditAmountByFuel.MS+creditAmountByFuel.HSD+creditAmountByFuel.CNG);
     const cashAmount=round2(Math.max(0,total-creditAmount));
 
     out.push({
