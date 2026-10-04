@@ -64,13 +64,13 @@ function buildLiveBills(data) {
   const sales = authoritativeSalesRows(data || {}).filter(r => {
     const date=String(r?.date||"");
     const fuel=String(r?.fuel||"").toUpperCase();
-    return date>=START && date<=END && MS_HSD.has(fuel);
+    return date>=START && date<=END && (MS_HSD.has(fuel) || fuel==="CNG");
   });
 
   const saleByDate = new Map();
   sales.forEach(r => {
     const date=String(r.date), fuel=String(r.fuel).toUpperCase();
-    if(!saleByDate.has(date)) saleByDate.set(date,{MS:emptyFuel(),HSD:emptyFuel()});
+    if(!saleByDate.has(date)) saleByDate.set(date,{MS:emptyFuel(),HSD:emptyFuel(),CNG:emptyFuel()});
     saleByDate.get(date)[fuel].qty += num(r.qty);
     saleByDate.get(date)[fuel].amount += num(r.amount);
   });
@@ -78,7 +78,7 @@ function buildLiveBills(data) {
   const creditByDate = new Map();
   (Array.isArray(data?.credits) ? data.credits : []).forEach(c => {
     const date=String(c?.date||""), fuel=String(c?.fuel||"").toUpperCase();
-    if(date<START || date>END || !MS_HSD.has(fuel)) return;
+    if(date<START || date>END || !(MS_HSD.has(fuel) || fuel==="CNG")) return;
     if(!creditByDate.has(date)) creditByDate.set(date,[]);
     creditByDate.get(date).push({
       party:String(c?.party||"Credit Party").trim() || "Credit Party",
@@ -90,20 +90,20 @@ function buildLiveBills(data) {
   const out=[];
   let no=426;
   for(let date=START; date<=END; date=addDays(date)){
-    const sale=saleByDate.get(date)||{MS:emptyFuel(),HSD:emptyFuel()};
+    const sale=saleByDate.get(date)||{MS:emptyFuel(),HSD:emptyFuel(),CNG:emptyFuel()};
     const rows=creditByDate.get(date)||[];
-    const creditRaw={MS:0,HSD:0}, creditQty={MS:0,HSD:0};
+    const creditRaw={MS:0,HSD:0,CNG:0}, creditQty={MS:0,HSD:0,CNG:0};
     rows.forEach(c=>{creditRaw[c.fuel]+=c.amount;creditQty[c.fuel]+=c.qty;});
 
     const creditAmountByFuel={
       MS:Math.min(sale.MS.amount,creditRaw.MS),
-      HSD:Math.min(sale.HSD.amount,creditRaw.HSD)
+      HSD:Math.min(sale.HSD.amount,creditRaw.HSD), CNG:Math.min(sale.CNG.amount,creditRaw.CNG)
     };
     const creditQtyUsedByFuel={
       MS:Math.min(sale.MS.qty,creditQty.MS),
-      HSD:Math.min(sale.HSD.qty,creditQty.HSD)
+      HSD:Math.min(sale.HSD.qty,creditQty.HSD), CNG:Math.min(sale.CNG.qty,creditQty.CNG)
     };
-    const total=round2(sale.MS.amount+sale.HSD.amount);
+    const total=round2(sale.MS.amount+sale.HSD.amount+sale.CNG.amount);
     const creditAmount=round2(creditAmountByFuel.MS+creditAmountByFuel.HSD);
     const cashAmount=round2(Math.max(0,total-creditAmount));
 
@@ -116,7 +116,7 @@ function buildLiveBills(data) {
       creditQtyUsedByFuel,
       cashAmountByFuel:{
         MS:Math.max(0,sale.MS.amount-creditAmountByFuel.MS),
-        HSD:Math.max(0,sale.HSD.amount-creditAmountByFuel.HSD)
+        HSD:Math.max(0,sale.HSD.amount-creditAmountByFuel.HSD), CNG:Math.max(0,sale.CNG.amount-creditAmountByFuel.CNG)
       },
       total
     });
@@ -268,7 +268,7 @@ export function Fuel15DayBilling({data}) {
     <div style={{padding:"10px 12px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,fontSize:12,marginBottom:12,lineHeight:1.6}}>
       <b>01/08/2026 से Auto Rule:</b> हर calendar day का MS + HSD meter sale एक consolidated bill में आएगा.
       उसी दिन की <b>Credit Sale</b> उसमें Credit के रूप में घटेगी और बाकी <b>Cash</b> रहेगा.
-      Credit Party, Parchi No., Fuel और Qty अलग से View/Print में दिखेंगे. <b>01/08/2026 से CNG इस historical billing में शामिल नहीं है; August onward CNG software data से रहेगा.</b>.
+      Credit Party, Parchi No., Fuel और Qty अलग से View/Print में दिखेंगे. <b>01/08/2026 से CNG भी software के daily sale data से हर दिन शामिल होगा.</b>.
       यह screen केवल data पढ़ती है; कोई billing record Cloud में save नहीं करती.
     </div>
 
@@ -309,7 +309,7 @@ export function Fuel15DayBilling({data}) {
             {["MS","HSD","CNG"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=><tr key={f}><td>{f==="MS"?"MS (Petrol)":f==="HSD"?"HSD (Diesel)":"CNG"}</td><td>{b.sale[f].qty.toFixed(2)} L</td><td>{money(b.sale[f].qty?b.sale[f].amount/b.sale[f].qty:0)}</td><td>{money(b.sale[f].amount)}</td><td>{money(b.creditAmountByFuel[f])}</td><td>{money(b.cashAmountByFuel[f])}</td></tr>)}
           </tbody></table>
           <div style={{textAlign:"right",fontSize:18,fontWeight:900,marginTop:12}}>Grand Total: {money(b.total)}</div>
-          <div style={{marginTop:10,fontSize:11,color:"#475569"}}>Payment: <b>Cash {money(b.cashAmount)} + Credit {money(b.creditAmount)} = {money(b.total)}</b> · CNG: <b>Excluded</b> · GST: <b>Not Applicable</b></div>
+          <div style={{marginTop:10,fontSize:11,color:"#475569"}}>Payment: <b>Cash {money(b.cashAmount)} + Credit {money(b.creditAmount)} = {money(b.total)}</b> · CNG: <b>Included</b> · GST: <b>Not Applicable</b></div>
           {b.creditRows.length>0 && <><h4 style={{margin:"18px 0 8px"}}>Credit Sale Included — Party Wise</h4><table className="data-table" style={{width:"100%"}}><thead><tr><th>Party</th><th>Parchi No.</th><th>Fuel</th><th>Qty</th><th>Credit Amount</th></tr></thead><tbody>
             {b.creditRows.map((c,j)=><tr key={String(c.parchiNo)+"-"+j}><td>{c.party}</td><td>{c.parchiNo||"—"}</td><td>{c.fuel}</td><td>{c.qty.toFixed(2)} L</td><td>{money(c.amount)}</td></tr>)}
           </tbody></table></>}
