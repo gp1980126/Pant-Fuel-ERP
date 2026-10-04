@@ -187,7 +187,8 @@ export function Fuel15DayBilling({data}) {
     const total=round2(x.amount);
     const taxable=round2(total*100/(100+gstRate));
     const tax=round2(total-taxable);
-    const halfTax=round2(tax/2);\n    const cgst=halfTax, sgst=halfTax;\n    const taxRounding=round2(tax-(cgst+sgst));
+    const halfTax=round2(tax/2);
+    const cgst=halfTax, sgst=halfTax;\n    const taxRounding=round2(tax-(cgst+sgst));
     const rate=x.qty>0?round2(total/x.qty):0;
     const hsn=x.hsnCode||lubricantHsnFor(x)||"Not available";
     const partyInfo=x.partyInfo||lubricantPartyInfo(x);
