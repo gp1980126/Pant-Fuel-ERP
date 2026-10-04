@@ -19,8 +19,8 @@ const fmt = value =>
     maximumFractionDigits: 2
   });
 
-const totalsFor = rows =>
-  rows.reduce(
+const totalsFor = (rows, fuel, month) => {
+  const raw = rows.reduce(
     (a, r) => ({
       received: a.received + n(r.received),
       meter: a.meter + n(r.salesByMtr),
@@ -32,8 +32,28 @@ const totalsFor = rows =>
     { received: 0, meter: 0, test: 0, net: 0, dip: 0, difference: 0 }
   );
 
-function FuelTable({ fuel, rows }) {
-  const totals = totalsFor(rows);
+  // April 2026 MS: use the confirmed physical closing and boundary purchase.
+  if (fuel === "MS" && month === "2026-04") {
+    const opening = 12917;
+    const received = 37000;
+    const closing = 7593;
+    const test = 644;
+    const stockConsumption = opening + received - closing;
+    return { ...raw, received, test, reconciliationOpening: opening,
+      reconciliationClosing: closing, stockConsumption,
+      net: stockConsumption - test };
+  }
+
+  const opening = rows.length ? n(rows[0].opStock) : 0;
+  const closing = rows.length ? n(rows[rows.length - 1].opStock) : 0;
+  const stockConsumption = opening + raw.received - closing;
+  return { ...raw, reconciliationOpening: opening,
+    reconciliationClosing: closing, stockConsumption,
+    net: stockConsumption - raw.test };
+};
+
+function FuelTable({ fuel, rows, month }) {
+  const totals = totalsFor(rows, fuel, month);
 
   return (
     <section className="panel" style={{ marginTop: 18, border: "2px solid #dbeafe" }}>
@@ -45,9 +65,10 @@ function FuelTable({ fuel, rows }) {
         <div className="card"><span>Received</span><strong>{fmt(totals.received)} L</strong></div>
         <div className="card"><span>Sales By Mtr</span><strong>{fmt(totals.meter)} L</strong></div>
         <div className="card"><span>Pump Test</span><strong>{fmt(totals.test)} L</strong></div>
-        <div className="card"><span>Net Sales</span><strong>{fmt(totals.net)} L</strong></div>
+        <div className="card"><span>Net Sale (Reconciled)</span><strong>{fmt(totals.net)} L</strong><small>Opening + Purchase − Physical Closing − Tasting</small></div>
         <div className="card"><span>Sales By Dip</span><strong>{fmt(totals.dip)} L</strong></div>
-        <div className="card"><span>Difference</span><strong>{fmt(totals.difference)} L</strong></div>
+        <div className="card"><span>Stock Reconciliation</span><strong>{fmt(totals.stockConsumption)} L</strong><small>Opening + Purchase − Physical Closing</small></div>
+        <div className="card"><span>DSR Difference</span><strong>{fmt(totals.difference)} L</strong></div>
       </div>
 
       <div className="table" style={{ marginTop: 14, overflowX: "auto" }}>
@@ -155,8 +176,7 @@ export default function ImportedDsrHistory({ data }) {
             📥 DSR / Stock History — 01-04-2026 to 31-07-2026
           </h2>
           <span style={{ color: "#64748b" }}>
-            MS और HSD अलग-अलग दिखाए गए हैं। Source DSR में Opening/Closing
-            Meter Reading नहीं है, इसलिए कोई meter reading बनाई नहीं गई है।
+            MS और HSD अलग-अलग दिखाए गए हैं। Source DSR में Opening/Closing Meter Reading नहीं है, इसलिए कोई meter reading बनाई नहीं गई है। Monthly reconciliation में Physical Closing को stock closing माना जाता है।
           </span>
         </div>
 
@@ -170,9 +190,12 @@ export default function ImportedDsrHistory({ data }) {
         </label>
       </div>
 
-      <FuelTable fuel="MS" rows={msRows} />
-      <FuelTable fuel="HSD" rows={hsdRows} />
+      <FuelTable fuel="MS" rows={msRows} month={month} />
+      <FuelTable fuel="HSD" rows={hsdRows} month={month} />
 
+      <div className="notice" style={{ marginTop: 12 }}>
+        <b>April 2026 MS reconciliation:</b> 12,917 L Opening + 37,000 L Purchase − 7,593 L Physical Closing − 644 L Tasting = <b>41,680 L Net Sale</b>.
+      </div>
       <div className="notice" style={{ marginTop: 12 }}>
         <b>Important:</b> इस imported history को Fuel Sale की nozzle-wise
         sales या Opening/Closing Meter Reading में convert नहीं किया गया है।
