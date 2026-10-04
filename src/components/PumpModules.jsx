@@ -7783,7 +7783,7 @@ function updateFuelRates() {
       ================================================= */}
       <section className="panel" style={{ marginTop: 18 }}>
         <h2>Daily Stock Reconciliation — MS / HSD</h2>
-        <p>01-08-2026 से MS/HSD की primary reconciliation physical stock के आधार पर है: <b>Opening + Purchase − Physical Closing = Stock Consumption</b>. इसके बाद <b>Net Sale = Stock Consumption − Pump Test</b>. Book Closing और DSR Difference को Sale नहीं माना जाता। CNG इस reconciliation और DIP से बाहर है.</p>
+        <p>01-08-2026 से MS/HSD की primary reconciliation physical stock के आधार पर है: <b>Opening + Purchase − Physical Closing = Stock Consumption</b>. इसके बाद <b>Net Sale = Stock Consumption − Pump Test</b>. DSR Difference को Sale नहीं माना जाता। CNG इस reconciliation और DIP से बाहर है.</p>
         {["MS","HSD"].map(fuel => {
           const periodRows = dailyStockRows.filter(r => r.date >= START_DATE);
           const opening = periodRows.length ? n(periodRows[0].opening[fuel]) : 0;
@@ -7805,7 +7805,7 @@ function updateFuelRates() {
                 <thead>
                   <tr>
                     <th>Date</th><th>Opp. Stock</th><th>Received</th><th>Total Stock</th>
-                    <th>Sales By Mtr (Gross)</th><th>Pump Test</th><th>Net Sale (After Testing)</th><th>Cumm. Net Sale</th><th>Sales By Dip</th><th>Book Closing</th><th>Physical Closing</th><th>Short / Excess</th>
+                    <th>Sales By Mtr (Gross)</th><th>Pump Test</th><th>Net Sale (After Testing)</th><th>Cumm. Net Sale</th><th>Sales By Dip</th><th>Physical Closing</th><th>Short / Excess</th>
                   </tr>
                 </thead>
                 <tbody>
