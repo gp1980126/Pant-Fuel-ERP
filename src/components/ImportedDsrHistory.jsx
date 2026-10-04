@@ -65,9 +65,9 @@ function FuelTable({ fuel, rows, month }) {
         <div className="card"><span>Received</span><strong>{fmt(totals.received)} L</strong></div>
         <div className="card"><span>Sales By Mtr</span><strong>{fmt(totals.meter)} L</strong></div>
         <div className="card"><span>Pump Test</span><strong>{fmt(totals.test)} L</strong></div>
-        <div className="card"><span>Net Sale (Reconciled)</span><strong>{fmt(totals.net)} L</strong><small>Opening + Purchase − Physical Closing − Tasting</small></div>
+        <div className="card"><span>Net Sale (Reconciled)</span><strong>{fmt(totals.net)} L</strong><small>Opening + Purchase − Pump Test</small></div>
         <div className="card"><span>Sales By Dip</span><strong>{fmt(totals.dip)} L</strong></div>
-        <div className="card"><span>Stock Reconciliation</span><strong>{fmt(totals.stockConsumption)} L</strong><small>Opening + Purchase − Physical Closing</small></div>
+        <div className="card"><span>Closing Balance</span><strong>{fmt(totals.reconciliationOpening + totals.received - totals.net - totals.test)} L</strong><small>Opening + Purchase − Net Sale − Pump Test</small></div>
         <div className="card"><span>DSR Difference</span><strong>{fmt(totals.difference)} L</strong></div>
       </div>
 
@@ -176,7 +176,7 @@ export default function ImportedDsrHistory({ data }) {
             📥 DSR / Stock History — 01-04-2026 to 31-07-2026
           </h2>
           <span style={{ color: "#64748b" }}>
-            MS और HSD अलग-अलग दिखाए गए हैं। Source DSR में Opening/Closing Meter Reading नहीं है, इसलिए कोई meter reading बनाई नहीं गई है। Monthly reconciliation में Physical Closing को stock closing माना जाता है।
+            MS और HSD अलग-अलग दिखाए गए हैं। Source DSR में Opening/Closing Meter Reading नहीं है, इसलिए कोई meter reading बनाई नहीं गई है। Stock logic: Opening + Purchase − Net Sale − Pump Test = Closing Balance.
           </span>
         </div>
 
@@ -194,7 +194,7 @@ export default function ImportedDsrHistory({ data }) {
       <FuelTable fuel="HSD" rows={hsdRows} month={month} />
 
       <div className="notice" style={{ marginTop: 12 }}>
-        <b>April 2026 MS reconciliation:</b> 12,917 L Opening + 37,000 L Purchase − 7,593 L Physical Closing − 644 L Tasting = <b>41,680 L Net Sale</b>.
+        <b>April 2026 MS reconciliation:</b> 12,917 L Opening + 37,000 L Purchase − 41,680 L Net Sale − 644 L Pump Test = <b>7,593 L Closing Balance</b>.
       </div>
       <div className="notice" style={{ marginTop: 12 }}>
         <b>Important:</b> इस imported history को Fuel Sale की nozzle-wise
