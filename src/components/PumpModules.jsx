@@ -7831,7 +7831,6 @@ function updateFuelRates() {
                       <td><b>{net.toFixed(2)} L</b></td>
                       <td>{cumulativeFuel.toFixed(2)} L</td>
                       <td>{salesByDip === null ? "—" : salesByDip.toFixed(2) + " L"}</td>
-                      <td>{bookClosing.toFixed(2)} L</td>
                     </tr>;
                   })}
                 </tbody>
