@@ -124,17 +124,32 @@ export function Fuel15DayBilling({data}) {
   const bills=useMemo(()=>[...buildHistoricalBills(),...buildLiveBills(data)], [data]);
   const totalAmount=bills.reduce((s,b)=>s+b.total,0);
   const liveBills=bills.filter(b=>b.type==="DAILY_AUTO");
+  const lubricantHsnFor=(row)=>{
+    const direct=String(row?.hsnCode||row?.hsn||"").trim();
+    if(direct) return direct;
+    const product=String(row?.productName||"").trim().toLowerCase();
+    if(!product) return "";
+    const purchases=Array.isArray(data?.purchases)?data.purchases:[];
+    for(const p of purchases){
+      if(String(p?.fuel||"").toUpperCase()!=="LUBRICANT") continue;
+      const items=Array.isArray(p?.items)?p.items:[];
+      const item=items.find(it=>String(it?.description||"").trim().toLowerCase()===product);
+      if(item?.hsn) return String(item.hsn).trim();
+      if(String(p?.productName||"").trim().toLowerCase()===product && p?.hsn) return String(p.hsn).trim();
+    }
+    return "";
+  };
   const lubricantBills=useMemo(()=>{
     const rows=[
       ...(Array.isArray(data?.credits)?data.credits:[])
         .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT")
-        .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),party:String(x.party||"Credit Party"),product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:"CREDIT",parchiNo:String(x.parchiNo||""),gstRate:num(x.gstRate)>0?num(x.gstRate):18,kind:"CREDIT"})),
+        .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),party:String(x.party||"Credit Party"),product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:"CREDIT",parchiNo:String(x.parchiNo||""),gstRate:num(x.gstRate)>0?num(x.gstRate):18,hsnCode:String(x.hsnCode||x.hsn||"").trim(),kind:"CREDIT"})),
       ...(Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[])
-        .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),party:"CASH CUSTOMER",product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:String(x.paymentMode||"CASH").toUpperCase(),parchiNo:"",gstRate:num(x.gstRate)>0?num(x.gstRate):18,kind:"CASH"}))
+        .map(x=>({id:String(x.id||x.transactionId||""),date:String(x.date||""),party:"CASH CUSTOMER",product:String(x.productName||"Lubricant"),qty:num(x.qty),amount:round2(x.amount),payment:String(x.paymentMode||"CASH").toUpperCase(),parchiNo:"",gstRate:num(x.gstRate)>0?num(x.gstRate):18,hsnCode:String(x.hsnCode||x.hsn||"").trim(),kind:"CASH"}))
     ].filter(x=>x.date);
     rows.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.id).localeCompare(String(b.id)));
     const counters={};
-    return rows.map(x=>{
+    return rows.map(x=>{\n      x.hsnCode=lubricantHsnFor(x);
       const y=Number(String(x.date).slice(0,4));
       const fyStart=String(x.date).slice(5,10)>="04-01"?y:y-1;
       const key=String(fyStart);
@@ -153,7 +168,7 @@ export function Fuel15DayBilling({data}) {
     const taxable=round2(total*100/(100+gstRate));
     const tax=round2(total-taxable);
     const cgst=round2(tax/2), sgst=round2(tax-cgst);
-    const rate=x.qty>0?round2(total/x.qty):0;
+    const rate=x.qty>0?round2(total/x.qty):0;\n    const hsn=x.hsnCode||lubricantHsnFor(x)||"Not available";
     const w=window.open("","_blank","width=900,height=1000");
     if(!w){window.alert("Print window blocked है. Chrome में pop-ups Allow करें.");return;}
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tax Invoice ${x.billNo}</title><style>
@@ -166,7 +181,7 @@ export function Fuel15DayBilling({data}) {
       <h1>SATAT FILLING STATION</h1><h2>TAX INVOICE — LUBRICANT / MOBILE OIL</h2>
       <div style="text-align:center;font-size:12px"><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05<br>DEALER - HINDUSTAN PETROLEUM CORP. LTD.<br>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div>
       <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
-      <table><thead><tr><th>Product</th><th>Qty (L)</th><th>Rate (Incl. GST)</th><th>Taxable Value</th><th>GST 18%</th><th>Total</th></tr></thead>
+      <table><thead><tr><th>HSN Code</th><th>Product</th><th>Qty (L)</th><th>Rate (Incl. GST)</th><th>Taxable Value</th><th>GST 18%</th><th>Total</th></tr></thead>
       <tbody><tr><td>${x.product}</td><td class="num">${x.qty.toFixed(2)}</td><td class="num">${money(rate)}</td><td class="num">${money(taxable)}</td><td class="num">${money(tax)}</td><td class="num">${money(total)}</td></tr></tbody></table>
       <div class="taxbox"><b>GST Break-up</b><br>Taxable Value: ${money(taxable)}<br>CGST @ 9%: ${money(cgst)}<br>SGST @ 9%: ${money(sgst)}<br>IGST @ 0%: ₹0.00</div>
       <div class="total">Grand Total: ${money(total)}</div>
