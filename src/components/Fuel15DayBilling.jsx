@@ -140,6 +140,14 @@ export function Fuel15DayBilling({data}) {
     return "";
   };
   const lubricantPartyInfo=(row)=>{
+    const rowName=String(row?.party||"").trim();
+    if(rowName.toLowerCase()==="om guru" || rowName.toLowerCase()==="om guru traders"){
+      return {
+        gstin:"05AFHPJ5165P1Z0",
+        address:"VILL. GAUJAJALI BICHALI, BAREILLY ROAD, HALDWANI, HALDWANI, Uttarakhand, 263139",
+        mobile:""
+      };
+    }
     const name=String(row?.party||"").trim().toLowerCase();
     const parties=Array.isArray(data?.parties)?data.parties:[];
     const p=parties.find(x=>String(x?.name||"").trim().toLowerCase()===name);
@@ -179,7 +187,7 @@ export function Fuel15DayBilling({data}) {
     const total=round2(x.amount);
     const taxable=round2(total*100/(100+gstRate));
     const tax=round2(total-taxable);
-    const cgst=round2(Math.ceil(tax*50)/100), sgst=round2(tax-cgst);
+    const halfTax=round2(tax/2);\n    const cgst=halfTax, sgst=halfTax;\n    const taxRounding=round2(tax-(cgst+sgst));
     const rate=x.qty>0?round2(total/x.qty):0;
     const hsn=x.hsnCode||lubricantHsnFor(x)||"Not available";
     const partyInfo=x.partyInfo||lubricantPartyInfo(x);
@@ -196,10 +204,10 @@ export function Fuel15DayBilling({data}) {
     </style></head><body><div class="paper">
       <h1>SATAT FILLING STATION</h1><h2>TAX INVOICE — LUBRICANT / MOBILE OIL</h2>
       <div style="text-align:center;font-size:12px"><b>GSTIN: 05ABWFS5610D1Z4</b> &nbsp; | &nbsp; State Code: 05<br>DEALER - HINDUSTAN PETROLEUM CORP. LTD.<br>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div>
-      <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}<br><b>HSN Code:</b> ${hsn}<br><b>Party GSTIN:</b> ${partyGstin}<br><b>Party Address:</b> ${partyAddress}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
+      <div class="meta" style="margin-top:16px"><div><b>Bill No.:</b> ${x.billNo}<br><b>Party:</b> ${x.party}<br><b>Parchi No.:</b> ${x.parchiNo||"—"}<br><b>HSN Code:</b> ${hsn}<br><b>Party GSTIN:</b> ${partyGstin}<br><b>Party Address:</b> ${partyAddress}<br><b>Party GSTIN:</b> ${partyGstin}<br><b>Party Address:</b> ${partyAddress}</div><div><b>Bill Date:</b> ${dateText(x.date)}<br><b>Payment:</b> ${x.payment}<br><b>Supply State:</b> Uttarakhand</div></div>
       <table><thead><tr><th>HSN Code</th><th>Product</th><th>Qty (L)</th><th>Rate (Incl. GST)</th><th>Taxable Value</th><th>GST 18%</th><th>Total</th></tr></thead>
       <tbody><tr><td>${hsn}</td><td>${x.product}</td><td class="num">${x.qty.toFixed(2)}</td><td class="num">${money(rate)}</td><td class="num">${money(taxable)}</td><td class="num">${money(tax)}</td><td class="num">${money(total)}</td></tr></tbody></table>
-      <div class="taxbox"><b>GST Break-up</b><br>Taxable Value: ${money(taxable)}<br>CGST @ 9%: ${money(cgst)}<br>SGST @ 9%: ${money(sgst)}<br>IGST @ 0%: ₹0.00</div>
+      <div class="taxbox"><b>GST Break-up</b><br>Taxable Value: ${money(taxable)}<br>CGST @ 9%: ${money(cgst)}<br>SGST @ 9%: ${money(sgst)}<br>Rounding Adjustment: ${money(taxRounding)}<br>IGST @ 0%: ₹0.00</div>
       <div class="total">Grand Total: ${money(total)}</div>
       <div style="margin-top:8px;font-size:12px"><b>Amount in words:</b> Rupees ${Math.round(total).toLocaleString("en-IN")} Only</div>
       <div class="sign">For - SATAT FILLING STATION<br><br>Authorized Signatory</div>
