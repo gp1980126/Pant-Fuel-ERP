@@ -4730,15 +4730,21 @@ export function LubricantManagement({ data, update }) {
   // GST invoice numbering: one continuous chronological series for all lubricant sales.
   // Parchi No. remains separate; the printed Tax Invoice gets a proper software bill number.
   const lubricantInvoiceNo = (row) => {
-    const rows = [
+    const rowDate=String(row?.date||"");
+    const y=Number(rowDate.slice(0,4));
+    const fyStart=Number.isFinite(y) ? (rowDate.slice(5,10)>="04-01" ? y : y-1) : new Date().getFullYear();
+    const fyEnd=fyStart+1;
+    const fyLabel=String(fyStart)+"-"+String(fyEnd).slice(-2);
+    const fyStartDate=fyStart+"-04-01";
+    const fyEndDate=fyEnd+"-03-31";
+    const rows=[
       ...allLubCredits.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT").map(x=>({...x,_kind:"CREDIT"})),
       ...allLubCash.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT").map(x=>({...x,_kind:"CASH"}))
-    ].filter(x=>x?.date).sort((a,b)=>String(a.date).localeCompare(String(b.date)) || String(a.id||"").localeCompare(String(b.id||"")));
+    ].filter(x=>String(x?.date||"")>=fyStartDate && String(x?.date||"")<=fyEndDate)
+     .sort((x,z)=>String(x.date).localeCompare(String(z.date)) || String(x.id||"").localeCompare(String(z.id||"")));
     const idx=rows.findIndex(x=>String(x.id||"")===String(row?.id||""));
-    const y=Number(String(row?.date||"").slice(0,4));
-    const fyStart=String(row?.date||"").slice(5,10)>="04-01" ? y : y-1;
-    const fyLabel=String(fyStart)+"-"+String(fyStart+1).slice(-2);
-    return "LUB-"+fyLabel+"-"+String(idx>=0?idx+1:1).padStart(4,"0");
+    const serial=idx>=0 ? idx+1 : 1;
+    return "LUB-"+fyLabel+"-"+String(serial).padStart(4,"0");
   };
 
   const previousFY = useMemo(()=>{
