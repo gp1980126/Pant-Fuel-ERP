@@ -4727,7 +4727,20 @@ export function LubricantManagement({ data, update }) {
   const allLubPurchases=Array.isArray(data?.purchases)?data.purchases:[];
   const allLubCredits=Array.isArray(data?.credits)?data.credits:[];
   const allLubCash=Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[];
-  // GST invoice numbering: one continuous chronological series for all lubricant sales.\n  // Parchi No. remains separate; the printed Tax Invoice gets a proper software bill number.\n  const lubricantInvoiceNo = (row) => {\n    const rows = [\n      ...allLubCredits.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT").map(x=>({...x,_kind:"CREDIT"})),\n      ...allLubCash.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT").map(x=>({...x,_kind:"CASH"}))\n    ].filter(x=>x?.date).sort((a,b)=>String(a.date).localeCompare(String(b.date)) || String(a.id||"").localeCompare(String(b.id||"")));\n    const idx=rows.findIndex(x=>String(x.id||"")===String(row?.id||""));\n    const y=Number(String(row?.date||"").slice(0,4));\n    const fyStart=String(row?.date||"").slice(5,10)>="04-01" ? y : y-1;\n    const fyLabel=String(fyStart)+"-"+String(fyStart+1).slice(-2);\n    return "LUB-"+fyLabel+"-"+String(idx>=0?idx+1:1).padStart(4,"0");\n  };\n
+  // GST invoice numbering: one continuous chronological series for all lubricant sales.
+  // Parchi No. remains separate; the printed Tax Invoice gets a proper software bill number.
+  const lubricantInvoiceNo = (row) => {
+    const rows = [
+      ...allLubCredits.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT").map(x=>({...x,_kind:"CREDIT"})),
+      ...allLubCash.filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT").map(x=>({...x,_kind:"CASH"}))
+    ].filter(x=>x?.date).sort((a,b)=>String(a.date).localeCompare(String(b.date)) || String(a.id||"").localeCompare(String(b.id||"")));
+    const idx=rows.findIndex(x=>String(x.id||"")===String(row?.id||""));
+    const y=Number(String(row?.date||"").slice(0,4));
+    const fyStart=String(row?.date||"").slice(5,10)>="04-01" ? y : y-1;
+    const fyLabel=String(fyStart)+"-"+String(fyStart+1).slice(-2);
+    return "LUB-"+fyLabel+"-"+String(idx>=0?idx+1:1).padStart(4,"0");
+  };
+
   const previousFY = useMemo(()=>{
     const y=Number(String(selectedFY).slice(0,4));
     return Number.isFinite(y) ? `${y-1}-${String(y).slice(-2)}` : "";
