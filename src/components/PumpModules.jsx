@@ -5707,7 +5707,7 @@ export function LubricantManagement({ data, update }) {
         #stationmitra-lubricant-bill-overlay button{padding:9px 16px;border:0;border-radius:6px;background:#111;color:#fff;font-weight:700;cursor:pointer}
         #stationmitra-lubricant-bill-overlay .bill-paper{background:#fff;color:#111;max-width:900px;margin:0 auto;padding:18px;box-sizing:border-box;font-family:Arial,sans-serif}
         #stationmitra-lubricant-bill-overlay .head{text-align:center;border-bottom:1px solid #111;padding-bottom:12px}
-        #stationmitra-lubricant-bill-overlay .head h1{margin:4px 0;font-size:25px}
+        #stationmitra-lubricant-bill-overlay .head h1{margin:4px 0;font-size:25px}#stationmitra-lubricant-bill-overlay .tax-title{font-size:18px;font-weight:800;letter-spacing:1px;margin-top:8px;border-top:1px solid #111;padding-top:6px}
         #stationmitra-lubricant-bill-overlay .meta{display:grid;grid-template-columns:1fr 1fr}
         #stationmitra-lubricant-bill-overlay .meta>div{padding:10px;border-bottom:1px solid #111}
         #stationmitra-lubricant-bill-overlay .meta>div+div{border-left:1px solid #111}
@@ -5735,7 +5735,7 @@ export function LubricantManagement({ data, update }) {
         <button type="button" data-action="close">✕ Close Bill</button>
       </div>
       <div class="bill-paper">
-        <div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div></div>
+        <div class="head"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 &nbsp; | &nbsp; State Code: 05</b><h1>SATAT FILLING STATION</h1><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div><div class="tax-title">TAX INVOICE</div></div>
         <div class="meta"><div><b>Bill No.:</b> ${esc(invoiceNo||"—")}<br><b>Party / M/s:</b> ${esc(c.party|| (isLubricantCashSale ? "CASH CUSTOMER" : ""))}<br><b>Parchi No.:</b> ${esc(challanNo||"—")}<br><b>HSN Code:</b> ${esc(c.hsnCode||"271019")}<br><b>Party GSTIN:</b> ${esc(partyGSTIN||"—")}<br><b>Party Address:</b> ${esc(partyAddress||"—")}${partyMobile?"<br><b>Mobile:</b> "+esc(partyMobile):""}</div><div><b>Bill Date:</b> ${esc(c.date||"—")}<br><b>Payment:</b> ${esc(paymentLabel)}<br><b>Supply State:</b> ${esc(partyState)}<br><b>Vehicle No.:</b> ${esc(c.vehicle||"—")}</div></div>
         <table><thead><tr><th>HSN Code</th><th>Product</th><th>Qty (L)</th><th>Rate (Incl. GST)</th><th>Taxable Value</th><th>GST 18%</th><th>Total</th></tr></thead><tbody><tr><td>${esc(c.hsnCode||"271019")}</td><td>${esc(c.productName||"Mobile Oil (HPCL)")}</td><td class="num">${qty?qty.toFixed(2):"—"}</td><td class="num">${qty?invoiceMoney(rate):"—"}</td><td class="num">${invoiceMoney(taxable)}</td><td class="num">${invoiceMoney(tax)}</td><td class="num">${invoiceMoney(total)}</td></tr></tbody></table>
         <div class="bottom"><div><b>Amount in Words:</b><br>${esc(amountInWords)}</div><div><b>GST Breakup</b><div class="gstrows">Taxable Value: <span style="float:right">${invoiceMoney(taxable)}</span><br>CGST @ 9%: <span style="float:right">${invoiceMoney(cgst)}</span><br>SGST @ 9%: <span style="float:right">${invoiceMoney(sgst)}</span><br>Rounding Adjustment: <span style="float:right">${invoiceMoney(0)}</span><br>IGST @ 0%: <span style="float:right">₹0.00</span><hr><b>Grand Total:</b><span style="float:right">${invoiceMoney(total)}</span></div></div></div>
@@ -5879,7 +5879,7 @@ export function LubricantManagement({ data, update }) {
 
     <section className="panel" style={{marginTop:18,border:'2px solid #16a34a'}}>
       <h3>💵 Lubricant Cash Sale — बिना पर्ची</h3>
-      <p style={{marginTop:0,color:'#6b7280'}}>Cash sale में Parchi No., Party या Vehicle नहीं होगा। केवल Product, Qty, Rate और Amount दर्ज होगा। Payment हमेशा Cash रहेगा।</p>
+      <p style={{marginTop:0,color:'#6b7280'}}>Cash sale में Parchi No., Party या Vehicle नहीं होगा। केवल Product, Qty, Rate और Amount दर्ज होगा। Payment Cash या UPI रहेगा।</p>
       <div className="form">
         <Field label="Date"><input type="date" min={START_DATE} max={today} value={cashSale.date} onChange={e=>setCashSale({...cashSale,date:e.target.value})}/></Field>
         <Field label="Product (Uploaded Bill से Select करें)"><select value={cashSale.productName} onChange={e=>{const productName=e.target.value;const inferred=inferLubricantPackSizeLitres(productName);setCashSale(x=>({...x,productName,packSize:inferred||x.packSize,qty:n(x.packQty)>0&&inferred>0?rupee(n(x.packQty)*inferred):x.qty}));}}><option value="">Select Product</option>{cashSale.productName&&!lubricantProductOptions.some(x=>x.name===cashSale.productName)&&<option value={cashSale.productName}>{cashSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select><small style={{display:"block",marginTop:4,color:"#64748b"}}>Uploaded HPCL purchase bill के product में से चुनें।</small></Field>
