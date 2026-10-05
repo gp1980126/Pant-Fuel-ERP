@@ -5650,7 +5650,7 @@ export function LubricantManagement({ data, update }) {
     const isCash = String(c?.source || "").toUpperCase() === "MANUAL_LUBRICANT_CASH";
     const isLubricant = String(c?.fuel || "").toUpperCase() === "LUBRICANT" || isCash;
     if (!c || !isLubricant) { alert("यह Sale Bill केवल Lubricant / Mobile Oil के लिए है।"); return; }
-    const esc = v => String(v ?? "").replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",\"\":\"&quot;\"}[ch]));
+    const esc = v => String(v ?? "").replace(/[&<>]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[ch])).replace(/"/g, "&quot;");
     const round2 = v => Math.round((Number(v || 0) + Number.EPSILON) * 100) / 100;
     const total = round2(c.amount), qty = n(c.qty);
     const gstRate = n(c.gstRate) > 0 ? n(c.gstRate) : 18;
