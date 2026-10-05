@@ -239,10 +239,10 @@ export function Fuel15DayBilling({data}) {
   const printBill=b=>{
     const fuelRows=["MS","HSD","CNG"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=>{
       const rate=b.sale[f].qty?b.sale[f].amount/b.sale[f].qty:0;
-      return `<tr><td>${f==="MS"?"MS (Petrol)":f==="HSD"?"HSD (Diesel)":"CNG"}</td><td style="text-align:right">${b.sale[f].qty.toFixed(2)}</td><td style="text-align:right">${money(rate)}</td><td style="text-align:right">${money(b.sale[f].amount)}</td><td style="text-align:right">${money(b.creditAmountByFuel[f])}</td><td style="text-align:right">${money(b.cashAmountByFuel[f])}</td></tr>`;
+      return `<tr><td>${f==="MS"?"MS (Petrol)":f==="HSD"?"HSD (Diesel)":"CNG"}</td><td style="text-align:right">${b.sale[f].qty.toFixed(2)} ${f==="CNG"?"KG":"L"}</td><td style="text-align:right">${money(rate)}</td><td style="text-align:right">${money(b.sale[f].amount)}</td><td style="text-align:right">${money(b.creditAmountByFuel[f])}</td><td style="text-align:right">${money(b.cashAmountByFuel[f])}</td></tr>`;
     }).join("");
 
-    const creditRows=b.creditRows.map(c=>`<tr><td>${c.party}</td><td>${c.parchiNo||"—"}</td><td>${c.fuel}</td><td style="text-align:right">${c.qty.toFixed(2)} L</td><td style="text-align:right">${money(c.amount)}</td></tr>`).join("");
+    const creditRows=b.creditRows.map(c=>`<tr><td>${c.party}</td><td>${c.parchiNo||"—"}</td><td>${c.fuel}</td><td style="text-align:right">${c.qty.toFixed(2)} ${c.fuel==="CNG"?"KG":"L"}</td><td style="text-align:right">${money(c.amount)}</td></tr>`).join("");
 
     const w=window.open("","_blank","width=900,height=1000");
     if(!w)return;
@@ -318,12 +318,12 @@ export function Fuel15DayBilling({data}) {
         {(()=>{const b=bills[selected];return <>
           <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><h3 style={{margin:"0 0 4px"}}>Bill No. {b.billNo}</h3><div style={{fontSize:12,color:"#64748b"}}>{dateText(b.date)} · {b.payment}</div></div><button className="btn" onClick={()=>printBill(b)}>🖨 Print Bill</button></div>
           <table className="data-table" style={{width:"100%",marginTop:12}}><thead><tr><th>Fuel</th><th>Qty</th><th>Rate</th><th>Total</th><th>Credit</th><th>Cash</th></tr></thead><tbody>
-            {["MS","HSD","CNG"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=><tr key={f}><td>{f==="MS"?"MS (Petrol)":f==="HSD"?"HSD (Diesel)":"CNG"}</td><td>{b.sale[f].qty.toFixed(2)} L</td><td>{money(b.sale[f].qty?b.sale[f].amount/b.sale[f].qty:0)}</td><td>{money(b.sale[f].amount)}</td><td>{money(b.creditAmountByFuel[f])}</td><td>{money(b.cashAmountByFuel[f])}</td></tr>)}
+            {["MS","HSD","CNG"].filter(f=>b.sale[f].qty||b.sale[f].amount).map(f=><tr key={f}><td>{f==="MS"?"MS (Petrol)":f==="HSD"?"HSD (Diesel)":"CNG"}</td><td>{b.sale[f].qty.toFixed(2)} {f==="CNG"?"KG":"L"}</td><td>{money(b.sale[f].qty?b.sale[f].amount/b.sale[f].qty:0)}</td><td>{money(b.sale[f].amount)}</td><td>{money(b.creditAmountByFuel[f])}</td><td>{money(b.cashAmountByFuel[f])}</td></tr>)}
           </tbody></table>
           <div style={{textAlign:"right",fontSize:18,fontWeight:900,marginTop:12}}>Grand Total: {money(b.total)}</div>
           <div style={{marginTop:10,fontSize:11,color:"#475569"}}>Payment: <b>Cash {money(b.cashAmount)} + Credit {money(b.creditAmount)} = {money(b.total)}</b> · CNG: <b>Included</b> · GST: <b>Not Applicable</b></div>
           {b.creditRows.length>0 && <><h4 style={{margin:"18px 0 8px"}}>Credit Sale Included — Party Wise</h4><table className="data-table" style={{width:"100%"}}><thead><tr><th>Party</th><th>Parchi No.</th><th>Fuel</th><th>Qty</th><th>Credit Amount</th></tr></thead><tbody>
-            {b.creditRows.map((c,j)=><tr key={String(c.parchiNo)+"-"+j}><td>{c.party}</td><td>{c.parchiNo||"—"}</td><td>{c.fuel}</td><td>{c.qty.toFixed(2)} L</td><td>{money(c.amount)}</td></tr>)}
+            {b.creditRows.map((c,j)=><tr key={String(c.parchiNo)+"-"+j}><td>{c.party}</td><td>{c.parchiNo||"—"}</td><td>{c.fuel}</td><td>{c.qty.toFixed(2)} {c.fuel==="CNG"?"KG":"L"}</td><td>{money(c.amount)}</td></tr>)}
           </tbody></table></>}
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:14}}><button className="btn" onClick={()=>printBill(b)}>🖨 Print Bill</button><button className="btn" onClick={()=>setSelected(null)}>Close</button></div>
         </>})()}
