@@ -5647,6 +5647,7 @@ export function LubricantManagement({ data, update }) {
   },[previousFYLegacyHPCL]);
 
   const bill = c => {
+    try {
     const isLubricantCashSale =
       String(c?.source || "").toUpperCase() === "MANUAL_LUBRICANT_CASH" ||
       (String(c?.paymentMode || "").toUpperCase() !== "" &&
@@ -5734,6 +5735,19 @@ export function LubricantManagement({ data, update }) {
     document.body.appendChild(overlay);
     overlay.querySelector('[data-action="close"]').onclick=()=>overlay.remove();
     overlay.querySelector('[data-action="print"]').onclick=()=>window.print();
+    } catch (err) {
+      console.error("StationMitra Lubricant GST Bill render failed:", err);
+      const safe = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      const w = window.open("", "_blank");
+      if (!w) { alert("GST Bill खोलने के लिए popup allow करें।"); return; }
+      const total = Number(c?.amount || 0);
+      const qty = Number(c?.qty || 0);
+      const rate = qty > 0 ? total / qty : 0;
+      const tax = total * 18 / 118;
+      const taxable = total - tax;
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Lubricant GST Bill</title><style>body{font-family:Arial;margin:20px}.box{border:1px solid #111;max-width:900px;margin:auto;padding:18px}table{width:100%;border-collapse:collapse;margin-top:15px}th,td{border:1px solid #111;padding:8px}.r{text-align:right}.top{text-align:center}.btn{margin-bottom:15px;padding:8px 14px}@media print{.btn{display:none}}</style></head><body><div class="box"><button class="btn" onclick="window.print()">🖨️ Print / Save PDF</button><div class="top"><div>ॐ श्री गुरुवे नमः:</div><b>GSTIN: 05ABWFS5610D1Z4 | State Code: 05</b><h2>SATAT FILLING STATION</h2><b>DEALER - HINDUSTAN PETROLEUM CORP. LTD.</b><div>Bye Pass Gaujajali (Bichli), HALDWANI-263139, Distt. Nainital (Uttarakhand)</div><h3>TAX INVOICE</h3></div><p><b>Invoice No.:</b> ${safe(c?.id || c?.parchiNo || "")}<br><b>Date:</b> ${safe(c?.date || "")}<br><b>Party:</b> ${safe(c?.party || "CASH CUSTOMER")}<br><b>Vehicle:</b> ${safe(c?.vehicle || "")}</p><table><tr><th>Product</th><th>Qty</th><th>Rate (GST Incl.)</th><th>Amount</th></tr><tr><td>${safe(c?.productName || "Mobile Oil (HPCL)")}</td><td class="r">${qty.toFixed(2)} L</td><td class="r">₹${rate.toFixed(2)}</td><td class="r">₹${total.toFixed(2)}</td></tr></table><p class="r"><b>Taxable Value:</b> ₹${taxable.toFixed(2)}<br><b>CGST 9%:</b> ₹${(tax/2).toFixed(2)}<br><b>SGST 9%:</b> ₹${(tax/2).toFixed(2)}<br><b>Total Amount After Tax:</b> ₹${total.toFixed(2)}</p><p><b>For - SATAT FILLING STATION</b></p></div></body></html>`);
+      w.document.close(); w.focus();
+    }
   };
 
   return <div className="content"><section className="panel" style={{marginBottom:12}}><div className="form"><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label></div><div style={{marginTop:6,color:"#64748b"}}>Selected: {fy.start} to {fy.end}</div></section>
@@ -8268,4 +8282,3 @@ export function Field({
     </label>
   );
 }
-
