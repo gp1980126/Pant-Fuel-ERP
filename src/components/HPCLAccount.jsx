@@ -10,6 +10,7 @@ const TYPE_RULES = [
   ["SSLF Credit", /SSLF CREDIT/i],
   ["SSLF Debit", /SSLF DEBIT/i],
   ["Customer Interest", /Customer Interest/i],
+  ["CNG Electricity Reimbursement", /CNG\s+ELE\s+REM/i],
   ["MSHS Interest", /Non tax Cust Interst/i],
   ["Debit Note", /Non-Tax DN Customer/i],
   ["Credit Note", /Non-Tax CN Customer/i],
