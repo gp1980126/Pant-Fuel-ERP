@@ -1657,7 +1657,11 @@ const importData = (event) => {
             <Fuel15DayBilling data={data} />
           )}
 
-          {page === "HPCL Account" && canAccess(session.role, "HPCL Account") && (\n            <HPCLAccount data={data} update={update} />\n          )}\n\n          {page === "Stock" && canAccess(session.role, "Stock") && (
+          {page === "HPCL Account" && canAccess(session.role, "HPCL Account") && (
+            <HPCLAccount data={data} update={update} />
+          )}
+
+          {page === "Stock" && canAccess(session.role, "Stock") && (
             <Stock
               data={data}
               update={update}
