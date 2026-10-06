@@ -1421,6 +1421,7 @@ const importData = (event) => {
               "Daily Sale Summary",
               "15-Day Fuel Billing",
               "Stock",
+              ...(canAccess(session.role, "HPCL Account") ? ["HPCL Account"] : []),
               ...(canAccess(session.role, "Staff & Electricity") ? ["Staff & Electricity"] : []),
               ...(canAccess(session.role, "User Management") ? ["User Management"] : []),
               ...(canAccess(session.role, "Audit Trail") ? ["Audit Trail"] : []),
@@ -1656,7 +1657,7 @@ const importData = (event) => {
             <Fuel15DayBilling data={data} />
           )}
 
-          {page === "Stock" && canAccess(session.role, "Stock") && (
+          {page === "HPCL Account" && canAccess(session.role, "HPCL Account") && (\n            <HPCLAccount data={data} update={update} />\n          )}\n\n          {page === "Stock" && canAccess(session.role, "Stock") && (
             <Stock
               data={data}
               update={update}
@@ -1705,6 +1706,7 @@ import {
   Table
 } from "./components/PumpModules";
 import { TallyExport } from "./components/TallyExport";
+import { HPCLAccount } from "./components/HPCLAccount";
 import { Fuel15DayBilling } from "./components/Fuel15DayBilling";
 
 export default App;
