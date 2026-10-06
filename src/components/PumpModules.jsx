@@ -7339,9 +7339,11 @@ const [newCNGRate, setNewCNGRate] = useState("");
           .reduce((sum, x) => sum + n(x.qty), 0)
       };
       const received = receivedByFuel.MS + receivedByFuel.HSD;
-      // Fuel Sale stores qty as NET SALE (meter movement minus pump testing).
-      // Therefore stock reconciliation must NOT subtract testing a second time.
-      // Meter movement = NET SALE + Pump Test; NET SALE = stored qty.
+      // Relcon-style calculation:
+      // Gross Meter Sale = stored NET Sale + Pump Test.
+      // Net Sale = Gross Meter Sale - Pump Test.
+      // IMPORTANT: Pump Test is already excluded from stored qty, so it must
+      // never be subtracted a second time from stock reconciliation.
       const meter = authoritativeSales
         .filter(x => x.date === date && (x.fuel === "MS" || x.fuel === "HSD"))
         .reduce((sum, x) => sum + n(x.qty) + n(x.testing), 0);
@@ -7349,15 +7351,27 @@ const [newCNGRate, setNewCNGRate] = useState("");
         .filter(x => x.date === date && (x.fuel === "MS" || x.fuel === "HSD"))
         .reduce((sum, x) => sum + n(x.testing), 0);
       const netSale = meter - pumpTest;
+      const totalStock = {
+        MS: opening.MS + receivedByFuel.MS,
+        HSD: opening.HSD + receivedByFuel.HSD
+      };
+      const netByFuel = {
+        MS: authoritativeSales.filter(x => x.date === date && x.fuel === "MS").reduce((sum, x) => sum + n(x.qty), 0),
+        HSD: authoritativeSales.filter(x => x.date === date && x.fuel === "HSD").reduce((sum, x) => sum + n(x.qty), 0)
+      };
+      const bookClosing = {
+        MS: totalStock.MS - netByFuel.MS,
+        HSD: totalStock.HSD - netByFuel.HSD
+      };
       cumulative += netSale;
       const closingOpeningDip = historicalDipForDate(nextDate(date));
       const salesByDip = closingOpeningDip
         ? {
-            MS: opening.MS + receivedByFuel.MS - closingOpeningDip.MS,
-            HSD: opening.HSD + receivedByFuel.HSD - closingOpeningDip.HSD
+            MS: totalStock.MS - closingOpeningDip.MS,
+            HSD: totalStock.HSD - closingOpeningDip.HSD
           }
         : null;
-      return { date, opening, received, receivedByFuel, totalStock: { MS: opening.MS + receivedByFuel.MS, HSD: opening.HSD + receivedByFuel.HSD }, meter, pumpTest, netSale, cumulative, closingOpeningDip, salesByDip };
+      return { date, opening, received, receivedByFuel, totalStock, meter, pumpTest, netSale, cumulative, bookClosing, closingOpeningDip, salesByDip };
 
     });
   }, [authoritativeSales, fillingsRows, dipRows, data.openingStock]);
@@ -7825,7 +7839,7 @@ function updateFuelRates() {
       ================================================= */}
       <section className="panel" style={{ marginTop: 18 }}>
         <h2>Daily Stock Reconciliation — MS / HSD</h2>
-        <p>01-08-2026 से MS/HSD की primary reconciliation physical stock के आधार पर है: <b>Opening + Purchase − Physical Closing = Stock Consumption</b>. इसके बाद <b>Net Sale = Stock Consumption − Pump Test</b>. DSR Difference को Sale नहीं माना जाता। CNG इस reconciliation और DIP से बाहर है.</p>
+        <p>Relcon-style logic: <b>Opening + Received = Total Stock</b>; <b>Gross Meter Sale − Pump Test = Net Sale</b>; फिर <b>Total Stock − Net Sale = Book Closing</b>. Physical/Dip से <b>Sales By Dip</b> और उसके साथ <b>Difference</b> अलग निकलेगा। Pump Test को दोबारा stock से subtract नहीं किया जाएगा। CNG इस reconciliation और DIP से बाहर है.</p>
         {["MS","HSD"].map(fuel => {
           const periodRows = dailyStockRows.filter(r => r.date >= START_DATE);
           const opening = periodRows.length ? n(periodRows[0].opening[fuel]) : 0;
@@ -7833,10 +7847,10 @@ function updateFuelRates() {
           const last = periodRows.at(-1);
           const physicalClosing = last ? (last.closingOpeningDip?.[fuel] ?? historicalDipForDate(last.date)?.[fuel] ?? null) : null;
           const pumpTest = periodRows.reduce((s,r) => s + authoritativeSales.filter(x => x.date === r.date && x.fuel === fuel).reduce((a,x) => a + n(x.testing),0),0);
-          const stockConsumption = physicalClosing === null ? null : opening + purchase - n(physicalClosing);
-          const reconciledNet = stockConsumption === null ? null : stockConsumption - pumpTest;
+          const netSale = periodRows.reduce((s,r) => s + authoritativeSales.filter(x => x.date === r.date && x.fuel === fuel).reduce((a,x) => a + n(x.qty),0),0);
+          const bookClosing = opening + purchase - netSale;
           return <div key={fuel} className="notice" style={{marginTop:12}}>
-            <b>{fuel} — 01-08-2026 से अब तक:</b> Opening {opening.toFixed(2)} L + Purchase {purchase.toFixed(2)} L − Physical Closing {physicalClosing === null ? "—" : n(physicalClosing).toFixed(2) + " L"} = <b>{stockConsumption === null ? "—" : stockConsumption.toFixed(2) + " L Stock Consumption"}</b>; Pump Test {pumpTest.toFixed(2)} L; Net Sale = <b>{reconciledNet === null ? "—" : reconciledNet.toFixed(2) + " L"}</b>.
+            <b>{fuel} — 01-08-2026 से अब तक:</b> Opening {opening.toFixed(2)} L + Received {purchase.toFixed(2)} L − Net Sale {netSale.toFixed(2)} L = <b>{bookClosing.toFixed(2)} L Book Closing</b>; Gross Meter Sale में Pump Test {pumpTest.toFixed(2)} L शामिल है और उसे Net Sale में एक ही बार घटाया गया है.
           </div>;
         })}
         {[["MS","MS / Petrol"],["HSD","HSD / Diesel"]].map(([fuel,label]) => (
@@ -7862,7 +7876,8 @@ function updateFuelRates() {
                       return sum + authoritativeSales.filter(y => y.date === x.date && y.fuel === fuel).reduce((a, y) => a + n(y.qty), 0);
                     }, 0);
                     const salesByDip = r.salesByDip ? r.salesByDip[fuel] : null;
-                    // Difference follows the DSR convention: Net Sale - Sales By Dip.
+                    // Relcon-style loss/gain total: Net Sale - Sales By Dip.
+                    // This is a sales reconciliation difference, not the stock balance itself.
                     const difference = salesByDip === null ? null : net - n(salesByDip);
                     const cumulativeDifference = dailyStockRows.filter(x => x.date <= r.date).reduce((sum, x) => {
                       const xSales = authoritativeSales.filter(y => y.date === x.date && y.fuel === fuel);
