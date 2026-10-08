@@ -228,6 +228,22 @@ export const todayDate = () => {
   return `${get("year")}-${get("month")}-${get("day")}`;
 };
 
+/**
+ * Fuel Sale entries are normally entered the following morning.
+ * Return the previous calendar day in India (Asia/Kolkata).
+ */
+export const previousBusinessDate = (date = todayDate()) => {
+  const [year, month, day] = String(date).split("-").map(Number);
+  if (!year || !month || !day) return todayDate();
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCDate(d.getUTCDate() - 1);
+  return [
+    d.getUTCFullYear(),
+    String(d.getUTCMonth() + 1).padStart(2, "0"),
+    String(d.getUTCDate()).padStart(2, "0")
+  ].join("-");
+};
+
 // Resolve the accounting period safely. The old 9999-12-31 sentinel could
 // accidentally prorate salary and other period expenses into the far future.
 // When a caller uses that legacy sentinel, use the latest dated business
