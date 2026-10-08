@@ -214,6 +214,15 @@ export function authoritativeSalesRows(dataOrSales) {
 }
 
 // Local calendar date (prevents UTC date shifting)
+export const previousBusinessDate = (baseDate = todayDate()) => {
+  const value = String(baseDate || "").trim();
+  if (!ISO_DATE_RE.test(value)) return todayDate();
+  const d = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return todayDate();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 export const todayDate = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
