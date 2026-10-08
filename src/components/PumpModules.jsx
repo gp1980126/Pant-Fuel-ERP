@@ -50,6 +50,7 @@ import {
   blankPays,
   n,
   todayDate,
+  previousBusinessDate,
   rupee,
   money,
   moneyRupee,
@@ -773,8 +774,11 @@ export function FuelSale({
   const recoveries = Array.isArray(data.recoveries) ? data.recoveries : [];
   const dailyPayments = Array.isArray(data.dailyPayments) ? data.dailyPayments : [];
 
+  // Daily fuel data is entered the following morning.
+  // Default to the previous business date so today's system date cannot
+  // accidentally become the transaction date.
   const [date, setDate] =
-    useState(todayDate());
+    useState(() => previousBusinessDate(todayDate()));
 
   const [closings, setClosings] =
     useState({});
