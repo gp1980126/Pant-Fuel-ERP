@@ -299,7 +299,7 @@ export function todayISODate() {
 }
 export function assertPeriodDate(value, label = "Date") {
   if (!isValidISODate(value)) return `${label} must be a valid date in YYYY-MM-DD format.`;
-  if (String(value) < START_DATE) return `${label} 01-08-2026 से पहले नहीं हो सकती.`;
+  if (String(value) < START_DATE) return `${label} 01-04-2025 से पहले नहीं हो सकती.`;
   if (String(value) > todayISODate()) return `${label} future date नहीं हो सकती.`;
   return "";
 }
