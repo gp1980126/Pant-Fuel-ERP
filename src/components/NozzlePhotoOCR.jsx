@@ -34,6 +34,20 @@ export default function NozzlePhotoOCR() {
     return { ...row, opening, closing, sale, testing, net };
   }), [rows]);
 
+  async function readBulkPhotos(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    if (files.length !== 8) {
+      setNotice(`आपने ${files.length} फोटो चुनी हैं। सही क्रम में सभी 8 फोटो चुनें: पहले MS-1 से MS-4, फिर HSD-1 से HSD-4।`);
+      return;
+    }
+    setNotice("8 फोटो क्रम से पढ़ी जा रही हैं: MS-1, MS-2, MS-3, MS-4, HSD-1, HSD-2, HSD-3, HSD-4। हर रीडिंग फोटो से मिलाकर जाँचें।");
+    for (let i = 0; i < 8; i++) {
+      await readPhoto(rows[i], files[i]);
+    }
+    setNotice("8 फोटो की OCR प्रक्रिया पूरी हुई। सभी Closing Reading को संबंधित नोजल की फोटो से मिलाकर सत्यापित करें; OCR गलत भी पढ़ सकता है।");
+  }
+
   async function readPhoto(row, file) {
     if (!file) return;
     updateRow(row.id, { photoName:file.name, status:"OCR चल रहा है…" });
@@ -100,6 +114,11 @@ export default function NozzlePhotoOCR() {
       <label style={{fontSize:13,fontWeight:700}}>तारीख <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{marginLeft:8,padding:8,border:"1px solid #cbd5e1",borderRadius:8}} /></label>
     </div>
     <div style={{margin:"14px 0",padding:12,borderRadius:10,background:"#eff6ff",color:"#1e40af",fontSize:13}}>{notice}<br/><b>सुरक्षा:</b> यह पेज किसी भी डेटा को Fuel Sale में auto-save नहीं करता।</div>
+    <div style={{margin:"12px 0",padding:12,border:"1px solid #cbd5e1",borderRadius:10,background:"#fff"}}>
+      <b>एक साथ 8 फोटो अपलोड करें</b>
+      <div style={{fontSize:12,color:"#475569",margin:"6px 0 10px"}}>फोटो इसी क्रम में चुनें: MS-1, MS-2, MS-3, MS-4, HSD-1, HSD-2, HSD-3, HSD-4। OCR के बाद रीडिंग जाँचें।</div>
+      <input type="file" accept="image/*" multiple aria-label="Upload all eight nozzle photos" onChange={e=>{const files=e.target.files; if(files?.length) readBulkPhotos(files); e.target.value="";}} />
+    </div>
     {["MS","HSD"].map(fuel => <div key={fuel} style={{marginTop:18}}>
       <h3 style={{margin:"0 0 10px"}}>{fuel === "MS" ? "MS — पेट्रोल" : "HSD — डीजल"}</h3>
       <div style={{overflowX:"auto"}}>
