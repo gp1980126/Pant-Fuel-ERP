@@ -127,7 +127,7 @@ export async function fetchRelconLiveStatus({
       "Accept": "application/json, text/javascript, */*; q=0.01",
       "X-Requested-With": "XMLHttpRequest",
     },
-    body: "",
+    body: "btn_clicked=1",
     cache: "no-store",
     signal,
   });
