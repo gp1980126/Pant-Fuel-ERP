@@ -103,17 +103,24 @@ export default function NozzlePhotoOCR() {
       for (const cropTop of [true, false]) {
         const result = await Tesseract.recognize(makeCanvas(cropTop), "eng", ocrOptions);
         raw += "\n" + String(result?.data?.text || "");
-        const matches = raw.match(/[0-9][0-9,]*(?:\.[0-9]{1,3})?/g) || [];
+        // Accept only meter-like values that include a decimal separator. Bare integers such as
+        // 150800 are often OCR mistakes from LCD digits and must never be auto-filled.
+        const matches = raw.match(/[0-9][0-9,]*\.[0-9]{1,3}/g) || [];
         candidates = matches.map(s => Number(s.replace(/,/g, "")))
-          .filter(v => Number.isFinite(v) && v >= opening && v - opening <= 20000);
+          .filter(v => Number.isFinite(v) && v >= opening && v - opening <= 3000);
         if (candidates.length) break;
       }
       URL.revokeObjectURL(imageUrl);
       if (!candidates.length) {
-        updateRow(row.id, { status:"सही रीडिंग नहीं पहचानी — Closing हाथ से भरें", ocrText:raw });
+        updateRow(row.id, { status:"रीडिंग भरोसेमंद नहीं — Closing हाथ से भरें", ocrText:raw });
       } else {
-        const suggestion = candidates.sort((a,b) => (a-opening) - (b-opening))[0];
-        updateRow(row.id, { closingText:String(Math.trunc((suggestion + Number.EPSILON) * 100) / 100), status:"OCR सुझाव — 2 दशमलव तक; फोटो से मिलान जरूरी", ocrText:raw });
+        const unique = [...new Set(candidates.map(v => Math.trunc((v + Number.EPSILON) * 1000) / 1000))];
+        if (unique.length !== 1) {
+          updateRow(row.id, { status:"एक से अधिक रीडिंग मिलीं — Closing हाथ से भरें", ocrText:raw });
+        } else {
+          const suggestion = unique[0];
+          updateRow(row.id, { closingText:String(Math.trunc((suggestion + Number.EPSILON) * 100) / 100), status:"OCR सुझाव — फोटो से मिलान जरूरी", ocrText:raw });
+        }
       }
       setNotice("OCR केवल सुझाव देता है। सात-सेगमेंट डिस्प्ले में गलती हो सकती है; Closing को फोटो से मिलाकर जाँचें।");
     } catch (error) {
