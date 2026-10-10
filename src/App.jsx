@@ -1409,6 +1409,7 @@ const importData = (event) => {
               "Accounts",
               "Tally / CA Export",
               "Fuel Sale",
+              "Nozzle OCR (Test)",
               "Opening Setup",
               "Party Master",
               "Credit Sale",
@@ -1595,6 +1596,10 @@ const importData = (event) => {
             />
           )}
 
+          {page === "Nozzle OCR (Test)" && (
+            <NozzlePhotoOCR />
+          )}
+
           {page === "Opening Setup" && canAccess(session.role, "Opening Setup") && (
             <OpeningSetup
               data={data}
@@ -1706,5 +1711,6 @@ import {
 } from "./components/PumpModules";
 import { TallyExport } from "./components/TallyExport";
 import { Fuel15DayBilling } from "./components/Fuel15DayBilling";
+import NozzlePhotoOCR from "./components/NozzlePhotoOCR";
 
 export default App;
