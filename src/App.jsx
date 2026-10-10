@@ -191,7 +191,7 @@ function App() {
     // Daily MS/HSD billing is a read-only report screen. Keep it directly
     // navigable even if an older cloud profile has a role string that does not
     // yet contain the new permission entry.
-    if (target === "Dashboard" || target === "15-Day Fuel Billing" || canAccess(session?.role, target)) {
+    if (target === "Dashboard" || target === "15-Day Fuel Billing" || target === "Nozzle OCR (Test)" || canAccess(session?.role, target)) {
       setPageState(target);
     } else {
       setPageState("Dashboard");
