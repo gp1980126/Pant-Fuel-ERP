@@ -66,7 +66,7 @@ export default function NozzlePhotoOCR() {
         updateRow(row.id, { status:"सही रीडिंग नहीं पहचानी — Closing हाथ से भरें", ocrText:raw });
       } else {
         const suggestion = candidates.sort((a,b) => (a-opening) - (b-opening))[0];
-        updateRow(row.id, { closingText:String(suggestion), status:"OCR सुझाव — फोटो से मिलान जरूरी", ocrText:raw });
+        updateRow(row.id, { closingText:String(Number(suggestion.toFixed(2))), status:"OCR सुझाव — 2 दशमलव तक; फोटो से मिलान जरूरी", ocrText:raw });
       }
       setNotice("OCR केवल सुझाव देता है। सात-सेगमेंट डिस्प्ले में गलती हो सकती है; Closing को फोटो से मिलाकर जाँचें।");
     } catch (error) {
