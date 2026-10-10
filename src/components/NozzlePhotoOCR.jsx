@@ -72,7 +72,7 @@ export default function NozzlePhotoOCR() {
         tessedit_char_whitelist: "0123456789.,"
       });
       const raw = String(result?.data?.text || "");
-      const matches = raw.match(/[0-9][0-9,]*(?:\\.[0-9]{1,3})?/g) || [];
+      const matches = raw.match(/[0-9][0-9,]*(?:\.[0-9]{1,3})?/g) || [];
       const opening = num(row.openingText);
       const candidates = matches.map(s => Number(s.replace(/,/g, "")))
         .filter(v => Number.isFinite(v) && v >= opening && v - opening <= 20000);
