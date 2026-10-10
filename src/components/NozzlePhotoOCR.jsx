@@ -19,7 +19,7 @@ const num = value => {
 
 export default function NozzlePhotoOCR() {
   const [date, setDate] = useState("2026-10-10");
-  const [rows, setRows] = useState(INITIAL_ROWS.map(row => ({ ...row, openingText:String(row.opening), closingText:String(row.closing), status:"Ready (editable)" })));
+  const [rows, setRows] = useState(INITIAL_ROWS.map(row => ({ ...row, openingText:row.opening.toFixed(2), closingText:row.closing.toFixed(2), status:"Ready (editable)" })));
   const [busyId, setBusyId] = useState("");
   const [notice, setNotice] = useState("यह अलग टेस्ट OCR टूल है। OCR परिणाम को जाँचकर ही उपयोग करें; यह अपने आप Live/Cloud में कुछ सेव नहीं करता।");
 
@@ -125,7 +125,7 @@ export default function NozzlePhotoOCR() {
     </div>)}
     <div style={{display:"flex",gap:10,marginTop:20,flexWrap:"wrap"}}>
       <button type="button" onClick={downloadCsv} style={{padding:"10px 16px",border:0,borderRadius:8,background:"#0f766e",color:"#fff",fontWeight:700,cursor:"pointer"}}>CSV रिपोर्ट डाउनलोड</button>
-      <button type="button" onClick={()=>{setRows(INITIAL_ROWS.map(row=>({...row,openingText:String(row.opening),closingText:String(row.closing),status:"Ready (editable)"})));setNotice("डेमो रीडिंग फिर से लोड हो गई। कोई डेटा सेव नहीं हुआ।");}} style={{padding:"10px 16px",border:"1px solid #cbd5e1",borderRadius:8,background:"#fff",fontWeight:700,cursor:"pointer"}}>रीडिंग रीसेट</button>
+      <button type="button" onClick={()=>{setRows(INITIAL_ROWS.map(row=>({...row,openingText:row.opening.toFixed(2),closingText:row.closing.toFixed(2),status:"Ready (editable)"})));setNotice("डेमो रीडिंग फिर से लोड हो गई। कोई डेटा सेव नहीं हुआ।");}} style={{padding:"10px 16px",border:"1px solid #cbd5e1",borderRadius:8,background:"#fff",fontWeight:700,cursor:"pointer"}}>रीडिंग रीसेट</button>
     </div>
   </section>;
 }
