@@ -64,18 +64,51 @@ export default function NozzlePhotoOCR() {
         });
         Tesseract = window.Tesseract;
       }
-      const result = await Tesseract.recognize(file, "eng", {
+      // Upscale and enhance the LCD area; full dispenser photos often make seven-segment digits too small.
+      const imageUrl = URL.createObjectURL(file);
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = imageUrl;
+      });
+      const makeCanvas = cropTop => {
+        const sx = cropTop ? Math.floor(image.width * 0.08) : 0;
+        const sw = cropTop ? Math.floor(image.width * 0.84) : image.width;
+        const sh = cropTop ? Math.floor(image.height * 0.48) : image.height;
+        const canvas = document.createElement("canvas");
+        canvas.width = sw * 3;
+        canvas.height = sh * 3;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, sx, 0, sw, sh, 0, 0, canvas.width, canvas.height);
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < pixels.data.length; i += 4) {
+          const gray = Math.round(0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2]);
+          const value = gray > 175 ? 255 : (gray < 95 ? 0 : Math.round((gray - 95) * 255 / 80));
+          pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = value;
+        }
+        ctx.putImageData(pixels, 0, 0);
+        return canvas;
+      };
+      const ocrOptions = {
         logger: m => {
           if (m.status === "recognizing text") updateRow(row.id, { status:"OCR " + Math.round((m.progress || 0) * 100) + "%" });
         },
         tessedit_pageseg_mode: 7,
         tessedit_char_whitelist: "0123456789.,"
-      });
-      const raw = String(result?.data?.text || "");
-      const matches = raw.match(/[0-9][0-9,]*(?:\.[0-9]{1,3})?/g) || [];
+      };
       const opening = num(row.openingText);
-      const candidates = matches.map(s => Number(s.replace(/,/g, "")))
-        .filter(v => Number.isFinite(v) && v >= opening && v - opening <= 20000);
+      let raw = "";
+      let candidates = [];
+      for (const cropTop of [true, false]) {
+        const result = await Tesseract.recognize(makeCanvas(cropTop), "eng", ocrOptions);
+        raw += "\n" + String(result?.data?.text || "");
+        const matches = raw.match(/[0-9][0-9,]*(?:\.[0-9]{1,3})?/g) || [];
+        candidates = matches.map(s => Number(s.replace(/,/g, "")))
+          .filter(v => Number.isFinite(v) && v >= opening && v - opening <= 20000);
+        if (candidates.length) break;
+      }
+      URL.revokeObjectURL(imageUrl);
       if (!candidates.length) {
         updateRow(row.id, { status:"सही रीडिंग नहीं पहचानी — Closing हाथ से भरें", ocrText:raw });
       } else {
