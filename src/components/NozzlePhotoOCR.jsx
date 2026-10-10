@@ -108,7 +108,7 @@ export default function NozzlePhotoOCR() {
             <td style={{padding:8,borderBottom:"1px solid #e2e8f0"}}>{fmt(row.testing)} L</td>
             <td style={{padding:8,borderBottom:"1px solid #e2e8f0",fontWeight:700,whiteSpace:"nowrap"}}>{fmt(row.net)} L</td>
             <td style={{padding:8,borderBottom:"1px solid #e2e8f0",minWidth:190}}>
-              <input type="file" accept="image/*" capture="environment" aria-label={row.id+" meter photo"} onChange={e=>readPhoto(row,e.target.files?.[0])} style={{maxWidth:190,fontSize:11}} />
+              <input type="file" accept="image/*" aria-label={row.id+" meter photo"} onChange={e=>readPhoto(row,e.target.files?.[0])} style={{maxWidth:190,fontSize:11}} />
               <div style={{fontSize:11,color:busyId===row.id?"#1d4ed8":"#64748b",marginTop:5}}>{row.status}{row.photoName ? " · "+row.photoName : ""}</div>
             </td>
           </tr>)}</tbody>
