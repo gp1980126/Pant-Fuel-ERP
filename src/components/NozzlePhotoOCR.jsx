@@ -50,18 +50,23 @@ export default function NozzlePhotoOCR() {
         });
         Tesseract = window.Tesseract;
       }
-      const result = await Tesseract.recognize(file, "eng", { logger: m => {
-        if (m.status === "recognizing text") updateRow(row.id, { status:"OCR " + Math.round((m.progress || 0) * 100) + "%" });
-      }});
+      const result = await Tesseract.recognize(file, "eng", {
+        logger: m => {
+          if (m.status === "recognizing text") updateRow(row.id, { status:"OCR " + Math.round((m.progress || 0) * 100) + "%" });
+        },
+        tessedit_pageseg_mode: 7,
+        tessedit_char_whitelist: "0123456789.,"
+      });
       const raw = String(result?.data?.text || "");
-      const matches = raw.match(/[0-9][0-9,]*(?:\.[0-9]{1,3})?/g) || [];
-      const candidates = matches.map(s => Number(s.replace(/,/g, ""))).filter(v => Number.isFinite(v) && v >= 100);
+      const matches = raw.match(/[0-9][0-9,]*(?:\\.[0-9]{1,3})?/g) || [];
+      const opening = num(row.openingText);
+      const candidates = matches.map(s => Number(s.replace(/,/g, "")))
+        .filter(v => Number.isFinite(v) && v >= opening && v - opening <= 20000);
       if (!candidates.length) {
-        updateRow(row.id, { status:"रीडिंग नहीं मिली — नीचे Closing हाथ से भरें", ocrText:raw });
+        updateRow(row.id, { status:"सही रीडिंग नहीं पहचानी — Closing हाथ से भरें", ocrText:raw });
       } else {
-        // Meter displays can contain several numbers. Keep the longest/highest numeric candidate as a suggestion only.
-        const suggestion = candidates.sort((a,b) => String(b).length - String(a).length)[0];
-        updateRow(row.id, { closingText:String(suggestion), status:"OCR सुझाव मिला — रीडिंग जाँचें", ocrText:raw });
+        const suggestion = candidates.sort((a,b) => (a-opening) - (b-opening))[0];
+        updateRow(row.id, { closingText:String(suggestion), status:"OCR सुझाव — फोटो से मिलान जरूरी", ocrText:raw });
       }
       setNotice("OCR केवल सुझाव देता है। सात-सेगमेंट डिस्प्ले में गलती हो सकती है; Closing को फोटो से मिलाकर जाँचें।");
     } catch (error) {
