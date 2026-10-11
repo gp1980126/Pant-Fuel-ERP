@@ -40,23 +40,36 @@ export function GstVatCenter({ data }) {
     const lubricantCredit = credits.filter(r => fuelCode(r) === "LUBRICANT");
     // Resolve customer GSTIN from Party Master when a sale row stores only the party name.
     const partyRows = Array.isArray(data?.parties) ? data.parties : [];
-    const normalizeKey = value => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+    const normalizeKey = value => String(value || "").trim().toLowerCase().replace(/\s+/g, " ").replace(/[^a-z0-9 ]/g, "").trim();
     const partyGstin = partyName => {
       const key = normalizeKey(partyName);
       if (!key) return "";
       const match = partyRows.find(p => normalizeKey(p?.name) === key);
       return String(match?.gstin || match?.GSTIN || match?.gst || "").trim();
     };
-    // Use HSN saved on a sale line first; otherwise look for a matching item in purchase-bill item lines.
+    // HSN source of truth: the saved purchase bill, never a guessed/default HSN.
+    // Support both detailed item lines and older bills that saved HSN at bill level.
     const hsnByProduct = new Map();
+    const hsnFrom = row => String(row?.hsn || row?.hsnCode || row?.HSN || row?.hsnSac || row?.hsn_sac || "").trim();
     (Array.isArray(data?.purchases) ? data.purchases : []).forEach(purchase => {
       const items = Array.isArray(purchase?.items) ? purchase.items : [];
       items.forEach(item => {
-        const name = item?.productName || item?.product || item?.name || item?.itemName || "";
-        const hsn = item?.hsn || item?.hsnCode || item?.HSN || item?.hsnSac || "";
-        if (name && hsn && !hsnByProduct.has(normalizeKey(name))) hsnByProduct.set(normalizeKey(name), String(hsn).trim());
+        const name = item?.productName || item?.product || item?.name || item?.itemName || item?.description || "";
+        const hsn = hsnFrom(item) || hsnFrom(purchase);
+        if (name && hsn && !hsnByProduct.has(normalizeKey(name))) hsnByProduct.set(normalizeKey(name), hsn);
       });
+      const billName = purchase?.productName || purchase?.product || purchase?.itemName || purchase?.description || "";
+      const billHsn = hsnFrom(purchase);
+      if (billName && billHsn && !hsnByProduct.has(normalizeKey(billName))) hsnByProduct.set(normalizeKey(billName), billHsn);
     });
+    const lookupPurchaseHsn = productName => {
+      const key = normalizeKey(productName);
+      if (!key) return "";
+      if (hsnByProduct.has(key)) return hsnByProduct.get(key);
+      // Match product names conservatively when purchase and sale descriptions differ slightly.
+      const match = [...hsnByProduct.entries()].find(([name]) => name && (name.includes(key) || key.includes(name)));
+      return match?.[1] || "";
+    };
     const lubricantRows = [
       ...lubricantCredit.map(r => ({ ...r, saleType: "CREDIT" })),
       ...cashLubricants.map(r => ({ ...r, fuel: "LUBRICANT", saleType: String(r?.paymentMode || "CASH").toUpperCase() }))
@@ -69,7 +82,7 @@ export function GstVatCenter({ data }) {
         date: r.date || "", invoiceNo: r.invoiceNo || r.billNo || r.id || ("LUB-" + (i + 1)),
         party,
         gstin: r.gstin || r.GSTIN || r.customerGstin || r.customerGSTIN || partyGstin(party),
-        hsn: savedHsn || hsnByProduct.get(normalizeKey(product)) || "",
+        hsn: savedHsn || lookupPurchaseHsn(product),
         product,
         qty: n(r.qty), rate: b.rate, taxable: b.taxable, cgst: b.tax / 2, sgst: b.tax / 2, igst: 0, tax: b.tax, gross: b.gross,
         saleType: r.saleType
