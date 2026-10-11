@@ -32,6 +32,7 @@ export function GstVatCenter({ data }) {
   const [msMinimum, setMsMinimum] = useState("13.14");
   const [hsdMinimum, setHsdMinimum] = useState("10.41");
   const [notice, setNotice] = useState("");
+  const [stationGstin, setStationGstin] = useState(() => String(data?.settings?.gstin || data?.profile?.gstin || data?.business?.gstin || "").trim());
 
   const report = useMemo(() => {
     const sales = (Array.isArray(data?.sales) ? data.sales : []).filter(r => dateInRange(r?.date, from, to));
@@ -175,9 +176,9 @@ export function GstVatCenter({ data }) {
   const exportChallanWorking = () => {
     download("StationMitra_GST_CHALLAN_WORKING_" + from + "_to_" + to + ".csv", [
       ["Field", "Value", "Status"],
-      ["GSTIN", "Configure/verify with CA", "Required for official challan"],
+      ["Supplier", "SATAT FILLING STATION", "Business name"],\n      ["GSTIN", stationGstin || "MISSING - VERIFY FROM VIEW BILL", "Required for official challan; verify against View Bill"],\n      ["State", "Uttarakhand (05)", "Confirm registration details"],
       ["Tax period", from + " to " + to, "CA REVIEW"],
-      ["Indicative GST cash liability (INR)", Math.max(0, report.outputTax - n(confirmedItc)).toFixed(2), "Estimate only; reconcile with electronic credit/cash ledgers"],
+      ["CGST (indicative)", (Math.max(0, report.outputTax - n(confirmedItc)) / 2).toFixed(2), "Only if intra-state supply; verify"],\n      ["SGST (indicative)", (Math.max(0, report.outputTax - n(confirmedItc)) / 2).toFixed(2), "Only if intra-state supply; verify"],\n      ["IGST (indicative)", "0.00", "Verify place of supply before use"],\n      ["Indicative GST cash liability (INR)", Math.max(0, report.outputTax - n(confirmedItc)).toFixed(2), "Estimate only; reconcile with electronic credit/cash ledgers"],
       ["Official challan CIN/CPIN", "NOT GENERATED", "Generate only through official GST portal or configured authorized provider"],
       ["Payment status", "NOT PAID", "This file does not initiate payment"]
     ]);
