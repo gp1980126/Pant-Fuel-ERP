@@ -95,7 +95,7 @@ export function GstVatCenter({ data }) {
       const creditAmount = creditRows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0);
       return { fuel, qty: rows.reduce((s, r) => s + n(r.qty), 0) + creditRows.reduce((s, r) => s + n(r.qty), 0), amount, entries: rows.length + creditRows.length, creditQty: creditRows.reduce((s, r) => s + n(r.qty), 0), creditAmount };
     });
-    const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(r?.date || r?.billDate || r?.invoiceDate, from, to) && fuelCode(r) === "LUBRICANT");
+    const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(r?.date || r?.billDate || r?.invoiceDate || r?.invoice_date || r?.importedAt || r?.createdAt, from, to) && fuelCode(r) === "LUBRICANT");
     // Purchase GST must include tax stored on detailed invoice item lines, not only the parent header.
     // Prefer item-level GST to avoid double-counting the same invoice's header and line totals.
     const purchaseTax = purchase => {
