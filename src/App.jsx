@@ -191,7 +191,7 @@ function App() {
     // Daily MS/HSD billing is a read-only report screen. Keep it directly
     // navigable even if an older cloud profile has a role string that does not
     // yet contain the new permission entry.
-    if (target === "Dashboard" || target === "15-Day Fuel Billing" || target === "Nozzle OCR (Test)" || canAccess(session?.role, target)) {
+    if (target === "Dashboard" || target === "15-Day Fuel Billing" || target === "Nozzle OCR (Test)" || (target === "GST & VAT Center" && canAccess(session?.role, "Tally / CA Export")) || canAccess(session?.role, target)) {
       setPageState(target);
     } else {
       setPageState("Dashboard");
@@ -1408,6 +1408,7 @@ const importData = (event) => {
               "Dashboard",
               "Accounts",
               "Tally / CA Export",
+              ...(canAccess(session.role, "Tally / CA Export") ? ["GST & VAT Center"] : []),
               "Fuel Sale",
               "Nozzle OCR (Test)",
               "Opening Setup",
@@ -1567,6 +1568,10 @@ const importData = (event) => {
             <TallyExport data={data} />
           )}
 
+          {page === "GST & VAT Center" && canAccess(session.role, "Tally / CA Export") && (
+            <GstVatCenter data={data} />
+          )}
+
           {page === "Accounting Period Lock" && canAccess(session.role, "Accounting Period Lock") && (
             <AccountingPeriodLock data={data} update={update} session={session} />
           )}
@@ -1710,6 +1715,7 @@ import {
   Table
 } from "./components/PumpModules";
 import { TallyExport } from "./components/TallyExport";
+import { GstVatCenter } from "./components/GstVatCenter";
 import { Fuel15DayBilling } from "./components/Fuel15DayBilling";
 import NozzlePhotoOCR from "./components/NozzlePhotoOCR";
 
