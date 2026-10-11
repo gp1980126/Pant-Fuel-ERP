@@ -38,16 +38,39 @@ export function GstVatCenter({ data }) {
     const credits = (Array.isArray(data?.credits) ? data.credits : []).filter(r => dateInRange(r?.date, from, to));
     const cashLubricants = (Array.isArray(data?.lubricantCashSales) ? data.lubricantCashSales : []).filter(r => dateInRange(r?.date, from, to));
     const lubricantCredit = credits.filter(r => fuelCode(r) === "LUBRICANT");
+    // Resolve customer GSTIN from Party Master when a sale row stores only the party name.
+    const partyRows = Array.isArray(data?.parties) ? data.parties : [];
+    const normalizeKey = value => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+    const partyGstin = partyName => {
+      const key = normalizeKey(partyName);
+      if (!key) return "";
+      const match = partyRows.find(p => normalizeKey(p?.name) === key);
+      return String(match?.gstin || match?.GSTIN || match?.gst || "").trim();
+    };
+    // Use HSN saved on a sale line first; otherwise look for a matching item in purchase-bill item lines.
+    const hsnByProduct = new Map();
+    (Array.isArray(data?.purchases) ? data.purchases : []).forEach(purchase => {
+      const items = Array.isArray(purchase?.items) ? purchase.items : [];
+      items.forEach(item => {
+        const name = item?.productName || item?.product || item?.name || item?.itemName || "";
+        const hsn = item?.hsn || item?.hsnCode || item?.HSN || item?.hsnSac || "";
+        if (name && hsn && !hsnByProduct.has(normalizeKey(name))) hsnByProduct.set(normalizeKey(name), String(hsn).trim());
+      });
+    });
     const lubricantRows = [
       ...lubricantCredit.map(r => ({ ...r, saleType: "CREDIT" })),
       ...cashLubricants.map(r => ({ ...r, fuel: "LUBRICANT", saleType: String(r?.paymentMode || "CASH").toUpperCase() }))
     ].map((r, i) => {
       const b = grossBreakdown(r);
+      const party = r.party || r.partyName || r.customerName || "B2C / Customer";
+      const product = r.productName || r.product || "Lubricant";
+      const savedHsn = r.hsn || r.hsnCode || r.HSN || r.hsnSac || "";
       return {
         date: r.date || "", invoiceNo: r.invoiceNo || r.billNo || r.id || ("LUB-" + (i + 1)),
-        party: r.party || r.partyName || r.customerName || "B2C / Customer",
-        gstin: r.gstin || r.GSTIN || "", hsn: r.hsn || r.hsnCode || "",
-        product: r.productName || r.product || "Lubricant",
+        party,
+        gstin: r.gstin || r.GSTIN || r.customerGstin || r.customerGSTIN || partyGstin(party),
+        hsn: savedHsn || hsnByProduct.get(normalizeKey(product)) || "",
+        product,
         qty: n(r.qty), rate: b.rate, taxable: b.taxable, cgst: b.tax / 2, sgst: b.tax / 2, igst: 0, tax: b.tax, gross: b.gross,
         saleType: r.saleType
       };
