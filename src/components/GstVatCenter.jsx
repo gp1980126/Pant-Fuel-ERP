@@ -27,8 +27,6 @@ export function GstVatCenter({ data }) {
   const [from, setFrom] = useState("2026-09-01");
   const [to, setTo] = useState("2026-09-30");
   const [confirmedItc, setConfirmedItc] = useState("0");
-  const [msVatBase, setMsVatBase] = useState("");
-  const [hsdVatBase, setHsdVatBase] = useState("");
   const [msVatRate, setMsVatRate] = useState("16.97");
   const [hsdVatRate, setHsdVatRate] = useState("17.15");
   const [msMinimum, setMsMinimum] = useState("13.14");
@@ -57,18 +55,29 @@ export function GstVatCenter({ data }) {
     const fuelRows = ["MS", "HSD", "CNG"].map(fuel => {
       const rows = sales.filter(r => fuelCode(r) === fuel);
       const creditRows = credits.filter(r => fuelCode(r) === fuel);
-      return { fuel, qty: rows.reduce((s, r) => s + n(r.qty), 0) + creditRows.reduce((s, r) => s + n(r.qty), 0), amount: rows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0), entries: rows.length, creditQty: creditRows.reduce((s, r) => s + n(r.qty), 0), creditAmount: creditRows.reduce((s, r) => s + n(r.amount), 0) };
+      const amount = rows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0);
+      const creditAmount = creditRows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0);
+      return { fuel, qty: rows.reduce((s, r) => s + n(r.qty), 0) + creditRows.reduce((s, r) => s + n(r.qty), 0), amount, entries: rows.length + creditRows.length, creditQty: creditRows.reduce((s, r) => s + n(r.qty), 0), creditAmount };
     });
     const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(r?.date, from, to) && fuelCode(r) === "LUBRICANT");
     const potentialItc = purchases.reduce((s, r) => s + n(r.taxAmount), 0);
     const outputTax = lubricantRows.reduce((s, r) => s + r.tax, 0);
     const ms = fuelRows.find(r => r.fuel === "MS") || { qty: 0, amount: 0 };
     const hsd = fuelRows.find(r => r.fuel === "HSD") || { qty: 0, amount: 0 };
-    const msBase = n(msVatBase), hsdBase = n(hsdVatBase);
-    const msEstimate = msVatBase !== "" ? Math.max(msBase * n(msVatRate) / 100, ms.qty * n(msMinimum)) : null;
-    const hsdEstimate = hsdVatBase !== "" ? Math.max(hsdBase * n(hsdVatRate) / 100, hsd.qty * n(hsdMinimum)) : null;
+    // Software fuel sale totals are treated as retail gross (VAT-inclusive) for a transparent working estimate.
+    // Derive the exclusive turnover instead of asking the operator to type a taxable base.
+    const msGross = n(ms.amount) + n(ms.creditAmount);
+    const hsdGross = n(hsd.amount) + n(hsd.creditAmount);
+    const msBase = msGross / (1 + n(msVatRate) / 100);
+    const hsdBase = hsdGross / (1 + n(hsdVatRate) / 100);
+    const msPercentTax = msBase * n(msVatRate) / 100;
+    const hsdPercentTax = hsdBase * n(hsdVatRate) / 100;
+    const msFloorTax = n(ms.qty) * n(msMinimum);
+    const hsdFloorTax = n(hsd.qty) * n(hsdMinimum);
+    const msEstimate = Math.max(msPercentTax, msFloorTax);
+    const hsdEstimate = Math.max(hsdPercentTax, hsdFloorTax);
     return { lubricantRows, fuelRows, purchases, potentialItc, outputTax, grossLubricant: lubricantRows.reduce((s, r) => s + r.gross, 0), taxableLubricant: lubricantRows.reduce((s, r) => s + r.taxable, 0), msEstimate, hsdEstimate, salesCount: sales.length, creditCount: credits.length };
-  }, [data, from, to, msVatBase, hsdVatBase, msVatRate, hsdVatRate, msMinimum, hsdMinimum]);
+  }, [data, from, to, msVatRate, hsdVatRate, msMinimum, hsdMinimum]);
 
   const exportGstr1 = () => {
     const rows = [["Date", "Invoice No", "Customer", "Customer GSTIN", "HSN", "Product", "Sale Type", "Qty", "Taxable Value", "GST Rate %", "CGST", "SGST", "IGST", "Total GST", "Invoice Total"],
@@ -84,11 +93,13 @@ export function GstVatCenter({ data }) {
       ["CA-confirmed eligible ITC entered", n(confirmedItc).toFixed(2)],
       ["Indicative GST cash liability before other adjustments", Math.max(0, report.outputTax - n(confirmedItc)).toFixed(2)],
       ["MS sales quantity", (report.fuelRows.find(r => r.fuel === "MS")?.qty || 0).toFixed(3)],
-      ["MS VAT tax base entered by CA", msVatBase === "" ? "NOT ENTERED" : msVatBase],
-      ["MS indicative VAT estimate", report.msEstimate === null ? "NOT CALCULATED - tax base missing" : report.msEstimate.toFixed(2)],
+      ["MS gross fuel sales amount (software)", ((report.fuelRows.find(r => r.fuel === "MS")?.amount || 0) + (report.fuelRows.find(r => r.fuel === "MS")?.creditAmount || 0)).toFixed(2)],
+      ["MS estimated VAT-exclusive turnover (gross / (1 + rate))", (((report.fuelRows.find(r => r.fuel === "MS")?.amount || 0) + (report.fuelRows.find(r => r.fuel === "MS")?.creditAmount || 0)) / (1 + n(msVatRate) / 100)).toFixed(2)],
+      ["MS indicative VAT estimate (higher of percentage or per-litre floor)", report.msEstimate.toFixed(2)],
       ["HSD sales quantity", (report.fuelRows.find(r => r.fuel === "HSD")?.qty || 0).toFixed(3)],
-      ["HSD VAT tax base entered by CA", hsdVatBase === "" ? "NOT ENTERED" : hsdVatBase],
-      ["HSD indicative VAT estimate", report.hsdEstimate === null ? "NOT CALCULATED - tax base missing" : report.hsdEstimate.toFixed(2)],
+      ["HSD gross fuel sales amount (software)", ((report.fuelRows.find(r => r.fuel === "HSD")?.amount || 0) + (report.fuelRows.find(r => r.fuel === "HSD")?.creditAmount || 0)).toFixed(2)],
+      ["HSD estimated VAT-exclusive turnover (gross / (1 + rate))", (((report.fuelRows.find(r => r.fuel === "HSD")?.amount || 0) + (report.fuelRows.find(r => r.fuel === "HSD")?.creditAmount || 0)) / (1 + n(hsdVatRate) / 100)).toFixed(2)],
+      ["HSD indicative VAT estimate (higher of percentage or per-litre floor)", report.hsdEstimate.toFixed(2)],
       ["Warning", "CA must validate tax base, HSN/rates, GSTR-2B, ITC eligibility, current notifications and portal schema before filing."]
     ];
     download("StationMitra_GST_VAT_CA_RECON_" + from + "_to_" + to + ".csv", rows);
@@ -173,23 +184,21 @@ export function GstVatCenter({ data }) {
 
     <section className="panel" style={{ marginTop: 16 }}>
       <h3>Uttarakhand VAT — MS / HSD</h3>
-      <p style={small}>Fuel sales quantities and values are shown separately. VAT tax base may not equal retail sales amount; enter the CA-confirmed base to calculate an indicative comparison only.</p>
+      <p style={small}>VAT base is now auto-derived from software sales totals: gross retail amount ÷ (1 + VAT rate). Estimate compares percentage VAT with the minimum per-litre amount and uses the higher figure. Verify statutory turnover treatment against current Uttarakhand rules before filing.</p>
       <div style={{ overflowX: "auto" }}><table><thead><tr><th>Fuel</th><th>Sales Qty</th><th>Sales Amount (software)</th><th>Entries</th></tr></thead><tbody>
         {report.fuelRows.map(r => <tr key={r.fuel}><td>{r.fuel}</td><td>{qty(r.qty)} {r.fuel === "CNG" ? "Kg" : "L"}</td><td>{money(r.amount + r.creditAmount)}</td><td>{r.entries}</td></tr>)}
       </tbody></table></div>
       <div className="form" style={{ marginTop: 12 }}>
-        <label>MS CA-confirmed VAT taxable base (₹)<input style={field} type="number" min="0" step="0.01" placeholder="पहले CA से tax base लें" value={msVatBase} onChange={e => setMsVatBase(e.target.value)} /></label>
         <label>MS VAT rate (%)<input style={field} type="number" min="0" step="0.01" value={msVatRate} onChange={e => setMsVatRate(e.target.value)} /></label>
         <label>MS minimum per litre (₹)<input style={field} type="number" min="0" step="0.01" value={msMinimum} onChange={e => setMsMinimum(e.target.value)} /></label>
-        <label>HSD CA-confirmed VAT taxable base (₹)<input style={field} type="number" min="0" step="0.01" placeholder="पहले CA से tax base लें" value={hsdVatBase} onChange={e => setHsdVatBase(e.target.value)} /></label>
         <label>HSD VAT rate (%)<input style={field} type="number" min="0" step="0.01" value={hsdVatRate} onChange={e => setHsdVatRate(e.target.value)} /></label>
         <label>HSD minimum per litre (₹)<input style={field} type="number" min="0" step="0.01" value={hsdMinimum} onChange={e => setHsdMinimum(e.target.value)} /></label>
       </div>
       <div className="cards" style={{ marginTop: 14 }}>
-        <div className="card"><span>MS indicative VAT</span><strong>{report.msEstimate === null ? "Tax base required" : money(report.msEstimate)}</strong></div>
-        <div className="card"><span>HSD indicative VAT</span><strong>{report.hsdEstimate === null ? "Tax base required" : money(report.hsdEstimate)}</strong></div>
+        <div className="card"><span>MS auto VAT estimate</span><strong>{money(report.msEstimate)}</strong><small>Sales gross: {money((report.fuelRows.find(r => r.fuel === "MS")?.amount || 0) + (report.fuelRows.find(r => r.fuel === "MS")?.creditAmount || 0))}</small></div>
+        <div className="card"><span>HSD auto VAT estimate</span><strong>{money(report.hsdEstimate)}</strong><small>Sales gross: {money((report.fuelRows.find(r => r.fuel === "HSD")?.amount || 0) + (report.fuelRows.find(r => r.fuel === "HSD")?.creditAmount || 0))}</small></div>
       </div>
-      <p style={small}>ये rates/minimums editable working assumptions हैं। लागू अधिसूचना, tax base, invoice adjustments और CA confirmation के बिना इन्हें अंतिम VAT देयता न मानें। CNG को अलग रखा गया है क्योंकि उसका लागू tax treatment अलग सत्यापित करना होगा।</p>
+      <p style={small}>Formula: estimated taxable turnover = software gross sales ÷ (1 + VAT rate); percentage amount = estimated taxable turnover × rate; floor = sales litres × minimum per litre; estimate = higher of percentage amount and floor. This assumes software amounts are VAT-inclusive and all listed quantities/amounts are taxable retail sales. Reconcile returns, discounts, cancellations, invoice adjustments and current notification before statutory filing. CNG is separate.</p>
     </section>
 
     <section className="panel" style={{ marginTop: 16 }}>
