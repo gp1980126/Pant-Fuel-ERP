@@ -95,6 +95,30 @@ export function GstVatCenter({ data }) {
     setNotice("GST/VAT reconciliation CSV डाउनलोड हुई। VAT tax base और ITC को CA द्वारा सत्यापित करना बाकी है।");
   };
 
+  const exportGstr3b = () => {
+    download("StationMitra_GSTR3B_CA_WORKING_" + from + "_to_" + to + ".csv", [
+      ["Field", "Amount (INR)", "Status"],
+      ["Tax period", from + " to " + to, "CA REVIEW"],
+      ["Output GST on lubricant sales", report.outputTax.toFixed(2), "Calculated from StationMitra sales rows"],
+      ["Potential GST on lubricant purchases", report.potentialItc.toFixed(2), "Not assumed eligible ITC"],
+      ["CA-confirmed eligible ITC", n(confirmedItc).toFixed(2), "Entered by user/CA"],
+      ["Indicative cash liability", Math.max(0, report.outputTax - n(confirmedItc)).toFixed(2), "Before other adjustments, reversals and portal ledger credits"],
+      ["Filing status", "NOT FILED", "No official portal submission performed"]
+    ]);
+    setNotice("GSTR-3B working CSV डाउनलोड हुई। यह सरकारी रिटर्न नहीं है और इसे CA से verify कराएँ।");
+  };
+  const exportChallanWorking = () => {
+    download("StationMitra_GST_CHALLAN_WORKING_" + from + "_to_" + to + ".csv", [
+      ["Field", "Value", "Status"],
+      ["GSTIN", "Configure/verify with CA", "Required for official challan"],
+      ["Tax period", from + " to " + to, "CA REVIEW"],
+      ["Indicative GST cash liability (INR)", Math.max(0, report.outputTax - n(confirmedItc)).toFixed(2), "Estimate only; reconcile with electronic credit/cash ledgers"],
+      ["Official challan CIN/CPIN", "NOT GENERATED", "Generate only through official GST portal or configured authorized provider"],
+      ["Payment status", "NOT PAID", "This file does not initiate payment"]
+    ]);
+    setNotice("GST challan working CSV डाउनलोड हुई। यह सरकारी CPIN/CIN नहीं है और कोई भुगतान नहीं हुआ है।");
+  };
+
   const field = { width: "100%", boxSizing: "border-box", padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8, background: "var(--input-bg, #fff)", color: "var(--text, #0f172a)" };
   const card = { border: "1px solid var(--border, #dbe3ec)", borderRadius: 12, padding: 14, background: "var(--panel, #fff)" };
   const small = { color: "var(--muted, #64748b)", fontSize: 12 };
@@ -118,6 +142,8 @@ export function GstVatCenter({ data }) {
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
         <button className="btn" onClick={exportGstr1}>⬇ GSTR-1 CA Review CSV</button>
+        <button className="btn" onClick={exportGstr3b}>⬇ GSTR-3B Working CSV</button>
+        <button className="btn" onClick={exportChallanWorking}>⬇ GST Challan Working CSV</button>
         <button className="btn" onClick={exportSummary}>⬇ GST/VAT Reconciliation CSV</button>
         <button className="btn gray" onClick={() => window.print()}>Print / Save PDF</button>
       </div>
@@ -164,6 +190,21 @@ export function GstVatCenter({ data }) {
         <div className="card"><span>HSD indicative VAT</span><strong>{report.hsdEstimate === null ? "Tax base required" : money(report.hsdEstimate)}</strong></div>
       </div>
       <p style={small}>ये rates/minimums editable working assumptions हैं। लागू अधिसूचना, tax base, invoice adjustments और CA confirmation के बिना इन्हें अंतिम VAT देयता न मानें। CNG को अलग रखा गया है क्योंकि उसका लागू tax treatment अलग सत्यापित करना होगा।</p>
+    </section>
+
+    <section className="panel" style={{ marginTop: 16 }}>
+      <h3>GST Portal / Authorized GSP Integration</h3>
+      <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: 12, borderRadius: 10 }}>
+        <b>स्थिति: अभी कनेक्ट नहीं है</b>
+        <p style={{ ...small, marginBottom: 0 }}>GSTN/GSP API credentials, provider agreement and sandbox access are not configured in this test build. No GST portal API call, return filing, challan generation or payment is being performed.</p>
+      </div>
+      <ul>
+        <li>Choose a GSTN-empanelled GSP and confirm pricing, supported APIs and onboarding terms.</li>
+        <li>Obtain sandbox credentials and test access from the provider.</li>
+        <li>Keep API secrets on a server-side function only; never put them in VITE_ variables or browser code.</li>
+        <li>Run sandbox authentication, return validation and status checks before any production integration.</li>
+        <li>Enable actual filing/payment only after explicit owner approval and CA verification.</li>
+      </ul>
     </section>
 
     <section className="panel" style={{ marginTop: 16 }}>
