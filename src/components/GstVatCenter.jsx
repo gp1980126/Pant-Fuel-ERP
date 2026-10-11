@@ -95,8 +95,22 @@ export function GstVatCenter({ data }) {
       const creditAmount = creditRows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0);
       return { fuel, qty: rows.reduce((s, r) => s + n(r.qty), 0) + creditRows.reduce((s, r) => s + n(r.qty), 0), amount, entries: rows.length + creditRows.length, creditQty: creditRows.reduce((s, r) => s + n(r.qty), 0), creditAmount };
     });
-    const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(r?.date, from, to) && fuelCode(r) === "LUBRICANT");
-    const potentialItc = purchases.reduce((s, r) => s + n(r.taxAmount), 0);
+    const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(r?.date || r?.billDate || r?.invoiceDate, from, to) && fuelCode(r) === "LUBRICANT");
+    // Purchase GST must include tax stored on detailed invoice item lines, not only the parent header.
+    // Prefer item-level GST to avoid double-counting the same invoice's header and line totals.
+    const purchaseTax = purchase => {
+      const items = Array.isArray(purchase?.items) ? purchase.items : [];
+      const itemTax = items.reduce((sum, item) => sum
+        + n(item?.igstAmount) + n(item?.cgstAmount) + n(item?.sgstAmount)
+        + n(item?.gstAmount) + n(item?.taxAmount), 0);
+      if (itemTax > 0) return itemTax;
+      const headerTax = n(purchase?.taxAmount) || n(purchase?.gstAmount) || n(purchase?.gstTotal);
+      if (headerTax > 0) return headerTax;
+      const breakdownTax = Array.isArray(purchase?.taxBreakdown)
+        ? purchase.taxBreakdown.reduce((sum, item) => sum + n(item?.amount), 0) : 0;
+      return breakdownTax;
+    };
+    const potentialItc = purchases.reduce((sum, purchase) => sum + purchaseTax(purchase), 0);
     const outputTax = lubricantRows.reduce((s, r) => s + r.tax, 0);
     const ms = fuelRows.find(r => r.fuel === "MS") || { qty: 0, amount: 0 };
     const hsd = fuelRows.find(r => r.fuel === "HSD") || { qty: 0, amount: 0 };
@@ -185,7 +199,7 @@ export function GstVatCenter({ data }) {
         <div className="card"><span>Lubricant GST Sales</span><strong>{money(report.grossLubricant)}</strong></div>
         <div className="card"><span>Taxable Value</span><strong>{money(report.taxableLubricant)}</strong></div>
         <div className="card"><span>Output GST</span><strong>{money(report.outputTax)}</strong></div>
-        <div className="card"><span>Purchase GST (potential)</span><strong>{money(report.potentialItc)}</strong></div>
+        <div className="card"><span>Purchase GST in selected period ({report.purchases.length} bills)</span><strong>{money(report.potentialItc)}</strong></div>
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
         <button className="btn" onClick={exportGstr1}>⬇ GSTR-1 CA Review CSV</button>
@@ -209,13 +223,13 @@ export function GstVatCenter({ data }) {
       <h3>GSTR-3B — working summary</h3>
       <div className="cards">
         <div className="card"><span>Output GST (Lubricant)</span><strong>{money(report.outputTax)}</strong></div>
-        <div className="card"><span>Potential purchase GST</span><strong>{money(report.potentialItc)}</strong></div>
+        <div className="card"><span>Purchase GST in selected period ({report.purchases.length} bills)</span><strong>{money(report.potentialItc)}</strong></div>
         <div className="card"><span>Indicative net cash liability</span><strong>{money(Math.max(0, report.outputTax - n(confirmedItc)))}</strong></div>
       </div>
       <label style={{ display: "block", marginTop: 12 }}>CA-confirmed eligible ITC (₹)
         <input style={{ ...field, maxWidth: 300 }} type="number" min="0" step="0.01" value={confirmedItc} onChange={e => setConfirmedItc(e.target.value)} />
       </label>
-      <p style={small}>Potential purchase GST केवल खरीद रिकॉर्ड से है; GSTR-2B, invoice, business-use और ITC restrictions जाँचे बिना इसे eligible ITC न मानें। Net liability केवल प्रारंभिक estimate है; अन्य adjustments और reverse charge लागू हो सकते हैं।</p>
+      <p style={small}>Selected date range में केवल उसी अवधि के lubricant purchase bills गिने जाते हैं; item-line GST पहले, फिर bill-level tax पढ़ा जाता है। GSTR-2B, invoice, business-use और ITC restrictions जाँचे बिना इसे eligible ITC न मानें। Net liability केवल प्रारंभिक estimate है; अन्य adjustments और reverse charge लागू हो सकते हैं।</p>
     </section>
 
     <section className="panel" style={{ marginTop: 16 }}>
