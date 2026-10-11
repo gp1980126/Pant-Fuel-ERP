@@ -57,7 +57,7 @@ export function GstVatCenter({ data }) {
     const fuelRows = ["MS", "HSD", "CNG"].map(fuel => {
       const rows = sales.filter(r => fuelCode(r) === fuel);
       const creditRows = credits.filter(r => fuelCode(r) === fuel);
-      return { fuel, qty: rows.reduce((s, r) => s + n(r.qty), 0), amount: rows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0), entries: rows.length, creditQty: creditRows.reduce((s, r) => s + n(r.qty), 0), creditAmount: creditRows.reduce((s, r) => s + n(r.amount), 0) };
+      return { fuel, qty: rows.reduce((s, r) => s + n(r.qty), 0) + creditRows.reduce((s, r) => s + n(r.qty), 0), amount: rows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0), entries: rows.length, creditQty: creditRows.reduce((s, r) => s + n(r.qty), 0), creditAmount: creditRows.reduce((s, r) => s + n(r.amount), 0) };
     });
     const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(r?.date, from, to) && fuelCode(r) === "LUBRICANT");
     const potentialItc = purchases.reduce((s, r) => s + n(r.taxAmount), 0);
