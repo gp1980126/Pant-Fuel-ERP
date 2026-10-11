@@ -44,8 +44,11 @@ export function GstVatCenter({ data }) {
     const partyGstin = partyName => {
       const key = normalizeKey(partyName);
       if (!key) return "";
-      const match = partyRows.find(p => normalizeKey(p?.name) === key);
-      return String(match?.gstin || match?.GSTIN || match?.gst || "").trim();
+      const match = partyRows.find(p => {
+        const names = [p?.name, p?.partyName, p?.customerName, p?.firmName, p?.businessName, p?.title];
+        return names.some(name => normalizeKey(name) === key);
+      });
+      return String(match?.gstin || match?.GSTIN || match?.gstNumber || match?.gstNo || match?.gstinNo || match?.gst || "").trim();
     };
     // HSN source of truth: the saved purchase bill, never a guessed/default HSN.
     // Support both detailed item lines and older bills that saved HSN at bill level.
@@ -95,7 +98,8 @@ export function GstVatCenter({ data }) {
       const creditAmount = creditRows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0);
       return { fuel, qty: rows.reduce((s, r) => s + n(r.qty), 0) + creditRows.reduce((s, r) => s + n(r.qty), 0), amount, entries: rows.length + creditRows.length, creditQty: creditRows.reduce((s, r) => s + n(r.qty), 0), creditAmount };
     });
-    const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(r?.date || r?.billDate || r?.invoiceDate || r?.invoice_date || r?.importedAt || r?.createdAt, from, to) && fuelCode(r) === "LUBRICANT");
+    const purchaseDate = r => String(r?.date || r?.billDate || r?.invoiceDate || r?.invoice_date || r?.bill_date || r?.documentDate || r?.importedAt || r?.createdAt || "").slice(0, 10);
+    const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(purchaseDate(r), from, to) && fuelCode(r) === "LUBRICANT");
     // Purchase GST must include tax stored on detailed invoice item lines, not only the parent header.
     // Prefer item-level GST to avoid double-counting the same invoice's header and line totals.
     const purchaseTax = purchase => {
@@ -234,7 +238,7 @@ export function GstVatCenter({ data }) {
 
     <section className="panel" style={{ marginTop: 16 }}>
       <h3>Uttarakhand VAT — MS / HSD</h3>
-      <p style={small}>VAT base is now auto-derived from software sales totals: gross retail amount ÷ (1 + VAT rate). Estimate compares percentage VAT with the minimum per-litre amount and uses the higher figure. Verify statutory turnover treatment against current Uttarakhand rules before filing.</p>
+      <p style={small}>VAT working estimate only. The current formula treats recorded sale amount as VAT-inclusive and compares percentage tax with the per-litre minimum. Do not treat this estimate as the statutory payable amount until taxable turnover, invoice adjustments and the current Uttarakhand notification are reconciled against HPCL/DSR records.</p>
       <div style={{ overflowX: "auto" }}><table><thead><tr><th>Fuel</th><th>Sales Qty</th><th>Sales Amount (software)</th><th>Entries</th></tr></thead><tbody>
         {report.fuelRows.map(r => <tr key={r.fuel}><td>{r.fuel}</td><td>{qty(r.qty)} {r.fuel === "CNG" ? "Kg" : "L"}</td><td>{money(r.amount + r.creditAmount)}</td><td>{r.entries}</td></tr>)}
       </tbody></table></div>
@@ -248,7 +252,7 @@ export function GstVatCenter({ data }) {
         <div className="card"><span>MS auto VAT estimate</span><strong>{money(report.msEstimate)}</strong><small>Sales gross: {money((report.fuelRows.find(r => r.fuel === "MS")?.amount || 0) + (report.fuelRows.find(r => r.fuel === "MS")?.creditAmount || 0))}</small></div>
         <div className="card"><span>HSD auto VAT estimate</span><strong>{money(report.hsdEstimate)}</strong><small>Sales gross: {money((report.fuelRows.find(r => r.fuel === "HSD")?.amount || 0) + (report.fuelRows.find(r => r.fuel === "HSD")?.creditAmount || 0))}</small></div>
       </div>
-      <p style={small}>Formula: estimated taxable turnover = software gross sales ÷ (1 + VAT rate); percentage amount = estimated taxable turnover × rate; floor = sales litres × minimum per litre; estimate = higher of percentage amount and floor. This assumes software amounts are VAT-inclusive and all listed quantities/amounts are taxable retail sales. Reconcile returns, discounts, cancellations, invoice adjustments and current notification before statutory filing. CNG is separate.</p>
+      <p style={small}>Working formula: estimated taxable turnover = software gross sales ÷ (1 + VAT rate); percentage amount = estimated taxable turnover × rate; floor = sales litres × minimum per litre; estimate = higher of percentage amount and floor. This is not a final statutory calculation. Match taxable turnover to the current Uttarakhand notification and actual DSR/HPCL records, and separately reconcile discounts, cancellations and adjustments. CNG is separate.</p>
     </section>
 
     <section className="panel" style={{ marginTop: 16 }}>
