@@ -1,0 +1,180 @@
+import React, { useMemo, useState } from "react";
+
+const money = value => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(Number(value) || 0);
+const qty = value => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+const n = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+const dateInRange = (date, from, to) => String(date || "") >= from && String(date || "") <= to;
+const safeName = value => String(value || "").replace(/[^a-z0-9_-]+/gi, "_");
+const csvCell = value => '"' + String(value ?? "").replaceAll('"', '""') + '"';
+const download = (name, rows) => {
+  const text = "\ufeff" + rows.map(row => row.map(csvCell).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+};
+const grossBreakdown = row => {
+  const rate = n(row?.gstRate) || 18;
+  const gross = n(row?.amount ?? row?.totalAmount);
+  const savedTaxable = n(row?.taxableAmount);
+  const savedTax = n(row?.gstAmount ?? row?.taxAmount);
+  if (savedTaxable > 0 || savedTax > 0) return { rate, gross: gross || savedTaxable + savedTax, taxable: savedTaxable || Math.max(0, gross - savedTax), tax: savedTax || Math.max(0, gross - savedTaxable) };
+  const taxable = gross / (1 + rate / 100);
+  return { rate, gross, taxable, tax: gross - taxable };
+};
+const fuelCode = row => String(row?.fuel || row?.productType || "").trim().toUpperCase();
+
+export function GstVatCenter({ data }) {
+  const [from, setFrom] = useState("2026-09-01");
+  const [to, setTo] = useState("2026-09-30");
+  const [confirmedItc, setConfirmedItc] = useState("0");
+  const [msVatBase, setMsVatBase] = useState("");
+  const [hsdVatBase, setHsdVatBase] = useState("");
+  const [msVatRate, setMsVatRate] = useState("16.97");
+  const [hsdVatRate, setHsdVatRate] = useState("17.15");
+  const [msMinimum, setMsMinimum] = useState("13.14");
+  const [hsdMinimum, setHsdMinimum] = useState("10.41");
+  const [notice, setNotice] = useState("");
+
+  const report = useMemo(() => {
+    const sales = (Array.isArray(data?.sales) ? data.sales : []).filter(r => dateInRange(r?.date, from, to));
+    const credits = (Array.isArray(data?.credits) ? data.credits : []).filter(r => dateInRange(r?.date, from, to));
+    const cashLubricants = (Array.isArray(data?.lubricantCashSales) ? data.lubricantCashSales : []).filter(r => dateInRange(r?.date, from, to));
+    const lubricantCredit = credits.filter(r => fuelCode(r) === "LUBRICANT");
+    const lubricantRows = [
+      ...lubricantCredit.map(r => ({ ...r, saleType: "CREDIT" })),
+      ...cashLubricants.map(r => ({ ...r, fuel: "LUBRICANT", saleType: String(r?.paymentMode || "CASH").toUpperCase() }))
+    ].map((r, i) => {
+      const b = grossBreakdown(r);
+      return {
+        date: r.date || "", invoiceNo: r.invoiceNo || r.billNo || r.id || ("LUB-" + (i + 1)),
+        party: r.party || r.partyName || r.customerName || "B2C / Customer",
+        gstin: r.gstin || r.GSTIN || "", hsn: r.hsn || r.hsnCode || "",
+        product: r.productName || r.product || "Lubricant",
+        qty: n(r.qty), rate: b.rate, taxable: b.taxable, cgst: b.tax / 2, sgst: b.tax / 2, igst: 0, tax: b.tax, gross: b.gross,
+        saleType: r.saleType
+      };
+    });
+    const fuelRows = ["MS", "HSD", "CNG"].map(fuel => {
+      const rows = sales.filter(r => fuelCode(r) === fuel);
+      const creditRows = credits.filter(r => fuelCode(r) === fuel);
+      return { fuel, qty: rows.reduce((s, r) => s + n(r.qty), 0), amount: rows.reduce((s, r) => s + n(r.amount ?? n(r.qty) * n(r.rate)), 0), entries: rows.length, creditQty: creditRows.reduce((s, r) => s + n(r.qty), 0), creditAmount: creditRows.reduce((s, r) => s + n(r.amount), 0) };
+    });
+    const purchases = (Array.isArray(data?.purchases) ? data.purchases : []).filter(r => dateInRange(r?.date, from, to) && fuelCode(r) === "LUBRICANT");
+    const potentialItc = purchases.reduce((s, r) => s + n(r.taxAmount), 0);
+    const outputTax = lubricantRows.reduce((s, r) => s + r.tax, 0);
+    const ms = fuelRows.find(r => r.fuel === "MS") || { qty: 0, amount: 0 };
+    const hsd = fuelRows.find(r => r.fuel === "HSD") || { qty: 0, amount: 0 };
+    const msBase = n(msVatBase), hsdBase = n(hsdVatBase);
+    const msEstimate = msVatBase !== "" ? Math.max(msBase * n(msVatRate) / 100, ms.qty * n(msMinimum)) : null;
+    const hsdEstimate = hsdVatBase !== "" ? Math.max(hsdBase * n(hsdVatRate) / 100, hsd.qty * n(hsdMinimum)) : null;
+    return { lubricantRows, fuelRows, purchases, potentialItc, outputTax, grossLubricant: lubricantRows.reduce((s, r) => s + r.gross, 0), taxableLubricant: lubricantRows.reduce((s, r) => s + r.taxable, 0), msEstimate, hsdEstimate, salesCount: sales.length, creditCount: credits.length };
+  }, [data, from, to, msVatBase, hsdVatBase, msVatRate, hsdVatRate, msMinimum, hsdMinimum]);
+
+  const exportGstr1 = () => {
+    const rows = [["Date", "Invoice No", "Customer", "Customer GSTIN", "HSN", "Product", "Sale Type", "Qty", "Taxable Value", "GST Rate %", "CGST", "SGST", "IGST", "Total GST", "Invoice Total"],
+      ...report.lubricantRows.map(r => [r.date, r.invoiceNo, r.party, r.gstin, r.hsn, r.product, r.saleType, r.qty, r.taxable.toFixed(2), r.rate, r.cgst.toFixed(2), r.sgst.toFixed(2), r.igst.toFixed(2), r.tax.toFixed(2), r.gross.toFixed(2)])];
+    download("StationMitra_GSTR1_CA_REVIEW_" + from + "_to_" + to + ".csv", rows);
+    setNotice("GSTR-1 के लिए CA review CSV डाउनलोड हुई। इसे official portal JSON न मानें; CA/portal validation आवश्यक है।");
+  };
+  const exportSummary = () => {
+    const rows = [
+      ["StationMitra GST & VAT Center", "CA REVIEW EXPORT"], ["Period", from + " to " + to],
+      ["GST Output Tax - Lubricant only", report.outputTax.toFixed(2)],
+      ["Potential purchase GST (not automatically eligible ITC)", report.potentialItc.toFixed(2)],
+      ["CA-confirmed eligible ITC entered", n(confirmedItc).toFixed(2)],
+      ["Indicative GST cash liability before other adjustments", Math.max(0, report.outputTax - n(confirmedItc)).toFixed(2)],
+      ["MS sales quantity", (report.fuelRows.find(r => r.fuel === "MS")?.qty || 0).toFixed(3)],
+      ["MS VAT tax base entered by CA", msVatBase === "" ? "NOT ENTERED" : msVatBase],
+      ["MS indicative VAT estimate", report.msEstimate === null ? "NOT CALCULATED - tax base missing" : report.msEstimate.toFixed(2)],
+      ["HSD sales quantity", (report.fuelRows.find(r => r.fuel === "HSD")?.qty || 0).toFixed(3)],
+      ["HSD VAT tax base entered by CA", hsdVatBase === "" ? "NOT ENTERED" : hsdVatBase],
+      ["HSD indicative VAT estimate", report.hsdEstimate === null ? "NOT CALCULATED - tax base missing" : report.hsdEstimate.toFixed(2)],
+      ["Warning", "CA must validate tax base, HSN/rates, GSTR-2B, ITC eligibility, current notifications and portal schema before filing."]
+    ];
+    download("StationMitra_GST_VAT_CA_RECON_" + from + "_to_" + to + ".csv", rows);
+    setNotice("GST/VAT reconciliation CSV डाउनलोड हुई। VAT tax base और ITC को CA द्वारा सत्यापित करना बाकी है।");
+  };
+
+  const field = { width: "100%", boxSizing: "border-box", padding: "9px 10px", border: "1px solid #cbd5e1", borderRadius: 8, background: "var(--input-bg, #fff)", color: "var(--text, #0f172a)" };
+  const card = { border: "1px solid var(--border, #dbe3ec)", borderRadius: 12, padding: 14, background: "var(--panel, #fff)" };
+  const small = { color: "var(--muted, #64748b)", fontSize: 12 };
+  return <div className="content">
+    <section className="panel">
+      <h2>🧾 GST &amp; VAT Center</h2>
+      <p style={small}>Satat Filling Station · Haldwani, Uttarakhand · CA reconciliation and export</p>
+      <div style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", padding: 12, borderRadius: 10, margin: "12px 0" }}>
+        <b>TEST / CA REVIEW ONLY</b><br />
+        <span>यह मॉड्यूल कोई सरकारी रिटर्न फाइल या भुगतान नहीं करता। दरें/टैक्स आधार और ITC पात्रता CA सत्यापित करे। Export फाइलें समीक्षा के लिए हैं।</span>
+      </div>
+      <div className="form">
+        <label>From Date<input style={field} type="date" value={from} onChange={e => setFrom(e.target.value)} /></label>
+        <label>To Date<input style={field} type="date" value={to} min={from} onChange={e => setTo(e.target.value)} /></label>
+      </div>
+      <div className="cards" style={{ marginTop: 14 }}>
+        <div className="card"><span>Lubricant GST Sales</span><strong>{money(report.grossLubricant)}</strong></div>
+        <div className="card"><span>Taxable Value</span><strong>{money(report.taxableLubricant)}</strong></div>
+        <div className="card"><span>Output GST</span><strong>{money(report.outputTax)}</strong></div>
+        <div className="card"><span>Purchase GST (potential)</span><strong>{money(report.potentialItc)}</strong></div>
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+        <button className="btn" onClick={exportGstr1}>⬇ GSTR-1 CA Review CSV</button>
+        <button className="btn" onClick={exportSummary}>⬇ GST/VAT Reconciliation CSV</button>
+        <button className="btn gray" onClick={() => window.print()}>Print / Save PDF</button>
+      </div>
+      {notice && <p role="status" style={{ marginTop: 12, color: "#166534" }}>{notice}</p>}
+    </section>
+
+    <section className="panel" style={{ marginTop: 16 }}>
+      <h3>GSTR-1 — Lubricant sales summary</h3>
+      <p style={small}>ईंधन की बिक्री को GST taxable sales में शामिल नहीं किया गया है। Invoice-level HSN/GSTIN और B2B/B2C वर्गीकरण CA से सत्यापित करें।</p>
+      <div style={{ overflowX: "auto" }}><table><thead><tr><th>Date</th><th>Invoice</th><th>Party</th><th>GSTIN</th><th>HSN</th><th>Taxable</th><th>GST</th><th>Total</th></tr></thead>
+        <tbody>{report.lubricantRows.length ? report.lubricantRows.map((r, i) => <tr key={String(r.invoiceNo) + i}><td>{r.date}</td><td>{r.invoiceNo}</td><td>{r.party}</td><td>{r.gstin || "B2C / verify"}</td><td>{r.hsn || "MISSING"}</td><td>{money(r.taxable)}</td><td>{money(r.tax)}</td><td>{money(r.gross)}</td></tr>) : <tr><td colSpan="8">इस अवधि में lubricant GST sales रिकॉर्ड नहीं मिले।</td></tr>}</tbody>
+      </table></div>
+    </section>
+
+    <section className="panel" style={{ marginTop: 16 }}>
+      <h3>GSTR-3B — working summary</h3>
+      <div className="cards">
+        <div className="card"><span>Output GST (Lubricant)</span><strong>{money(report.outputTax)}</strong></div>
+        <div className="card"><span>Potential purchase GST</span><strong>{money(report.potentialItc)}</strong></div>
+        <div className="card"><span>Indicative net cash liability</span><strong>{money(Math.max(0, report.outputTax - n(confirmedItc)))}</strong></div>
+      </div>
+      <label style={{ display: "block", marginTop: 12 }}>CA-confirmed eligible ITC (₹)
+        <input style={{ ...field, maxWidth: 300 }} type="number" min="0" step="0.01" value={confirmedItc} onChange={e => setConfirmedItc(e.target.value)} />
+      </label>
+      <p style={small}>Potential purchase GST केवल खरीद रिकॉर्ड से है; GSTR-2B, invoice, business-use और ITC restrictions जाँचे बिना इसे eligible ITC न मानें। Net liability केवल प्रारंभिक estimate है; अन्य adjustments और reverse charge लागू हो सकते हैं।</p>
+    </section>
+
+    <section className="panel" style={{ marginTop: 16 }}>
+      <h3>Uttarakhand VAT — MS / HSD</h3>
+      <p style={small}>Fuel sales quantities and values are shown separately. VAT tax base may not equal retail sales amount; enter the CA-confirmed base to calculate an indicative comparison only.</p>
+      <div style={{ overflowX: "auto" }}><table><thead><tr><th>Fuel</th><th>Sales Qty</th><th>Sales Amount (software)</th><th>Entries</th></tr></thead><tbody>
+        {report.fuelRows.map(r => <tr key={r.fuel}><td>{r.fuel}</td><td>{qty(r.qty)} {r.fuel === "CNG" ? "Kg" : "L"}</td><td>{money(r.amount + r.creditAmount)}</td><td>{r.entries}</td></tr>)}
+      </tbody></table></div>
+      <div className="form" style={{ marginTop: 12 }}>
+        <label>MS CA-confirmed VAT taxable base (₹)<input style={field} type="number" min="0" step="0.01" placeholder="पहले CA से tax base लें" value={msVatBase} onChange={e => setMsVatBase(e.target.value)} /></label>
+        <label>MS VAT rate (%)<input style={field} type="number" min="0" step="0.01" value={msVatRate} onChange={e => setMsVatRate(e.target.value)} /></label>
+        <label>MS minimum per litre (₹)<input style={field} type="number" min="0" step="0.01" value={msMinimum} onChange={e => setMsMinimum(e.target.value)} /></label>
+        <label>HSD CA-confirmed VAT taxable base (₹)<input style={field} type="number" min="0" step="0.01" placeholder="पहले CA से tax base लें" value={hsdVatBase} onChange={e => setHsdVatBase(e.target.value)} /></label>
+        <label>HSD VAT rate (%)<input style={field} type="number" min="0" step="0.01" value={hsdVatRate} onChange={e => setHsdVatRate(e.target.value)} /></label>
+        <label>HSD minimum per litre (₹)<input style={field} type="number" min="0" step="0.01" value={hsdMinimum} onChange={e => setHsdMinimum(e.target.value)} /></label>
+      </div>
+      <div className="cards" style={{ marginTop: 14 }}>
+        <div className="card"><span>MS indicative VAT</span><strong>{report.msEstimate === null ? "Tax base required" : money(report.msEstimate)}</strong></div>
+        <div className="card"><span>HSD indicative VAT</span><strong>{report.hsdEstimate === null ? "Tax base required" : money(report.hsdEstimate)}</strong></div>
+      </div>
+      <p style={small}>ये rates/minimums editable working assumptions हैं। लागू अधिसूचना, tax base, invoice adjustments और CA confirmation के बिना इन्हें अंतिम VAT देयता न मानें। CNG को अलग रखा गया है क्योंकि उसका लागू tax treatment अलग सत्यापित करना होगा।</p>
+    </section>
+
+    <section className="panel" style={{ marginTop: 16 }}>
+      <h3>CA checklist</h3>
+      <ul>
+        <li>GSTR-1: invoice-wise sale, GSTIN, HSN, taxable value, tax rate and credit/debit notes.</li>
+        <li>GSTR-3B: output tax, GSTR-2B reconciliation, eligible ITC, reversals and cash ledger.</li>
+        <li>MS/HSD VAT: verify current Uttarakhand notification, tax base, minimum-per-litre rule and applicable filing period.</li>
+        <li>Reconcile StationMitra with HPCL bills, bank/settlement reports, purchase ledger and stock records.</li>
+        <li>Review this CSV before entering anything on the official portal; portal schema and validation remain separate.</li>
+      </ul>
+    </section>
+  </div>;
+}
