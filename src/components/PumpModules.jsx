@@ -7507,6 +7507,7 @@ function updateFuelRates() {
 
   const [msg, setMsg] =
     useState("");
+  const [fillingEditId, setFillingEditId] = useState(null);
 
   /* ======================================================
      ACCOUNTING PERIOD
@@ -7630,36 +7631,39 @@ function updateFuelRates() {
     const bill = (data.purchases || []).find(p => purchaseRef(p) === String(f.purchaseRef));
     if (!bill) return setMsg("Selected Purchase Bill नहीं मिला।");
     if (String(bill.date) > String(f.date)) return setMsg("Filling date Purchase Bill date से पहले नहीं हो सकती।");
-    const usedQty = fillingsRows.filter(x => String(x.purchaseRef) === String(f.purchaseRef)).reduce((a,x)=>a+n(x.qty),0);
+    const editingRow = fillingEditId === null ? null : fillingsRows.find(x => String(x.id) === String(fillingEditId));
+    if (fillingEditId !== null && !editingRow) {
+      setFillingEditId(null);
+      return setMsg("Correction record नहीं मिला। सूची refresh करके दोबारा कोशिश करें।");
+    }
+    const usedQty = fillingsRows.filter(x => String(x.purchaseRef) === String(f.purchaseRef) && String(x.id) !== String(fillingEditId)).reduce((a,x)=>a+n(x.qty),0);
     const remaining = n(bill.quantity) - usedQty;
     if (n(f.qty) > remaining + 0.001) {
       return setMsg(`Bill ${bill.invoiceNo || f.purchaseRef} में केवल ${remaining.toFixed(2)} L balance बाकी है।`);
     }
 
+    const nextFilling = {
+      ...(editingRow || {}),
+      id: editingRow?.id ?? Date.now(),
+      date: f.date,
+      fuel: f.fuel,
+      qty: n(f.qty),
+      purchaseRef: f.purchaseRef,
+      purchaseInvoiceNo: bill.invoiceNo || "",
+      purchaseDate: bill.date || "",
+      linkage: "PURCHASE_LINKED",
+      correctionUpdatedAt: editingRow ? new Date().toISOString() : undefined,
+      correctionPrevious: editingRow ? { date: editingRow.date, fuel: editingRow.fuel, qty: n(editingRow.qty), purchaseRef: editingRow.purchaseRef || "" } : undefined
+    };
     update({
-      fillings: [
-        ...data.fillings,
-        {
-          id: Date.now(),
-          date: f.date,
-          fuel: f.fuel,
-          qty: n(f.qty),
-          purchaseRef: f.purchaseRef,
-          purchaseInvoiceNo: bill.invoiceNo || "",
-          purchaseDate: bill.date || "",
-          linkage: "PURCHASE_LINKED"
-        }
-      ]
+      fillings: editingRow
+        ? data.fillings.map(x => String(x.id) === String(fillingEditId) ? nextFilling : x)
+        : [...data.fillings, nextFilling]
     });
 
-    setF({
-      ...f,
-      qty: ""
-    });
-
-    setMsg(
-      "Filling saved."
-    );
+    setF({ fuel: f.fuel, qty: "", date: f.date, purchaseRef: "" });
+    setFillingEditId(null);
+    setMsg(editingRow ? "Filling correction saved. Previous values are retained on the corrected record." : "Filling saved.");
   }
 
 
@@ -8059,8 +8063,12 @@ function updateFuelRates() {
       >
 
         <h2>
-          Tank Filling
+          Tank Filling {fillingEditId !== null ? "— Correction Mode" : ""}
         </h2>
+        {fillingEditId !== null && <div className="notice" style={{marginBottom:10}}>
+          आप मौजूदा filling को सुधार रहे हैं। Save करने पर वही record update होगा, नई duplicate filling नहीं बनेगी।
+          <button type="button" className="btn small" style={{marginLeft:8}} onClick={() => { setFillingEditId(null); setF({ fuel:"MS", qty:"", date:START_DATE, purchaseRef:"" }); setMsg("Correction cancelled."); }}>Cancel Correction</button>
+        </div>}
 
         <div className="form">
 
@@ -8191,7 +8199,8 @@ function updateFuelRates() {
             "Purchase Bill",
             "Link Status",
             "Purchase Rate",
-            "Amount"
+            "Amount",
+            "Correction"
           ]}
 
           rows={
@@ -8200,23 +8209,18 @@ function updateFuelRates() {
               .slice()
               .reverse()
               .map(x => [
-
-                x.date,
-
-                x.fuel,
-
-                x.qty,
-
+                x.date, x.fuel, n(x.qty).toFixed(2),
                 x.purchaseInvoiceNo || "—",
-
                 x.purchaseRef ? "LINKED" : "LEGACY / UNLINKED",
-
                 money(getPurchaseRate(data, x.fuel, x.date)),
-
-                money(
-                  n(x.qty) * getPurchaseRate(data, x.fuel, x.date)
-                )
-
+                money(n(x.qty) * getPurchaseRate(data, x.fuel, x.date)),
+                <button type="button" className="btn small" onClick={() => {
+                  if (x.purchaseRef && !window.confirm("इस linked filling को सुधारने से पहले पुरानी values सुरक्षित रखी जाएँगी। क्या जारी रखें?")) return;
+                  setFillingEditId(x.id);
+                  setF({ fuel: x.fuel, qty: String(x.qty), date: x.date, purchaseRef: x.purchaseRef || "" });
+                  setMsg("Correction mode: मात्रा/तारीख/बिल ठीक करें और ऊपर Save करें।");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}>✏️ Correct</button>
               ])
           }
 
