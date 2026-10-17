@@ -7642,9 +7642,10 @@ function updateFuelRates() {
       return setMsg(`Bill ${bill.invoiceNo || f.purchaseRef} में केवल ${remaining.toFixed(2)} L balance बाकी है।`);
     }
 
-    const nextFilling = {
+    const nextFillingBase = {
       ...(editingRow || {}),
       id: editingRow?.id ?? Date.now(),
+      transactionId: editingRow?.transactionId || `TANK_FILLING-${editingRow?.id ?? Date.now()}`,
       date: f.date,
       fuel: f.fuel,
       qty: n(f.qty),
@@ -7654,6 +7655,13 @@ function updateFuelRates() {
       linkage: "PURCHASE_LINKED",
       correctionUpdatedAt: editingRow ? new Date().toISOString() : undefined,
       correctionPrevious: editingRow ? { date: editingRow.date, fuel: editingRow.fuel, qty: n(editingRow.qty), purchaseRef: editingRow.purchaseRef || "" } : undefined
+    };
+    // A correction changes signed business fields; recompute the v2 fingerprint
+    // before sending the mutation through the central integrity firewall.
+    const nextFilling = {
+      ...nextFillingBase,
+      fingerprint: transactionFingerprint("TANK_FILLING", nextFillingBase),
+      fingerprintVersion: 2
     };
     update({
       fillings: editingRow
