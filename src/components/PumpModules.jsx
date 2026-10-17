@@ -7636,7 +7636,17 @@ function updateFuelRates() {
       setFillingEditId(null);
       return setMsg("Correction record नहीं मिला। सूची refresh करके दोबारा कोशिश करें।");
     }
-    const usedQty = fillingsRows.filter(x => String(x.purchaseRef) === String(f.purchaseRef) && String(x.id) !== String(fillingEditId)).reduce((a,x)=>a+n(x.qty),0);
+    const billFuel = String(bill.fuel || bill.productType || "").trim().toUpperCase();
+    if (billFuel && billFuel !== String(f.fuel).trim().toUpperCase()) {
+      return setMsg(`Fuel mismatch: ${bill.invoiceNo || f.purchaseRef} यह ${billFuel} bill है, ${f.fuel} filling से link नहीं कर सकते।`);
+    }
+    // Only fillings of the same fuel consume a purchase bill's quantity.
+    // A wrongly cross-linked MS row must not reduce the HSD bill balance (and vice versa).
+    const usedQty = fillingsRows.filter(x =>
+      String(x.purchaseRef) === String(f.purchaseRef) &&
+      String(x.id) !== String(fillingEditId) &&
+      String(x.fuel || "").trim().toUpperCase() === String(f.fuel).trim().toUpperCase()
+    ).reduce((a,x)=>a+n(x.qty),0);
     const remaining = n(bill.quantity) - usedQty;
     if (n(f.qty) > remaining + 0.001) {
       return setMsg(`Bill ${bill.invoiceNo || f.purchaseRef} में केवल ${remaining.toFixed(2)} L balance बाकी है।`);
