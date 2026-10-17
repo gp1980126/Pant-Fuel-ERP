@@ -8105,7 +8105,7 @@ function updateFuelRates() {
               <option value="">— Select Purchase Bill —</option>
               {(data.purchases || []).filter(p => p.fuel === f.fuel && String(p.date) <= String(f.date)).map(p => {
                 const ref = purchaseRef(p);
-                const used = fillingsRows.filter(x => String(x.purchaseRef) === ref).reduce((a,x)=>a+n(x.qty),0);
+                const used = fillingsRows.filter(x => String(x.purchaseRef) === ref && String(x.id) !== String(fillingEditId)).reduce((a,x)=>a+n(x.qty),0);
                 const remaining = n(p.quantity) - used;
                 return <option key={ref} value={ref} disabled={remaining <= 0.001}>
                   {p.date} · {p.invoiceNo || ref} · {n(p.quantity).toFixed(2)} L · Balance {Math.max(0,remaining).toFixed(2)} L
@@ -8160,7 +8160,7 @@ function updateFuelRates() {
             className="btn"
             onClick={add}
           >
-            ＋ Add Filling
+            {fillingEditId !== null ? "💾 Update Filling" : "＋ Add Filling"}
           </button>
 
         </div>
