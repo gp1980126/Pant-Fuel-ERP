@@ -8173,6 +8173,20 @@ function updateFuelRates() {
           >
             {fillingEditId !== null ? "💾 Update Filling" : "＋ Add Filling"}
           </button>
+          {fillingEditId !== null && <button type="button" className="btn danger" onClick={async () => {
+            const target = fillingsRows.find(row => String(row.id) === String(fillingEditId));
+            if (!target) return setMsg("❌ Filling record नहीं मिला; कोई बदलाव नहीं हुआ।");
+            const confirmed = window.confirm(
+              `क्या ${target.date} की ${target.fuel} ${n(target.qty).toFixed(2)} L filling हटानी है? यह purchase linkage को बदल देगा। पहले से मौजूद audit history को अलग से मिटाया नहीं जाएगा।`
+            );
+            if (!confirmed) return;
+            setMsg("Filling removal save हो रहा है…");
+            const result = await update({ fillings: data.fillings.filter(row => String(row.id) !== String(fillingEditId)) });
+            if (result?.ok === false) return setMsg(`❌ हटाना blocked: ${result.reason || "Integrity firewall"}`);
+            setFillingEditId(null);
+            setF({ fuel:"MS", qty:"", date:START_DATE, purchaseRef:"" });
+            setMsg("Removal request accepted. Register/cloud sync verify करें; इसे सफल तभी मानें जब row register से हट जाए।");
+          }}>🗑️ Remove Selected Filling</button>}
 
         </div>
 
