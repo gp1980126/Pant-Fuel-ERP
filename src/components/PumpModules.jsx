@@ -7604,7 +7604,7 @@ function updateFuelRates() {
      ADD TANK FILLING
   ====================================================== */
 
-  function add() {
+  async function add() {
 
     setMsg("");
 
