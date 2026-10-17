@@ -7663,15 +7663,18 @@ function updateFuelRates() {
       fingerprint: transactionFingerprint("TANK_FILLING", nextFillingBase),
       fingerprintVersion: 2
     };
-    update({
+    const result = await update({
       fillings: editingRow
         ? data.fillings.map(x => String(x.id) === String(fillingEditId) ? nextFilling : x)
         : [...data.fillings, nextFilling]
     });
+    if (result?.ok === false) {
+      return setMsg(`❌ Filling save blocked: ${result.reason || "Data integrity or cloud save rejected the change. No success is claimed."}`);
+    }
 
     setF({ fuel: f.fuel, qty: "", date: f.date, purchaseRef: "" });
     setFillingEditId(null);
-    setMsg(editingRow ? "Filling correction saved. Previous values are retained on the corrected record." : "Filling saved.");
+    setMsg(editingRow ? "Filling correction save accepted. Verify the register after cloud sync." : "Filling save accepted. Verify the register after cloud sync.");
   }
 
 
