@@ -141,8 +141,14 @@ const totalsFor = (rows, fuel, month, closingStock) => {
   const allDipKnown = rows.length > 0 && rows.every(r =>
     r.salesByDip !== null && r.salesByDip !== undefined && r.salesByDip !== ""
   );
-  const monthlyDifference = allDipKnown
-    ? Math.round((raw.net - raw.dip) * 100) / 100
+  // Use the exact daily Difference figures as the month total. This keeps
+  // the summary aligned with the visible daily rows and cumulative difference
+  // for both MS and HSD, rather than re-deriving from potentially stale totals.
+  const allDifferencesKnown = rows.length > 0 && rows.every(r =>
+    r.difference !== null && r.difference !== undefined && r.difference !== ""
+  );
+  const monthlyDifference = allDifferencesKnown
+    ? Math.round(rows.reduce((sum, r) => sum + n(r.difference), 0) * 100) / 100
     : null;
   return { ...raw, dip: raw.dipKnown && allDipKnown ? raw.dip : null,
     difference: monthlyDifference, reconciliationOpening: opening,
