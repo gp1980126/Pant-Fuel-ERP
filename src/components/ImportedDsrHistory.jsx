@@ -110,10 +110,12 @@ const totalsFor = (rows, fuel, month, closingStock) => {
       meter: a.meter + n(r.salesByMtr),
       test: a.test + n(r.pumpTest),
       net: a.net + n(r.netSales),
-      dip: a.dip + n(r.salesByDip),
-      difference: a.difference + n(r.difference)
+      dip: a.dip + (r.salesByDip === null || r.salesByDip === undefined || r.salesByDip === "" ? 0 : n(r.salesByDip)),
+      dipKnown: a.dipKnown || (r.salesByDip !== null && r.salesByDip !== undefined && r.salesByDip !== ""),
+      difference: a.difference + (r.difference === null || r.difference === undefined || r.difference === "" ? 0 : n(r.difference)),
+      differenceKnown: a.differenceKnown || (r.difference !== null && r.difference !== undefined && r.difference !== "")
     }),
-    { received: 0, meter: 0, test: 0, net: 0, dip: 0, difference: 0 }
+    { received: 0, meter: 0, test: 0, net: 0, dip: 0, dipKnown: false, difference: 0, differenceKnown: false }
   );
 
   // April 2026 MS has a separately confirmed stock reconciliation.
@@ -133,7 +135,7 @@ const totalsFor = (rows, fuel, month, closingStock) => {
   // day's opening dip. If that boundary reading is absent, leave it unknown.
   const closing = closingStock === null || closingStock === undefined ? null : n(closingStock);
   const stockConsumption = closing === null ? null : opening + raw.received - closing;
-  return { ...raw, reconciliationOpening: opening,
+  return { ...raw, dip: raw.dipKnown ? raw.dip : null, difference: raw.differenceKnown ? raw.difference : null, reconciliationOpening: opening,
     reconciliationClosing: closing, stockConsumption,
     reconciledNet: stockConsumption === null ? null : stockConsumption - raw.test };
 };
