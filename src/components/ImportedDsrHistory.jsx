@@ -245,24 +245,41 @@ export default function ImportedDsrHistory({ data }) {
   const [month, setMonth] = useState("2026-10");
   const selectedMonth = availableMonths.includes(month) ? month : (availableMonths[availableMonths.length - 1] || "2026-07");
 
-  // Month-wise display: reset cumulative columns to zero at the start of each
-  // selected month, while leaving the underlying imported/source records untouched.
+  // Recalculate dip sales from the next calendar day's opening dip, including month boundaries.
+  // This is essential for the last day of a month: 31 Aug uses 1 Sep opening.
   const monthRows = useMemo(() => {
     const rows = source
       .filter(r => String(r?.date || "").slice(0, 7) === selectedMonth)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const sourceByKey = new Map(source.map(r => [
+      String(r?.date || "").slice(0, 10) + "|" + String(r?.fuel || "").toUpperCase(),
+      r
+    ]));
     let monthlyCummSales = 0;
     let monthlyCummDifference = 0;
     return rows.map(r => {
+      const date = String(r?.date || "").slice(0, 10);
+      const fuel = String(r?.fuel || "").toUpperCase();
+      const nextDate = new Date(new Date(date + "T00:00:00Z").getTime() + 86400000).toISOString().slice(0, 10);
+      const nextRow = sourceByKey.get(nextDate + "|" + fuel);
+      const opening = r?.opStock === null || r?.opStock === undefined || r?.opStock === "" ? null : n(r.opStock);
+      const received = r?.received === null || r?.received === undefined || r?.received === "" ? null : n(r.received);
+      const nextOpening = nextRow?.opStock === null || nextRow?.opStock === undefined || nextRow?.opStock === "" ? null : n(nextRow.opStock);
       const netSales = n(r?.netSales ?? r?.netSale);
-      const difference = r?.difference === null || r?.difference === undefined || r?.difference === ""
-        ? null : n(r.difference);
+      const salesByDip = opening === null || received === null || nextOpening === null
+        ? null
+        : Math.round((opening + received - nextOpening) * 100) / 100;
+      const difference = salesByDip === null
+        ? null
+        : Math.round((netSales - salesByDip) * 100) / 100;
       monthlyCummSales = Math.round((monthlyCummSales + netSales) * 100) / 100;
       if (difference !== null) {
         monthlyCummDifference = Math.round((monthlyCummDifference + difference) * 100) / 100;
       }
       return {
         ...r,
+        salesByDip,
+        difference,
         cummSales: monthlyCummSales,
         cumulativeDifference: difference === null ? null : monthlyCummDifference
       };
