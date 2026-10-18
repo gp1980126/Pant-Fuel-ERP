@@ -18,6 +18,84 @@ const fmt = value =>
     maximumFractionDigits: 2
   });
 
+
+// Build August onward from the isolated app-state records; do not invent missing values.
+// Opening stock is the dated physical dip. Dip consumption uses opening + receipts - next day's opening.
+const buildOperationalDsr = data => {
+  const sales = Array.isArray(data?.sales) ? data.sales : [];
+  const purchases = Array.isArray(data?.purchases) ? data.purchases : [];
+  const dips = Array.isArray(data?.dipReadings) ? data.dipReadings : [];
+  const fuels = ["MS", "HSD"];
+  const dateFuel = new Map();
+  const dipByDate = new Map();
+
+  for (const dip of dips) {
+    const date = String(dip?.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    dipByDate.set(date, dip);
+  }
+  const ensure = (date, fuel) => {
+    const key = date + "|" + fuel;
+    if (!dateFuel.has(key)) dateFuel.set(key, {
+      date, fuel, received: 0, salesByMtr: 0, pumpTest: 0, opStock: null
+    });
+    return dateFuel.get(key);
+  };
+  for (const sale of sales) {
+    const date = String(sale?.date || "").slice(0, 10);
+    const fuel = String(sale?.fuel || "").toUpperCase();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !fuels.includes(fuel)) continue;
+    const row = ensure(date, fuel);
+    row.salesByMtr += n(sale?.qty);
+    row.pumpTest += n(sale?.testing);
+  }
+  const seenPurchases = new Set();
+  for (const purchase of purchases) {
+    const date = String(purchase?.date || purchase?.purchaseDate || "").slice(0, 10);
+    const fuel = String(purchase?.fuel || "").toUpperCase();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !fuels.includes(fuel)) continue;
+    const identity = String(purchase?.txId || purchase?.transactionId || purchase?.invoiceNo || purchase?.id || "");
+    const dedupeKey = identity ? fuel + "|" + identity : "";
+    if (dedupeKey && seenPurchases.has(dedupeKey)) continue;
+    if (dedupeKey) seenPurchases.add(dedupeKey);
+    ensure(date, fuel).received += n(purchase?.quantity ?? purchase?.qty);
+  }
+  for (const row of dateFuel.values()) {
+    const value = dipByDate.get(row.date)?.[row.fuel];
+    row.opStock = value === undefined || value === null || value === "" ? null : n(value);
+  }
+
+  const grouped = new Map();
+  for (const row of dateFuel.values()) {
+    if (row.opStock === null) continue;
+    if (!grouped.has(row.fuel)) grouped.set(row.fuel, []);
+    grouped.get(row.fuel).push(row);
+  }
+  const output = [];
+  for (const [fuel, fuelRows] of grouped) {
+    fuelRows.sort((a, b) => a.date.localeCompare(b.date));
+    let cumulativeSales = 0;
+    let cumulativeDifference = 0;
+    for (const row of fuelRows) {
+      const nextDate = new Date(new Date(row.date + "T00:00:00Z").getTime() + 86400000).toISOString().slice(0, 10);
+      const nextStock = dipByDate.get(nextDate)?.[fuel];
+      const netSales = row.salesByMtr - row.pumpTest;
+      const salesByDip = nextStock === undefined || nextStock === null || nextStock === ""
+        ? null : row.opStock + row.received - n(nextStock);
+      const difference = salesByDip === null ? null : netSales - salesByDip;
+      cumulativeSales += netSales;
+      if (difference !== null) cumulativeDifference += difference;
+      output.push({
+        date: row.date, fuel, opStock: row.opStock, received: row.received,
+        totalStock: row.opStock + row.received, salesByMtr: row.salesByMtr,
+        pumpTest: row.pumpTest, netSales, cummSales: cumulativeSales,
+        salesByDip, difference, cumulativeDifference
+      });
+    }
+  }
+  return output.sort((a, b) => a.date.localeCompare(b.date) || a.fuel.localeCompare(b.fuel));
+};
+
 const totalsFor = (rows, fuel, month) => {
   const raw = rows.reduce(
     (a, r) => ({
@@ -131,17 +209,28 @@ function FuelTable({ fuel, rows, month }) {
 }
 
 export default function ImportedDsrHistory({ data }) {
-  const source =
+  const importedSource =
     Array.isArray(data?.dsrHistory) && data.dsrHistory.length
       ? data.dsrHistory
       : staticDsr;
+  const operationalSource = useMemo(() => buildOperationalDsr(data), [
+    data?.sales, data?.purchases, data?.dipReadings
+  ]);
+  const importedKeys = new Set(importedSource.map(r => String(r?.date || "").slice(0, 10) + "|" + String(r?.fuel || "").toUpperCase()));
+  const source = [
+    ...importedSource,
+    ...operationalSource.filter(r =>
+      String(r.date).slice(0, 7) >= "2026-08" &&
+      !importedKeys.has(String(r.date).slice(0, 10) + "|" + String(r.fuel).toUpperCase())
+    )
+  ].sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.fuel).localeCompare(String(b.fuel)));
 
   const availableMonths = useMemo(() => {
     const keys = [...new Set(source.map(r => String(r?.date || "").slice(0, 7)).filter(k => /^\d{4}-\d{2}$/.test(k)))].sort();
     return keys;
   }, [source]);
 
-  const [month, setMonth] = useState("2026-07");
+  const [month, setMonth] = useState("2026-10");
   const selectedMonth = availableMonths.includes(month) ? month : (availableMonths[availableMonths.length - 1] || "2026-07");
 
   const monthRows = useMemo(
