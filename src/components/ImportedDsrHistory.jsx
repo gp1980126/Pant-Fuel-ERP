@@ -12,11 +12,13 @@ const n = value => {
   return Number.isFinite(v) ? v : 0;
 };
 
-const fmt = value =>
-  n(value).toLocaleString("en-IN", {
+const fmt = value => {
+  if (value === null || value === undefined || value === "") return "—";
+  return n(value).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
+};
 
 
 // Build August onward from the isolated app-state records; do not invent missing values.
@@ -41,10 +43,15 @@ const buildOperationalDsr = data => {
     });
     return dateFuel.get(key);
   };
+  const seenSales = new Set();
   for (const sale of sales) {
     const date = String(sale?.date || "").slice(0, 10);
     const fuel = String(sale?.fuel || "").toUpperCase();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !fuels.includes(fuel)) continue;
+    const identity = String(sale?.txId || sale?.transactionId || sale?.id || "");
+    const dedupeKey = identity ? fuel + "|" + identity : date + "|" + fuel + "|" + String(sale?.nozzle || "");
+    if (seenSales.has(dedupeKey)) continue;
+    seenSales.add(dedupeKey);
     const row = ensure(date, fuel);
     row.salesByMtr += n(sale?.qty);
     row.pumpTest += n(sale?.testing);
