@@ -103,7 +103,7 @@ const buildOperationalDsr = data => {
   return output.sort((a, b) => a.date.localeCompare(b.date) || a.fuel.localeCompare(b.fuel));
 };
 
-const totalsFor = (rows, fuel, month) => {
+const totalsFor = (rows, fuel, month, closingStock) => {
   const raw = rows.reduce(
     (a, r) => ({
       received: a.received + n(r.received),
@@ -116,7 +116,7 @@ const totalsFor = (rows, fuel, month) => {
     { received: 0, meter: 0, test: 0, net: 0, dip: 0, difference: 0 }
   );
 
-  // April 2026 MS: use the confirmed physical closing and boundary purchase.
+  // April 2026 MS has a separately confirmed stock reconciliation.
   if (fuel === "MS" && month === "2026-04") {
     const opening = 12917;
     const received = 37000;
@@ -125,19 +125,21 @@ const totalsFor = (rows, fuel, month) => {
     const stockConsumption = opening + received - closing;
     return { ...raw, received, test, reconciliationOpening: opening,
       reconciliationClosing: closing, stockConsumption,
-      net: stockConsumption - test };
+      reconciledNet: stockConsumption - test };
   }
 
   const opening = rows.length ? n(rows[0].opStock) : 0;
-  const closing = rows.length ? n(rows[rows.length - 1].opStock) : 0;
-  const stockConsumption = opening + raw.received - closing;
+  // Month-end closing is the next calendar day's opening dip, not the last
+  // day's opening dip. If that boundary reading is absent, leave it unknown.
+  const closing = closingStock === null || closingStock === undefined ? null : n(closingStock);
+  const stockConsumption = closing === null ? null : opening + raw.received - closing;
   return { ...raw, reconciliationOpening: opening,
     reconciliationClosing: closing, stockConsumption,
-    net: stockConsumption - raw.test };
+    reconciledNet: stockConsumption === null ? null : stockConsumption - raw.test };
 };
 
-function FuelTable({ fuel, rows, month }) {
-  const totals = totalsFor(rows, fuel, month);
+function FuelTable({ fuel, rows, month, closingStock }) {
+  const totals = totalsFor(rows, fuel, month, closingStock);
 
   return (
     <section className="panel" style={{ marginTop: 18, border: "2px solid #dbeafe" }}>
@@ -149,9 +151,10 @@ function FuelTable({ fuel, rows, month }) {
         <div className="card"><span>Received</span><strong>{fmt(totals.received)} L</strong></div>
         <div className="card"><span>Sales By Mtr</span><strong>{fmt(totals.meter)} L</strong></div>
         <div className="card"><span>Pump Test</span><strong>{fmt(totals.test)} L</strong></div>
-        <div className="card"><span>Net Sale (Reconciled)</span><strong>{fmt(totals.net)} L</strong><small>Opening + Purchase − Pump Test</small></div>
+        <div className="card"><span>Net Sale (Meter − Test)</span><strong>{fmt(totals.net)} L</strong><small>Daily Net Sales का योग</small></div>
+        <div className="card"><span>Stock-Based Net</span><strong>{fmt(totals.reconciledNet)} L</strong><small>Opening + Received − Closing − Pump Test</small></div>
         <div className="card"><span>Sales By Dip</span><strong>{fmt(totals.dip)} L</strong></div>
-        <div className="card"><span>Closing Balance</span><strong>{fmt(totals.reconciliationOpening + totals.received - totals.net - totals.test)} L</strong><small>Opening + Purchase − Net Sale − Pump Test</small></div>
+        <div className="card"><span>Month-End Closing Dip</span><strong>{fmt(totals.reconciliationClosing)} L</strong><small>अगले महीने/अगले दिन का opening dip</small></div>
         <div className="card"><span>DSR Difference</span><strong>{fmt(totals.difference)} L</strong></div>
       </div>
 
@@ -254,6 +257,16 @@ export default function ImportedDsrHistory({ data }) {
   const hsdRows = monthRows.filter(
     r => String(r?.fuel || "").toUpperCase() === "HSD"
   );
+  const [yearPart, monthPart] = selectedMonth.split("-").map(Number);
+  const nextMonthDate = new Date(Date.UTC(yearPart, monthPart, 1)).toISOString().slice(0, 10);
+  const msClosingStock = source.find(r =>
+    String(r?.date || "").slice(0, 10) === nextMonthDate &&
+    String(r?.fuel || "").toUpperCase() === "MS"
+  )?.opStock ?? null;
+  const hsdClosingStock = source.find(r =>
+    String(r?.date || "").slice(0, 10) === nextMonthDate &&
+    String(r?.fuel || "").toUpperCase() === "HSD"
+  )?.opStock ?? null;
 
   if (!source.length) {
     return (
@@ -291,8 +304,8 @@ export default function ImportedDsrHistory({ data }) {
         </label>
       </div>
 
-      <FuelTable fuel="MS" rows={msRows} month={month} />
-      <FuelTable fuel="HSD" rows={hsdRows} month={month} />
+      <FuelTable fuel="MS" rows={msRows} month={selectedMonth} closingStock={msClosingStock} />
+      <FuelTable fuel="HSD" rows={hsdRows} month={selectedMonth} closingStock={hsdClosingStock} />
 
       {selectedMonth === "2026-04" && (
         <div className="notice" style={{ marginTop: 12 }}>
