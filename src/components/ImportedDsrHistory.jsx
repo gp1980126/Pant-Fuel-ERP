@@ -1,12 +1,11 @@
 import React, { useMemo, useState } from "react";
 import staticDsr from "../data/dsr_apr_jul_2026.json";
 
-const MONTHS = [
-  ["2026-04", "April 2026"],
-  ["2026-05", "May 2026"],
-  ["2026-06", "June 2026"],
-  ["2026-07", "July 2026"]
-];
+const MONTH_LABEL = month => {
+  const [year, mm] = String(month).split("-");
+  const date = new Date(Number(year), Number(mm) - 1, 1);
+  return date.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+};
 
 const n = value => {
   const v = Number(value);
@@ -137,14 +136,20 @@ export default function ImportedDsrHistory({ data }) {
       ? data.dsrHistory
       : staticDsr;
 
+  const availableMonths = useMemo(() => {
+    const keys = [...new Set(source.map(r => String(r?.date || "").slice(0, 7)).filter(k => /^\d{4}-\d{2}$/.test(k)))].sort();
+    return keys;
+  }, [source]);
+
   const [month, setMonth] = useState("2026-07");
+  const selectedMonth = availableMonths.includes(month) ? month : (availableMonths[availableMonths.length - 1] || "2026-07");
 
   const monthRows = useMemo(
     () =>
       source
-        .filter(r => String(r?.date || "").slice(0, 7) === month)
+        .filter(r => String(r?.date || "").slice(0, 7) === selectedMonth)
         .sort((a, b) => String(a.date).localeCompare(String(b.date))),
-    [source, month]
+    [source, selectedMonth]
   );
 
   const msRows = monthRows.filter(
@@ -173,18 +178,18 @@ export default function ImportedDsrHistory({ data }) {
       >
         <div>
           <h2 style={{ marginBottom: 4 }}>
-            📥 DSR / Stock History — 01-04-2026 to 31-07-2026
+            📥 DSR / Stock History — Month Wise
           </h2>
           <span style={{ color: "#64748b" }}>
-            MS और HSD अलग-अलग दिखाए गए हैं। Source DSR में Opening/Closing Meter Reading नहीं है, इसलिए कोई meter reading बनाई नहीं गई है। Stock logic: Opening + Purchase − Net Sale − Pump Test = Closing Balance.
+            चुने हुए महीने का दैनिक DSR और Month Total नीचे दिखेगा। MS और HSD अलग-अलग हैं। Stock logic: Opening + Purchase − Net Sale − Pump Test = Closing Balance. केवल उपलब्ध source records दिखाए जाते हैं; missing dates या figures अनुमान से नहीं भरे जाते।
           </span>
         </div>
 
         <label>
           Month
-          <select value={month} onChange={e => setMonth(e.target.value)}>
-            {MONTHS.map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+          <select value={selectedMonth} onChange={e => setMonth(e.target.value)}>
+            {availableMonths.map(value => (
+              <option key={value} value={value}>{MONTH_LABEL(value)}</option>
             ))}
           </select>
         </label>
@@ -193,9 +198,11 @@ export default function ImportedDsrHistory({ data }) {
       <FuelTable fuel="MS" rows={msRows} month={month} />
       <FuelTable fuel="HSD" rows={hsdRows} month={month} />
 
-      <div className="notice" style={{ marginTop: 12 }}>
-        <b>April 2026 MS reconciliation:</b> 12,917 L Opening + 37,000 L Purchase − 41,680 L Net Sale − 644 L Pump Test = <b>7,593 L Closing Balance</b>.
-      </div>
+      {selectedMonth === "2026-04" && (
+        <div className="notice" style={{ marginTop: 12 }}>
+          <b>April 2026 MS reconciliation:</b> 12,917 L Opening + 37,000 L Purchase − 41,680 L Net Sale − 644 L Pump Test = <b>7,593 L Closing Balance</b>.
+        </div>
+      )}
       <div className="notice" style={{ marginTop: 12 }}>
         <b>Important:</b> इस imported history को Fuel Sale की nozzle-wise
         sales या Opening/Closing Meter Reading में convert नहीं किया गया है।
