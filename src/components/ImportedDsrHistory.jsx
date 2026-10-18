@@ -135,7 +135,17 @@ const totalsFor = (rows, fuel, month, closingStock) => {
   // day's opening dip. If that boundary reading is absent, leave it unknown.
   const closing = closingStock === null || closingStock === undefined ? null : n(closingStock);
   const stockConsumption = closing === null ? null : opening + raw.received - closing;
-  return { ...raw, dip: raw.dipKnown ? raw.dip : null, difference: raw.differenceKnown ? raw.difference : null, reconciliationOpening: opening,
+  // Monthly Difference must reconcile to the sum of daily Net Sales minus
+  // the sum of daily Sales By Dip. Keep it unknown unless every row has a
+  // known dip value, so missing boundary readings are never silently treated as zero.
+  const allDipKnown = rows.length > 0 && rows.every(r =>
+    r.salesByDip !== null && r.salesByDip !== undefined && r.salesByDip !== ""
+  );
+  const monthlyDifference = allDipKnown
+    ? Math.round((raw.net - raw.dip) * 100) / 100
+    : null;
+  return { ...raw, dip: raw.dipKnown && allDipKnown ? raw.dip : null,
+    difference: monthlyDifference, reconciliationOpening: opening,
     reconciliationClosing: closing, stockConsumption,
     reconciledNet: stockConsumption === null ? null : stockConsumption - raw.test };
 };
