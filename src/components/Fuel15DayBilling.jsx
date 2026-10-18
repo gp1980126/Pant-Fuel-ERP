@@ -245,7 +245,9 @@ export function Fuel15DayBilling({data}) {
     const creditRows=b.creditRows.map(c=>`<tr><td>${c.party}</td><td>${c.parchiNo||"—"}</td><td>${c.fuel}</td><td style="text-align:right">${c.qty.toFixed(2)} ${c.fuel==="CNG"?"KG":"L"}</td><td style="text-align:right">${money(c.amount)}</td></tr>`).join("");
 
     const w=window.open("","_blank","width=900,height=1000");
-    if(!w)return;
+    if(!w){window.alert("Print window blocked है. Browser में pop-ups Allow करें.");return;}
+    try {
+    w.document.open();
     w.document.write(`<!doctype html><html><head><title>Fuel Bill ${b.billNo}</title><style>
       body{font-family:Arial,sans-serif;padding:28px;color:#111}.paper{max-width:820px;margin:auto;border:1px solid #bbb;padding:28px}
       h1{text-align:center;margin:0 0 4px;font-size:22px}h2{text-align:center;margin:0 0 20px;font-size:15px}
@@ -262,6 +264,14 @@ export function Fuel15DayBilling({data}) {
       ${b.creditRows.length?`<h3>Credit Sale Included — Party Wise</h3><table><thead><tr><th>Party</th><th>Parchi No.</th><th>Fuel</th><th>Credit Qty</th><th>Credit Amount</th></tr></thead><tbody>${creditRows}</tbody></table>`:""}
       <div class="sign">Authorized Signatory</div></div></body></html>`);
     w.document.close();w.focus();w.print();
+    } catch (error) {
+      console.error("15-Day Fuel Bill render failed", error);
+      try {
+        w.document.open();
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Fuel Bill Error</title></head><body style="font-family:Arial;padding:24px"><h2>Fuel Bill खुल नहीं पाया</h2><p>बिल रेंडर करते समय त्रुटि हुई।</p><pre style="white-space:pre-wrap">${String(error?.message || error)}</pre><p>इस स्क्रीन का फोटो सपोर्ट के लिए भेजें।</p></body></html>`);
+        w.document.close();
+      } catch (_) {}
+    }
   };
 
   return <section className="panel" style={{marginTop:12}}>
