@@ -243,13 +243,29 @@ export default function ImportedDsrHistory({ data }) {
   const [month, setMonth] = useState("2026-10");
   const selectedMonth = availableMonths.includes(month) ? month : (availableMonths[availableMonths.length - 1] || "2026-07");
 
-  const monthRows = useMemo(
-    () =>
-      source
-        .filter(r => String(r?.date || "").slice(0, 7) === selectedMonth)
-        .sort((a, b) => String(a.date).localeCompare(String(b.date))),
-    [source, selectedMonth]
-  );
+  // Month-wise display: reset cumulative columns to zero at the start of each
+  // selected month, while leaving the underlying imported/source records untouched.
+  const monthRows = useMemo(() => {
+    const rows = source
+      .filter(r => String(r?.date || "").slice(0, 7) === selectedMonth)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    let monthlyCummSales = 0;
+    let monthlyCummDifference = 0;
+    return rows.map(r => {
+      const netSales = n(r?.netSales ?? r?.netSale);
+      const difference = r?.difference === null || r?.difference === undefined || r?.difference === ""
+        ? null : n(r.difference);
+      monthlyCummSales = Math.round((monthlyCummSales + netSales) * 100) / 100;
+      if (difference !== null) {
+        monthlyCummDifference = Math.round((monthlyCummDifference + difference) * 100) / 100;
+      }
+      return {
+        ...r,
+        cummSales: monthlyCummSales,
+        cumulativeDifference: difference === null ? null : monthlyCummDifference
+      };
+    });
+  }, [source, selectedMonth]);
 
   const msRows = monthRows.filter(
     r => String(r?.fuel || "").toUpperCase() === "MS"
