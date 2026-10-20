@@ -1,22 +1,19 @@
-// PumpPro cloud sync adapter (Supabase)
+// PumpPro cloud sync adapter (Supabase).
+// Fail closed: never fall back to a hard-coded project, especially in test builds.
 import { createClient } from '@supabase/supabase-js';
 
-// Vercel preview builds in this isolated test project may not have build-time
-// environment variables attached. The Supabase URL + anon key are client-side
-// credentials and are intentionally safe to ship in a browser build; RLS and
-// Auth remain the security boundary. Environment variables still take priority.
-const FALLBACK_SUPABASE_URL = 'https://vzfmhppgninuinvmwyjn.supabase.co';
-const FALLBACK_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6Zm1ocHBnbmludWludm13eWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyNTAzMzMsImV4cCI6MjEwNDgyNjMzM30.V2pl_mnWbbmYwYnvaIyCpk6pLWA7HVDts-bVlAVV3z0';
-
-const url = String(import.meta.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL).trim();
-const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY).trim();
+const stationmitraEnv = String(import.meta.env.VITE_STATIONMITRA_ENV || '').trim().toLowerCase();
+const url = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '').trim();
+const isTestEnvironment = stationmitraEnv === 'test';
 const configured = Boolean(url && anonKey);
 
-// A deployed Vercel build is Cloud-first. The isolated test build also has a
-// browser-safe fallback so missing Vercel env configuration cannot disable Cloud.
-export const CLOUD_ENABLED = configured;
+// Test mode must explicitly name the isolated Test Supabase project. A missing
+// or mismatched URL disables Cloud rather than connecting to Production.
+const testUrlIsSafe = !isTestEnvironment || url === 'https://gejczccpdvusmfetpxmg.supabase.co';
+export const CLOUD_ENABLED = configured && testUrlIsSafe;
 
-export const supabase = configured
+export const supabase = CLOUD_ENABLED
   ? createClient(url, anonKey, {
       auth: {
         persistSession: true,
