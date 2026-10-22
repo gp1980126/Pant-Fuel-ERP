@@ -1,19 +1,15 @@
 // PumpPro cloud sync adapter (Supabase)
 import { createClient } from '@supabase/supabase-js';
 
-// Vercel preview builds in this isolated test project may not have build-time
-// environment variables attached. The Supabase URL + anon key are client-side
-// credentials and are intentionally safe to ship in a browser build; RLS and
-// Auth remain the security boundary. Environment variables still take priority.
-const FALLBACK_SUPABASE_URL = 'https://vzfmhppgninuinvmwyjn.supabase.co';
-const FALLBACK_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6Zm1ocHBnbmludWludm13eWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyNTAzMzMsImV4cCI6MjEwNDgyNjMzM30.V2pl_mnWbbmYwYnvaIyCpk6pLWA7HVDts-bVlAVV3z0';
-
-const url = String(import.meta.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL).trim();
-const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY).trim();
+// Commercial safety: never silently connect a build to a shared/test Supabase project.
+// Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY per deployment environment.
+// The anon key is browser-visible by design; database access must still be protected by RLS.
+const url = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
+const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 const configured = Boolean(url && anonKey);
 
-// A deployed Vercel build is Cloud-first. The isolated test build also has a
-// browser-safe fallback so missing Vercel env configuration cannot disable Cloud.
+// Missing configuration disables cloud operations explicitly instead of falling back
+// to any station or database. Cloud calls report CLOUD_NOT_CONFIGURED where applicable.
 export const CLOUD_ENABLED = configured;
 
 export const supabase = configured
