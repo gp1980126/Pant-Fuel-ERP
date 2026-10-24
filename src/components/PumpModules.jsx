@@ -4865,7 +4865,7 @@ export function LubricantManagement({ data, update }) {
     .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT" && x.date>=fy.start && x.date<=fy.end)
     .sort((a,b)=>String(b.date).localeCompare(String(a.date))),[data?.purchases,selectedFY]);
   const cashSales = useMemo(()=> (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[])
-    .filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH" && x.date>=fy.start && x.date<=fy.end)
+    .filter(x=>["CASH","UPI"].includes(String(x?.paymentMode||"CASH").trim().toUpperCase()) && x.date>=fy.start && x.date<=fy.end)
     .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.lubricantCashSales,selectedFY]);
 
   // Item-wise stock ledger. HPCL invoices can contain multiple item lines in one
