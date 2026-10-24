@@ -521,7 +521,18 @@ export function scanTransactionIntegrity(data) {
         // them with v2: doing so creates false TAMPERED_FINGERPRINT alarms.
         if (version >= 2) {
           const expected = transactionFingerprint(type,row);
-          if (fp!==String(expected)) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v2 fingerprint mismatch`});
+          if (fp!==String(expected)) {
+            // Narrow legacy exception: tank-filling purchase-link metadata can be
+            // attached after the original fingerprint was created. Accept only
+            // if stripping linkage-only fields restores the exact stored hash.
+            // Date, fuel, quantity and all accounting fields remain fingerprinted.
+            const linkageOnlyFields = ['purchaseRef','purchaseId','purchaseInvoiceNo','purchaseDate','linkage','_integrityVerified'];
+            const withoutLinkageMetadata = collection === 'fillings'
+              ? Object.fromEntries(Object.entries(row || {}).filter(([key]) => !linkageOnlyFields.includes(key)))
+              : null;
+            const linkageExpected = withoutLinkageMetadata ? transactionFingerprint(type,withoutLinkageMetadata) : null;
+            if (fp!==String(linkageExpected)) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v2 fingerprint mismatch`});
+          }
         } else {
           // Legacy v1 fingerprints are historical metadata. They are valid
           // legacy records and must not inflate the scanner warning count.
