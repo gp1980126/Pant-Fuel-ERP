@@ -721,6 +721,11 @@ function repairKnownFillingFingerprint(data) {
 
 export function normalizeIntegrityData(source) {
   const d = repairLegacyAuditChain(source);
+  // Repair the exact, verified historical filling before identityArray runs.
+  // identityArray may regenerate a legacy fingerprint while repairing a duplicate
+  // transactionId; that would otherwise prevent the narrow fingerprint guard below
+  // from matching. The subsequent identityArray pass re-signs any changed ID.
+  repairKnownFillingFingerprint(d);
   const map = {
     sales: "SALE",
     purchases: "PURCHASE",
@@ -738,7 +743,6 @@ export function normalizeIntegrityData(source) {
   };
   Object.entries(map).forEach(([key, type]) => { d[key] = identityArray(type, d[key]); });
   repairKnownDailyPaymentFingerprints(d);
-  repairKnownFillingFingerprint(d);
   // NEVER silently delete accounting rows during normalization. Duplicate
   // business records are quarantined by the integrity scanner/import conflict
   // report; the source ledger remains complete.
