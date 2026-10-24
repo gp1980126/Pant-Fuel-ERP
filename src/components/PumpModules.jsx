@@ -4865,7 +4865,7 @@ export function LubricantManagement({ data, update }) {
     .filter(x=>String(x?.fuel||"").toUpperCase()==="LUBRICANT" && x.date>=fy.start && x.date<=fy.end)
     .sort((a,b)=>String(b.date).localeCompare(String(a.date))),[data?.purchases,selectedFY]);
   const cashSales = useMemo(()=> (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[])
-    .filter(x=>String(x?.paymentMode||"").toUpperCase()==="CASH" && x.date>=fy.start && x.date<=fy.end)
+    .filter(x=>x.date>=fy.start && x.date<=fy.end)
     .sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id))),[data?.lubricantCashSales,selectedFY]);
 
   // Item-wise stock ledger. HPCL invoices can contain multiple item lines in one
@@ -5798,7 +5798,7 @@ export function LubricantManagement({ data, update }) {
       <p style={{marginTop:0,color:"#64748b"}}>हर HPCL product/SKU का stock अलग दिखेगा। Closing Qty = Opening + Purchase − Credit Sale − Cash Sale.</p>
       {lubricantStockItems.length===0 ? <div className="warning">अभी कोई Lubricant item नहीं मिला। HPCL purchase bill upload/save करने के बाद items यहाँ दिखाई देंगे।</div> :
       <div className="table" style={{overflowX:"auto"}}><table>
-        <thead><tr><th>Item / Product</th><th>Opening Qty</th><th>Purchase Qty</th><th>Credit Sale</th><th>Cash Sale</th><th>Closing Qty</th><th>Avg Cost</th><th>Rounded Sale Price (GST Incl.)</th><th>Closing Value</th></tr></thead>
+        <thead><tr><th>Item / Product</th><th>Opening Qty</th><th>Purchase Qty</th><th>Credit Sale</th><th>Cash / UPI Sale</th><th>Closing Qty</th><th>Avg Cost</th><th>Rounded Sale Price (GST Incl.)</th><th>Closing Value</th></tr></thead>
         <tbody>
           {lubricantItemLedger.map(item=><tr key={item.key}>
             <td><b>{item.name}</b>{item.hsn&&<small style={{display:"block",color:"#64748b"}}>HSN {item.hsn}</small>}</td>
@@ -5916,7 +5916,7 @@ export function LubricantManagement({ data, update }) {
     </section>
 
     {cashSales.length>0&&<section className="panel" style={{marginTop:18}}>
-      <h3>💵 Lubricant Cash Sale Register</h3>
+      <h3>💵 Lubricant Cash / UPI Sale Register</h3>
       <Table headers={['Date','Product','Qty','Rate','Amount','Payment']} rows={cashSales.map(x=>[x.date,x.productName||'Mobile Oil (HPCL)',n(x.qty).toFixed(2)+' L',money(x.rate),money(x.amount),String(x.paymentMode||"CASH").toUpperCase()])} rowIds={cashSales.map(x=>x.id)} onEdit={id=>editCashSale(cashSales.find(x=>x.id===id))} onPrintBill={id=>{const row=cashSales.find(x=>x.id===id);if(row) bill({...row,fuel:"LUBRICANT"});}} showPrintBill={id=>!!cashSales.find(x=>x.id===id)} onDelete={id=>deleteCashSale(cashSales.find(x=>x.id===id))}/>
     </section>}
 
@@ -6202,6 +6202,7 @@ export function SalePurchaseProfitLoss({ data }) {
   useEffect(()=>{setFrom(fy.start);setTo(todayISODate()<fy.end?todayISODate():fy.end);},[selectedFY]);
   const sales=authoritativeSalesRows(data);
   const purchases=Array.isArray(data?.purchases)?data.purchases:[];
+  const lubricantCashSales=Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[];
   const dailyPayments=Array.isArray(data?.dailyPayments)?data.dailyPayments:[];
   const fuelList=['MS','HSD','CNG','LUBRICANT'];
   const fallbackRate={MS:n(data?.rates?.MS??99.79),HSD:n(data?.rates?.HSD??95.32),CNG:n(data?.rates?.CNG??101),LUBRICANT:(n(data?.openingStock?.LUBRICANT_QTY)>0?n(data?.openingStock?.LUBRICANT_VALUE)/n(data?.openingStock?.LUBRICANT_QTY):0)};
@@ -6211,7 +6212,7 @@ export function SalePurchaseProfitLoss({ data }) {
   // Purchase Value = Assessable/Basic Value + Purchase Tax = invoice Total Amount.
   // This full landed purchase value (including tax) is used for stock valuation and COGS.
   const purchaseCost=(fuel,endDate=null)=>purchases.filter(p=>p.fuel===fuel&&(!endDate||dateBefore(p.date,endDate))).reduce((a,p)=>a+purchaseLandedValue(p),0);
-  const saleQtyBefore=(fuel,endDate)=>fuel==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0):sales.filter(s=>s.fuel===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0);
+  const saleQtyBefore=(fuel,endDate)=>fuel==='LUBRICANT'?((Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0)+lubricantCashSales.filter(s=>dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0)):sales.filter(s=>s.fuel===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0);
   // Book opening quantity for the selected period. MS/HSD use the configured opening
   // stock. CNG does not have a physical stock opening/closing field in the current data
   // model (its recorded opening/closing values are dispenser totalizer readings), so
@@ -6316,8 +6317,8 @@ export function SalePurchaseProfitLoss({ data }) {
       const openingQty=openingQtyFor(f,from);
       const purchaseQtyInPeriod=filteredPurchases.filter(p=>p.fuel===f).reduce((a,p)=>a+n(p.quantity),0);
       const purchaseCostInPeriod=filteredPurchases.filter(p=>p.fuel===f).reduce((a,p)=>a+purchaseLandedValue(p),0);
-      const saleQtyInPeriod=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.qty),0):filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.qty),0);
-      const saleAmount=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.amount),0):filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.amount),0);
+      const saleQtyInPeriod=f==='LUBRICANT'?((Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.qty),0)+lubricantCashSales.filter(s=>s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.qty),0)):filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.qty),0);
+      const saleAmount=f==='LUBRICANT'?((Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.amount),0)+lubricantCashSales.filter(s=>s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.amount),0)):filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.amount),0);
       const expense=dailyPayments.filter(p=>String(p.date)>=String(from)&&String(p.date)<=String(to)).reduce((a,p)=>a+n(p?.[f]?.pumpExpense)+(p?.[f]?.pumpExpense===undefined?n(p?.[f]?.other):0),0);
       const openingRate=openingRateFor(f,from);
       const cngStateTaxRate = Number.isFinite(Number(data?.cngStateTaxRate)) ? Number(data.cngStateTaxRate) : 0.05;
@@ -6347,7 +6348,7 @@ export function SalePurchaseProfitLoss({ data }) {
     });
     out.total=fuelList.reduce((a,f)=>{Object.keys(out[f]).forEach(k=>{if(typeof out[f][k]==='number')a[k]=(a[k]||0)+out[f][k];});return a;},{});
     return out;
-  },[from,to,filteredSales,filteredPurchases,dailyPayments,data?.openingStock,data?.rates,cngSalePurchaseMatching]);
+  },[from,to,filteredSales,filteredPurchases,dailyPayments,lubricantCashSales,data?.credits,data?.openingStock,data?.rates,cngSalePurchaseMatching]);
 
   const displayPurchaseCostTotal=(calcMS,calcHSD,calcCNG,calcLube)=>n(calcMS.purchaseCost)+n(calcHSD.purchaseCost)+n(calcCNG.matchedPurchaseCost)+n(calcLube?.purchaseCost);
   // Explicit MS + HSD purchase total from actual invoice totals in the selected period.
