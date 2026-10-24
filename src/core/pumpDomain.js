@@ -705,13 +705,23 @@ function repairKnownFillingFingerprint(data) {
   const rows = Array.isArray(d.fillings) ? d.fillings : [];
   let changed = false;
   d.fillings = rows.map(row => {
-    if (!row || String(row.id) !== "1792842257775" ||
-        String(row.date) !== "2026-10-24" || String(row.fuel) !== "MS" ||
-        Number(row.qty) !== 4000 ||
-        String(row.purchaseInvoiceNo || "") !== "9026007156" ||
-        String(row.purchaseRef || "") !== "1792842217350.7036" ||
-        String(row.fingerprint || "") !== "fp$2aa8891b48624ca6cc714c7841670b0e" ||
-        Number(row.fingerprintVersion || 1) !== 2) return row;
+    const isKnownMsRow =
+      String(row?.id) === "1792842257775" &&
+      String(row.date) === "2026-10-24" && String(row.fuel) === "MS" &&
+      Number(row.qty) === 4000 &&
+      String(row.purchaseInvoiceNo || "") === "9026007156" &&
+      String(row.purchaseRef || "") === "1792842217350.7036" &&
+      String(row.fingerprint || "") === "fp$2aa8891b48624ca6cc714c7841670b0e" &&
+      Number(row.fingerprintVersion || 1) === 2;
+    const isKnownHsdRow =
+      String(row?.id) === "1792842271311" &&
+      String(row.date) === "2026-10-24" && String(row.fuel) === "HSD" &&
+      Number(row.qty) === 8000 &&
+      String(row.purchaseInvoiceNo || "") === "9026007156" &&
+      String(row.purchaseRef || "") === "1792842217350.0457" &&
+      String(row.fingerprint || "") === "fp$40c5aa0801d08fe357724c13d6623091" &&
+      Number(row.fingerprintVersion || 1) === 2;
+    if (!isKnownMsRow && !isKnownHsdRow) return row;
     changed = true;
     return { ...row, fingerprint: transactionFingerprint("TANK_FILLING", row), fingerprintVersion: 2 };
   });
