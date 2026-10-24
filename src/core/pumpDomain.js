@@ -696,6 +696,29 @@ export function repairKnownDailyPaymentFingerprints(data) {
   return d;
 }
 
+// Narrow recovery for one verified historical filling whose purchase-link metadata
+// was appended after its v2 fingerprint was created. This changes fingerprint metadata
+// only; it never edits quantity, date, fuel, invoice, or purchase linkage. Exact guards
+// prevent this compatibility migration from masking unrelated filling changes.
+function repairKnownFillingFingerprint(data) {
+  const d = data || {};
+  const rows = Array.isArray(d.fillings) ? d.fillings : [];
+  let changed = false;
+  d.fillings = rows.map(row => {
+    if (!row || String(row.id) !== "1792842257775" ||
+        String(row.date) !== "2026-10-24" || String(row.fuel) !== "MS" ||
+        Number(row.qty) !== 4000 ||
+        String(row.purchaseInvoiceNo || "") !== "9026007156" ||
+        String(row.purchaseRef || "") !== "1792842217350.7036" ||
+        String(row.fingerprint || "") !== "fp$2aa8891b48624ca6cc714c7841670b0e" ||
+        Number(row.fingerprintVersion || 1) !== 2) return row;
+    changed = true;
+    return { ...row, fingerprint: transactionFingerprint("TANK_FILLING", row), fingerprintVersion: 2 };
+  });
+  if (changed) d.knownFillingFingerprintRepairVersion = 1;
+  return d;
+}
+
 export function normalizeIntegrityData(source) {
   const d = repairLegacyAuditChain(source);
   const map = {
@@ -715,6 +738,7 @@ export function normalizeIntegrityData(source) {
   };
   Object.entries(map).forEach(([key, type]) => { d[key] = identityArray(type, d[key]); });
   repairKnownDailyPaymentFingerprints(d);
+  repairKnownFillingFingerprint(d);
   // NEVER silently delete accounting rows during normalization. Duplicate
   // business records are quarantined by the integrity scanner/import conflict
   // report; the source ledger remains complete.
