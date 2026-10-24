@@ -530,11 +530,14 @@ export function scanTransactionIntegrity(data) {
             const withoutLinkageMetadata = collection === 'fillings'
               ? Object.fromEntries(Object.entries(row || {}).filter(([key]) => !linkageOnlyFields.includes(key)))
               : null;
-            const identityCandidates = withoutLinkageMetadata ? [
-              withoutLinkageMetadata,
-              Object.fromEntries(Object.entries(withoutLinkageMetadata).filter(([key]) => key !== 'transactionId'))
-            ] : [];
-            const linkageFingerprintMatches = identityCandidates.some(candidate => fp === String(transactionFingerprint(type,candidate)));
+            const identityCandidates = withoutLinkageMetadata ? [row, withoutLinkageMetadata] : [row];
+            // Earlier builds used FILLING as the type label before the collection
+            // was standardized to TANK_FILLING. Verify the stored hash against
+            // only these known historical labels; never rewrite the stored row.
+            const historicalTypes = collection === 'fillings' ? ['TANK_FILLING','FILLING','TANKFILLING'] : [type];
+            const linkageFingerprintMatches = historicalTypes.some(candidateType =>
+              identityCandidates.some(candidate => fp === String(transactionFingerprint(candidateType,candidate)))
+            );
             if (!linkageFingerprintMatches) errors.push({type:'TAMPERED_FINGERPRINT',collection,index,reason:`${collection}[${index}] v2 fingerprint mismatch`});
           }
         } else {
