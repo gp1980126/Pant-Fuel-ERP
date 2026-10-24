@@ -786,7 +786,8 @@ export function normalizeIntegrityData(source) {
     attendance: "ATTENDANCE"
   };
   Object.entries(map).forEach(([key, type]) => { d[key] = identityArray(type, d[key]); });
-  repairKnownDailyPaymentFingerprints(d);\n  repairKnownTankFillingFingerprints(d);
+  repairKnownDailyPaymentFingerprints(d);
+  repairKnownTankFillingFingerprints(d);
   // NEVER silently delete accounting rows during normalization. Duplicate
   // business records are quarantined by the integrity scanner/import conflict
   // report; the source ledger remains complete.
