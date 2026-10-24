@@ -6316,8 +6316,15 @@ export function SalePurchaseProfitLoss({ data }) {
       const openingQty=openingQtyFor(f,from);
       const purchaseQtyInPeriod=filteredPurchases.filter(p=>p.fuel===f).reduce((a,p)=>a+n(p.quantity),0);
       const purchaseCostInPeriod=filteredPurchases.filter(p=>p.fuel===f).reduce((a,p)=>a+purchaseLandedValue(p),0);
-      const saleQtyInPeriod=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.qty),0):filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.qty),0);
-      const saleAmount=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.amount),0):filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.amount),0);
+      const lubricantCreditSales=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to):[];
+      const lubricantCashSales=f==='LUBRICANT'?(Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[]).filter(s=>String(s?.date||'')>=from&&String(s?.date||'')<=to):[];
+      // Include separate cash/UPI lubricant sales alongside credit sales in P&L.
+      const saleQtyInPeriod=f==='LUBRICANT'
+        ? lubricantCreditSales.reduce((a,s)=>a+n(s.qty),0)+lubricantCashSales.reduce((a,s)=>a+n(s.totalQty??s.qty),0)
+        : filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.qty),0);
+      const saleAmount=f==='LUBRICANT'
+        ? lubricantCreditSales.reduce((a,s)=>a+n(s.amount),0)+lubricantCashSales.reduce((a,s)=>a+n(s.amount),0)
+        : filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.amount),0);
       const expense=dailyPayments.filter(p=>String(p.date)>=String(from)&&String(p.date)<=String(to)).reduce((a,p)=>a+n(p?.[f]?.pumpExpense)+(p?.[f]?.pumpExpense===undefined?n(p?.[f]?.other):0),0);
       const openingRate=openingRateFor(f,from);
       const cngStateTaxRate = Number.isFinite(Number(data?.cngStateTaxRate)) ? Number(data.cngStateTaxRate) : 0.05;
