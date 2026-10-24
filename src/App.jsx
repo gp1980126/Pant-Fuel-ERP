@@ -205,6 +205,7 @@ function App() {
   const [resetMessage, setResetMessage] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
   const [integrityReport, setIntegrityReport] = useState(null);
+  const [cloudIntegrityReadOnly, setCloudIntegrityReadOnly] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
   const [mutationError, setMutationError] = useState("");
 
@@ -246,7 +247,10 @@ function App() {
     if (cloudRow?.data) {
       nextData = normalizeIntegrityData(repairLegacyAuditChain(cloudRow.data));
       const scan = scanTransactionIntegrity(nextData);
-      if (scan.errors.length) throw new Error(`Cloud state failed integrity validation: ${scan.errors[0].reason}`);
+      // Existing integrity failures allow authenticated inspection only; never auto-repair or overwrite cloud records.
+      const integrityFailed = scan.errors.length > 0;
+      setCloudIntegrityReadOnly(integrityFailed);
+      setIntegrityReport(integrityFailed ? scan : null);
       version = Number(cloudRow.version || 1);
     } else {
       // First cloud initialization: seed only from the current authoritative browser copy.
@@ -410,6 +414,14 @@ function App() {
       const policy = ROLE_MUTATION_POLICY[role] || { allow: [], delete: false };
       const businessKeys = Object.keys(incoming).filter(k => !["auditLogs","accountingLocks"].includes(k));
 
+      if (cloudIntegrityReadOnly && businessKeys.length) {
+        const reason = "Cloud integrity warning: StationMitra अभी Read-only mode में है। जाँच पूरी होने तक Add / Edit / Delete बंद हैं।";
+        try { window.alert("🔒 " + reason); } catch {}
+        window.dispatchEvent(new CustomEvent("stationmitra:mutation-error", {detail:{reason}}));
+        resolve({ok:false, data:d, reason});
+        return d;
+      }
+
       if (role === USER_ROLES.VIEW_ONLY && businessKeys.length) {
         const reason = "View Only user केवल data देख सकता है; Add / Edit / Delete allowed नहीं है।";
         try { window.alert(`👁️ ${reason}`); } catch {}
@@ -524,7 +536,7 @@ function App() {
     try { localStorage.setItem(KEY, JSON.stringify(data)); }
     catch (error) { console.error("StationMitra local cache persistence failed:", error); }
 
-    if (!CLOUD_ENABLED || !session?.uid || !cloudHydratedRef.current || cloudApplyingRef.current) return;
+    if (!CLOUD_ENABLED || !session?.uid || !cloudHydratedRef.current || cloudApplyingRef.current || cloudIntegrityReadOnly) return;
     const payloadHash = stableHash(JSON.stringify(data));
     if (payloadHash === cloudLastSavedHashRef.current) return;
     if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current);
@@ -1386,7 +1398,8 @@ const importData = (event) => {
 
   return (
     <>
-      {mutationError && <div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#b91c1c",color:"white",padding:"10px 16px",fontWeight:700,textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>⚠️ Save नहीं हुआ: {mutationError}</div>}
+      {cloudIntegrityReadOnly && <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100000,background:"#92400e",color:"white",padding:"10px 16px",fontWeight:700,textAlign:"center"}}>🔒 Cloud Integrity Warning — Read-only mode: डेटा देखा जा सकता है, Add / Edit / Delete बंद हैं।</div>}
+      {mutationError && <div style={{position:"fixed",top:cloudIntegrityReadOnly?44:0,left:0,right:0,zIndex:99999,background:"#b91c1c",color:"white",padding:"10px 16px",fontWeight:700,textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>⚠️ Save नहीं हुआ: {mutationError}</div>}
       <style>{css + `
         .userbar{display:flex;align-items:center;gap:10px}
         .rolebadge{padding:5px 9px;border-radius:999px;background:#e8efff;color:#244f9f;font-size:11px;font-weight:800}
