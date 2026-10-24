@@ -714,6 +714,60 @@ export function repairKnownDailyPaymentFingerprints(data) {
   return d;
 }
 
+export function repairKnownTankFillingFingerprints(data) {
+  const d = data || {};
+  if (Number(d.integrityFillingFingerprintMigrationVersion || 0) >= 3) return d;
+  const rows = Array.isArray(d.fillings) ? d.fillings : [];
+  const purchases = Array.isArray(d.purchases) ? d.purchases : [];
+  let changed = false;
+  let unresolved = false;
+
+  d.fillings = rows.map(row => {
+    if (!row || typeof row !== "object" || Number(row.fingerprintVersion || 1) < 2) return row;
+    const fp = String(row.fingerprint || row.transactionFingerprint || "").trim();
+    if (!fp) return row;
+
+    const linkageOnlyFields = ["purchaseRef", "purchaseId", "purchaseInvoiceNo", "purchaseDate", "linkage", "_integrityVerified"];
+    const withoutLinkageMetadata = Object.fromEntries(
+      Object.entries(row).filter(([key]) => !linkageOnlyFields.includes(key))
+    );
+    const validHistoricalFingerprint = ["TANK_FILLING", "FILLING", "TANKFILLING"].some(type =>
+      [row, withoutLinkageMetadata].some(candidate => fp === String(transactionFingerprint(type, candidate)))
+    );
+    if (validHistoricalFingerprint) return row;
+
+    // Repair only a fingerprint mismatch where a linked purchase independently
+    // confirms the unchanged accounting facts: purchase reference, date, fuel,
+    // and quantity. Never alter the business values or silently repair an
+    // unlinked/unverifiable filling.
+    const ref = String(row.purchaseRef || row.purchaseId || "").trim();
+    const matchingPurchase = ref ? purchases.find(p =>
+      String(purchaseRef(p)) === ref &&
+      String(p?.date || "") === String(row.date || "") &&
+      String(p?.fuel || "") === String(row.fuel || "") &&
+      Math.abs(n(p?.quantity) - n(row?.qty ?? row?.quantity)) < 0.001 &&
+      (!row.purchaseInvoiceNo || String(p?.invoiceNo || "") === String(row.purchaseInvoiceNo))
+    ) : null;
+
+    if (!matchingPurchase) {
+      unresolved = true;
+      return row;
+    }
+    changed = true;
+    return {
+      ...row,
+      fingerprint: transactionFingerprint("TANK_FILLING", row),
+      fingerprintVersion: 2
+    };
+  });
+
+  if (!unresolved) {
+    d.integrityFillingFingerprintMigrationVersion = 3;
+    if (changed) d.integrityFillingFingerprintMigratedAt = new Date().toISOString();
+  }
+  return d;
+}
+
 export function normalizeIntegrityData(source) {
   const d = repairLegacyAuditChain(source);
   const map = {
@@ -732,7 +786,7 @@ export function normalizeIntegrityData(source) {
     attendance: "ATTENDANCE"
   };
   Object.entries(map).forEach(([key, type]) => { d[key] = identityArray(type, d[key]); });
-  repairKnownDailyPaymentFingerprints(d);
+  repairKnownDailyPaymentFingerprints(d);\n  repairKnownTankFillingFingerprints(d);
   // NEVER silently delete accounting rows during normalization. Duplicate
   // business records are quarantined by the integrity scanner/import conflict
   // report; the source ledger remains complete.
