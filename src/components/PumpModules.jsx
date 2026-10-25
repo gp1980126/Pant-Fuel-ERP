@@ -6211,7 +6211,11 @@ export function SalePurchaseProfitLoss({ data }) {
   // Purchase Value = Assessable/Basic Value + Purchase Tax = invoice Total Amount.
   // This full landed purchase value (including tax) is used for stock valuation and COGS.
   const purchaseCost=(fuel,endDate=null)=>purchases.filter(p=>p.fuel===fuel&&(!endDate||dateBefore(p.date,endDate))).reduce((a,p)=>a+purchaseLandedValue(p),0);
-  const saleQtyBefore=(fuel,endDate)=>fuel==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0):sales.filter(s=>s.fuel===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0);
+  const lubricantCreditRows=Array.isArray(data?.credits)?data.credits.filter(s=>String(s?.fuel||'').toUpperCase()==='LUBRICANT'):[];
+  const lubricantCashRows=Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[];
+  const saleQtyBefore=(fuel,endDate)=>fuel==='LUBRICANT'
+    ? [...lubricantCreditRows,...lubricantCashRows].filter(s=>dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0)
+    : sales.filter(s=>s.fuel===fuel&&dateBefore(s.date,endDate)).reduce((a,s)=>a+n(s.qty),0);
   // Book opening quantity for the selected period. MS/HSD use the configured opening
   // stock. CNG does not have a physical stock opening/closing field in the current data
   // model (its recorded opening/closing values are dispenser totalizer readings), so
@@ -6316,8 +6320,12 @@ export function SalePurchaseProfitLoss({ data }) {
       const openingQty=openingQtyFor(f,from);
       const purchaseQtyInPeriod=filteredPurchases.filter(p=>p.fuel===f).reduce((a,p)=>a+n(p.quantity),0);
       const purchaseCostInPeriod=filteredPurchases.filter(p=>p.fuel===f).reduce((a,p)=>a+purchaseLandedValue(p),0);
-      const saleQtyInPeriod=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.qty),0):filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.qty),0);
-      const saleAmount=f==='LUBRICANT'?(Array.isArray(data?.credits)?data.credits:[]).filter(s=>String(s?.fuel||'').toUpperCase()===f&&s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.amount),0):filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.amount),0);
+      const saleQtyInPeriod=f==='LUBRICANT'
+        ? [...lubricantCreditRows,...lubricantCashRows].filter(s=>s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.qty),0)
+        : filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.qty),0);
+      const saleAmount=f==='LUBRICANT'
+        ? [...lubricantCreditRows,...lubricantCashRows].filter(s=>s.date>=from&&s.date<=to).reduce((a,s)=>a+n(s.amount ?? n(s.qty)*n(s.rate)),0)
+        : filteredSales.filter(s=>s.fuel===f).reduce((a,s)=>a+n(s.amount),0);
       const expense=dailyPayments.filter(p=>String(p.date)>=String(from)&&String(p.date)<=String(to)).reduce((a,p)=>a+n(p?.[f]?.pumpExpense)+(p?.[f]?.pumpExpense===undefined?n(p?.[f]?.other):0),0);
       const openingRate=openingRateFor(f,from);
       const cngStateTaxRate = Number.isFinite(Number(data?.cngStateTaxRate)) ? Number(data.cngStateTaxRate) : 0.05;
@@ -6347,7 +6355,7 @@ export function SalePurchaseProfitLoss({ data }) {
     });
     out.total=fuelList.reduce((a,f)=>{Object.keys(out[f]).forEach(k=>{if(typeof out[f][k]==='number')a[k]=(a[k]||0)+out[f][k];});return a;},{});
     return out;
-  },[from,to,filteredSales,filteredPurchases,dailyPayments,data?.openingStock,data?.rates,cngSalePurchaseMatching]);
+  },[from,to,filteredSales,filteredPurchases,dailyPayments,data?.openingStock,data?.rates,data?.credits,data?.lubricantCashSales,cngSalePurchaseMatching]);
 
   const displayPurchaseCostTotal=(calcMS,calcHSD,calcCNG,calcLube)=>n(calcMS.purchaseCost)+n(calcHSD.purchaseCost)+n(calcCNG.matchedPurchaseCost)+n(calcLube?.purchaseCost);
   // Explicit MS + HSD purchase total from actual invoice totals in the selected period.
