@@ -5030,14 +5030,14 @@ export function LubricantManagement({ data, update }) {
 
   const [editingPurchaseId,setEditingPurchaseId]=useState(null);
   const [editingCashSaleId,setEditingCashSaleId]=useState(null);
-  const [cashSale,setCashSale]=useState({date:today,productName:"Mobile Oil (HPCL)",partyName:"",packQty:"",packSize:"",qty:"",rate:"",amount:"",paymentMode:"CASH"});
+  const [cashSale,setCashSale]=useState({date:today,productName:"Mobile Oil (HPCL)",partyName:"",partyId:"",packQty:"",packSize:"",qty:"",rate:"",amount:"",paymentMode:"CASH"});
   const [editingSaleId,setEditingSaleId]=useState(null);
   const [editingSale,setEditingSale]=useState({date:today,parchiNo:"",party:"",vehicle:"",productName:"Mobile Oil (HPCL)",qty:"",amount:""});
 
 
   const resetCashSaleForm=()=>{
     setEditingCashSaleId(null);
-    setCashSale({date:today,productName:"Mobile Oil (HPCL)",partyName:"",packQty:"",packSize:"",qty:"",rate:"",amount:"",paymentMode:"CASH"});
+    setCashSale({date:today,productName:"Mobile Oil (HPCL)",partyName:"",partyId:"",packQty:"",packSize:"",qty:"",rate:"",amount:"",paymentMode:"CASH"});
   };
 
   const saveCashSale=async()=>{
@@ -5054,7 +5054,7 @@ export function LubricantManagement({ data, update }) {
     if(lockedMonths.has(String(cashSale.date).slice(0,7))) return setMsg("🔒 "+String(cashSale.date).slice(0,7)+" Accounting Month LOCKED है।");
     if(editingCashSaleId!==null){
       const next=(data.lubricantCashSales||[]).map(x=>String(x.id)===String(editingCashSaleId)?{
-        ...x,date:cashSale.date,productName:String(cashSale.productName).trim(),partyName:String(cashSale.partyName||"").trim(),qty,rate:finalRate,amount:finalAmount,paymentMode:String(cashSale.paymentMode||"CASH").toUpperCase()
+        ...x,date:cashSale.date,productName:String(cashSale.productName).trim(),partyName:String(cashSale.partyName||"").trim(),party:String(cashSale.partyName||"").trim(),partyId:cashSale.partyId||"",partyGSTIN:String((data?.parties||[]).find(p=>String(p.id)===String(cashSale.partyId))?.gst||""),partyAddress:String((data?.parties||[]).find(p=>String(p.id)===String(cashSale.partyId))?.address||""),partyMobile:String((data?.parties||[]).find(p=>String(p.id)===String(cashSale.partyId))?.mobile||""),qty,rate:finalRate,amount:finalAmount,paymentMode:String(cashSale.paymentMode||"CASH").toUpperCase()
       }:x);
       const result=await update({lubricantCashSales:next});
       if(!result?.ok) return setMsg("❌ Lubricant Cash Sale update नहीं हुई: "+(result?.reason||"Mutation rejected"));
@@ -5065,7 +5065,7 @@ export function LubricantManagement({ data, update }) {
     const row={
       id:"LUB-CASH-"+cashSale.date+"-"+now+"-"+Math.random().toString(36).slice(2,7),
       transactionId:"LUBRICANT-CASH-SALE-"+cashSale.date+"-"+now,
-      date:cashSale.date,productName:String(cashSale.productName).trim(),partyName:String(cashSale.partyName||"").trim(),qty,rate:qty>0?rupee(taxableAmount/qty):finalRate,amount:finalAmount,taxableAmount,gstRate,gstAmount,paymentMode:String(cashSale.paymentMode||"CASH").toUpperCase(),fuel:"LUBRICANT",
+      date:cashSale.date,productName:String(cashSale.productName).trim(),partyName:String(cashSale.partyName||"").trim(),party:String(cashSale.partyName||"").trim(),partyId:cashSale.partyId||"",partyGSTIN:String((data?.parties||[]).find(p=>String(p.id)===String(cashSale.partyId))?.gst||""),partyAddress:String((data?.parties||[]).find(p=>String(p.id)===String(cashSale.partyId))?.address||""),partyMobile:String((data?.parties||[]).find(p=>String(p.id)===String(cashSale.partyId))?.mobile||""),qty,rate:qty>0?rupee(taxableAmount/qty):finalRate,amount:finalAmount,taxableAmount,gstRate,gstAmount,paymentMode:String(cashSale.paymentMode||"CASH").toUpperCase(),fuel:"LUBRICANT",
       invoiceNo:"LCS-"+String(cashSale.date).replace(/-/g,"")+"-"+String(now).slice(-6),source:"MANUAL_LUBRICANT_CASH"
     };
     const result=await update({lubricantCashSales:[...(data.lubricantCashSales||[]),row]});
@@ -5077,7 +5077,7 @@ export function LubricantManagement({ data, update }) {
   const editCashSale=row=>{
     if(!row) return;
     setEditingCashSaleId(row.id);
-    setCashSale({date:row.date||today,productName:row.productName||"Mobile Oil (HPCL)",partyName:row.partyName||"",packQty:row.packQty??"",packSize:row.packSize??"",qty:row.qty??"",rate:row.rate??"",amount:row.amount??"",paymentMode:String(row.paymentMode||"CASH").toUpperCase()});
+    setCashSale({date:row.date||today,productName:row.productName||"Mobile Oil (HPCL)",partyName:row.partyName||row.party||"",partyId:row.partyId||String((data?.parties||[]).find(p=>p.name=== (row.partyName||row.party))?.id||""),packQty:row.packQty??"",packSize:row.packSize??"",qty:row.qty??"",rate:row.rate??"",amount:row.amount??"",paymentMode:String(row.paymentMode||"CASH").toUpperCase()});
     setMsg("✏️ Lubricant Cash Sale edit mode में है।");
   };
 
@@ -5903,7 +5903,7 @@ export function LubricantManagement({ data, update }) {
       <p style={{marginTop:0,color:'#6b7280'}}>Cash sale में Parchi No., Party या Vehicle नहीं होगा। केवल Product, Qty, Rate और Amount दर्ज होगा। Payment Cash या UPI रहेगा।</p>
       <div className="form">
         <Field label="Date"><input type="date" min={START_DATE} max={today} value={cashSale.date} onChange={e=>setCashSale({...cashSale,date:e.target.value})}/></Field>
-        <Field label="Party Name (वैकल्पिक)"><input value={cashSale.partyName||""} onChange={e=>setCashSale(x=>({...x,partyName:e.target.value}))} placeholder="पार्टी का नाम"/></Field>
+        <Field label="Party Master से Party चुनें"><select value={cashSale.partyId||""} onChange={e=>{const p=(data?.parties||[]).find(x=>String(x.id)===String(e.target.value));setCashSale(x=>({...x,partyId:e.target.value,partyName:p?.name||""}));}}><option value="">बिना पार्टी / Cash Customer</option>{(data?.parties||[]).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>{(()=>{const p=(data?.parties||[]).find(x=>String(x.id)===String(cashSale.partyId));return p?<small style={{display:"block",marginTop:4,color:"#64748b"}}>GSTIN: {p.gst||"—"} · Address: {p.address||"—"}</small>:null;})()}</Field>
         <Field label="Product (Uploaded Bill से Select करें)"><select value={cashSale.productName} onChange={e=>{const productName=e.target.value;const inferred=inferLubricantPackSizeLitres(productName);setCashSale(x=>({...x,productName,packSize:inferred||x.packSize,qty:n(x.packQty)>0&&inferred>0?rupee(n(x.packQty)*inferred):x.qty}));}}><option value="">Select Product</option>{cashSale.productName&&!lubricantProductOptions.some(x=>x.name===cashSale.productName)&&<option value={cashSale.productName}>{cashSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select><small style={{display:"block",marginTop:4,color:"#64748b"}}>Uploaded HPCL purchase bill के product में से चुनें।</small></Field>
         <Field label="Pack/Balti Qty"><input type="number" min="0" step="1" value={cashSale.packQty} onChange={e=>setCashSale({...cashSale,packQty:e.target.value,qty:n(e.target.value)>0&&n(cashSale.packSize)>0?rupee(n(e.target.value)*n(cashSale.packSize)):""})}/></Field><Field label="Pack Size (L)"><input type="number" min="0" step="0.01" value={cashSale.packSize} onChange={e=>setCashSale({...cashSale,packSize:e.target.value,qty:n(cashSale.packQty)>0&&n(e.target.value)>0?rupee(n(cashSale.packQty)*n(e.target.value)):cashSale.qty})} placeholder="जैसे 10"/></Field><Field label="Total Qty (L)"><input type="number" min="0" step="0.01" value={cashSale.qty} onChange={e=>setCashSale({...cashSale,qty:e.target.value})}/></Field>
         <Field label="Rate / L"><input type="number" min="0" step="0.01" value={cashSale.rate} onChange={e=>setCashSale(x=>({...x,rate:e.target.value}))}/></Field>
