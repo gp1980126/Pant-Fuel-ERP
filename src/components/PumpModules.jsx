@@ -6570,6 +6570,8 @@ export function DailySaleSummary({ data }) {
     return { date: day, cash: fuelCash + lubricantCash };
   }), [availableDates, data.dailyPayments, data.lubricantCashSales, data]);
 
+  const selectedDayCash = dailyCashRows.find(r => String(r.date) === String(date)) || { date, cash: 0 };
+
   const rows = NOZZLES.map(([nozzle, fuel]) => {
     const savedCandidates = (data.sales || []).filter(
       s => s.date === date && s.nozzle === nozzle
@@ -6882,8 +6884,7 @@ export function DailySaleSummary({ data }) {
 
     lines.push("");
     lines.push(["Date", "Total Cash Payment (MS + HSD + CNG + Lubricant)"].map(escapeCsv).join(","));
-    dailyCashRows.forEach(r => lines.push([r.date, n(r.cash).toFixed(2)].map(escapeCsv).join(",")));
-    lines.push(["TOTAL", dailyCashRows.reduce((sum, r) => sum + n(r.cash), 0).toFixed(2)].map(escapeCsv).join(","));
+    lines.push([date, n(selectedDayCash.cash).toFixed(2)].map(escapeCsv).join(","));
 
     const blob = new Blob(["\uFEFF" + lines.join("\n")], {
       type: "text/csv;charset=utf-8;"
@@ -6944,8 +6945,7 @@ export function DailySaleSummary({ data }) {
       <h1>SATAT FILLING STATION</h1><p><b>Daily Sale Summary</b> — ${esc(date)}</p>
       <h2>Date-wise Total Cash Payment</h2>
       <table><thead><tr><th>Date</th><th>Total Cash Payment (MS + HSD + CNG + Lubricant)</th></tr></thead><tbody>
-      ${dailyCashRows.map(r => `<tr><td>${esc(r.date)}</td><td>${money(r.cash)}</td></tr>`).join("")}
-      <tr><th>TOTAL</th><th>${money(dailyCashRows.reduce((sum, r) => sum + n(r.cash), 0))}</th></tr>
+      <tr><td>${esc(date)}</td><td>${money(selectedDayCash.cash)}</td></tr>
       </tbody></table>
       <h2>1. Nozzle-wise Opening / Closing / Sale</h2>
       <table><thead><tr><th>Nozzle</th><th>Fuel</th><th>Opening</th><th>Closing</th><th>Meter Qty</th><th>Testing</th><th>Sale Qty</th><th>Rate</th><th>Total Sale</th></tr></thead><tbody>${nozzleRows}</tbody></table>
@@ -7047,8 +7047,7 @@ export function DailySaleSummary({ data }) {
           <table>
             <thead><tr><th>Date</th><th>Total Cash Payment</th></tr></thead>
             <tbody>
-              {dailyCashRows.map(r => <tr key={r.date}><td>{r.date}</td><td><b>{money(r.cash)}</b></td></tr>)}
-              <tr className="total-row"><td><b>TOTAL</b></td><td><b>{money(dailyCashRows.reduce((sum, r) => sum + n(r.cash), 0))}</b></td></tr>
+              <tr><td>{date}</td><td><b>{money(selectedDayCash.cash)}</b></td></tr>
             </tbody>
           </table>
         </div>
