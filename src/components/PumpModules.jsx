@@ -5044,7 +5044,14 @@ export function LubricantManagement({ data, update }) {
     setMsg("");
     if(!cashSale.date || !isValidISODate(cashSale.date) || cashSale.date<START_DATE || cashSale.date>today) return setMsg("Cash Sale Date valid period में नहीं है।");
     if(!String(cashSale.productName||"").trim()) return setMsg("Uploaded Bill से Product Select करना जरूरी है।");
-    const qty=(n(cashSale.packQty)>0&&n(cashSale.packSize)>0)?rupee(n(cashSale.packQty)*n(cashSale.packSize)):n(cashSale.qty), rate=n(cashSale.rate), inclusiveAmount=rupee(qty*rate), taxableAmount=rupee(inclusiveAmount*100/118);
+    const qty=(n(cashSale.packQty)>0&&n(cashSale.packSize)>0)?rupee(n(cashSale.packQty)*n(cashSale.packSize)):n(cashSale.qty), rate=n(cashSale.rate);
+    const editingOriginal=editingCashSaleId!==null?(data.lubricantCashSales||[]).find(x=>String(x.id)===String(editingCashSaleId)):null;
+    // Preserve the authoritative saved amount when an existing row is opened and saved unchanged.
+    // This prevents a historical GST-inclusive invoice total (e.g. ₹80,002) being overwritten
+    // by Qty × displayed unit rate (420 × ₹190 = ₹79,800).
+    const unchangedExistingAmount=!!editingOriginal && Math.abs(qty-n(editingOriginal.qty))<0.005 && Math.abs(rate-n(editingOriginal.rate))<0.005;
+    const inclusiveAmount=unchangedExistingAmount?rupee(editingOriginal.amount):rupee(qty*rate);
+    const taxableAmount=rupee(inclusiveAmount*100/118);
     const gstRate=18, gstAmount=rupee(inclusiveAmount-taxableAmount), amount=inclusiveAmount;
     if(qty<=0) return setMsg("Qty 0 से अधिक होना चाहिए।");
     if(rate<=0 && amount<=0) return setMsg("Rate या Amount भरें।");
@@ -5907,8 +5914,11 @@ export function LubricantManagement({ data, update }) {
         <Field label="Product (Uploaded Bill से Select करें)"><select value={cashSale.productName} onChange={e=>{const productName=e.target.value;const inferred=inferLubricantPackSizeLitres(productName);setCashSale(x=>({...x,productName,packSize:inferred||x.packSize,qty:n(x.packQty)>0&&inferred>0?rupee(n(x.packQty)*inferred):x.qty}));}}><option value="">Select Product</option>{cashSale.productName&&!lubricantProductOptions.some(x=>x.name===cashSale.productName)&&<option value={cashSale.productName}>{cashSale.productName}</option>}{lubricantProductOptions.map((x,i)=><option key={x.name+i} value={x.name}>{x.name}{x.hsn?" · HSN "+x.hsn:""}{x.invoiceNo?" · Inv "+x.invoiceNo:""}</option>)}</select><small style={{display:"block",marginTop:4,color:"#64748b"}}>Uploaded HPCL purchase bill के product में से चुनें।</small></Field>
         <Field label="Pack/Balti Qty"><input type="number" min="0" step="1" value={cashSale.packQty} onChange={e=>setCashSale({...cashSale,packQty:e.target.value,qty:n(e.target.value)>0&&n(cashSale.packSize)>0?rupee(n(e.target.value)*n(cashSale.packSize)):""})}/></Field><Field label="Pack Size (L)"><input type="number" min="0" step="0.01" value={cashSale.packSize} onChange={e=>setCashSale({...cashSale,packSize:e.target.value,qty:n(cashSale.packQty)>0&&n(e.target.value)>0?rupee(n(cashSale.packQty)*n(e.target.value)):cashSale.qty})} placeholder="जैसे 10"/></Field><Field label="Total Qty (L)"><input type="number" min="0" step="0.01" value={cashSale.qty} onChange={e=>setCashSale({...cashSale,qty:e.target.value})}/></Field>
         <Field label="Rate / L"><input type="number" min="0" step="0.01" value={cashSale.rate} onChange={e=>setCashSale(x=>({...x,rate:e.target.value}))}/></Field>
-        <Field label="Amount (Auto)"><input type="number" min="0" step="0.01" value={(()=>{
+        <Field label={editingCashSaleId!==null?"Saved Amount (preserved unless Qty/Rate changes)":"Amount (Auto)"}><input type="number" min="0" step="0.01" value={(()=>{
           const autoQty=(n(cashSale.packQty)>0&&n(cashSale.packSize)>0)?rupee(n(cashSale.packQty)*n(cashSale.packSize)):n(cashSale.qty);
+          const original=editingCashSaleId!==null?(data.lubricantCashSales||[]).find(x=>String(x.id)===String(editingCashSaleId)):null;
+          const unchanged=!!original && Math.abs(autoQty-n(original.qty))<0.005 && Math.abs(n(cashSale.rate)-n(original.rate))<0.005;
+          if(unchanged) return rupee(original.amount);
           return autoQty>0&&n(cashSale.rate)>0?rupee(autoQty*n(cashSale.rate)):"";
         })()} readOnly placeholder="Qty × Rate auto"/></Field>
         <Field label="Payment"><select value={cashSale.paymentMode||"CASH"} onChange={e=>setCashSale(x=>({...x,paymentMode:e.target.value}))}><option value="CASH">CASH</option><option value="UPI">UPI</option></select></Field>
