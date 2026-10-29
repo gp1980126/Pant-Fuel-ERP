@@ -6548,6 +6548,28 @@ export function DailySaleSummary({ data }) {
     return Array.from(set).sort().reverse();
   }, [data.sales, data.dailyPayments, data.recoveries, data.credits, data.lubricantCashSales]);
 
+  // Read-only date-wise cash totals; do not write to existing records.
+  const dailyCashRows = useMemo(() => availableDates.map(day => {
+    const dayPayments = (data.dailyPayments || []).filter(r => String(r?.date || "") === String(day));
+    const score = row => ["MS", "HSD", "CNG"].reduce((sum, fuel) => {
+      const p = row?.[fuel];
+      if (!p || typeof p !== "object") return sum;
+      return sum + ["cash", "paytm", "card", "dtplus", "hppay", "phonepe", "credit", "pumpExpense", "other"]
+        .reduce((count, key) => count + (p[key] !== undefined && p[key] !== "" ? 1 : 0), 0);
+    }, 0);
+    const savedPayment = dayPayments.reduce((best, row) => !best || score(row) > score(best) ? row : best, null)
+      || canonicalDailyPayments(data).find(r => String(r.date) === String(day)) || {};
+    const fuelCash = ["MS", "HSD", "CNG"].reduce((sum, fuel) => {
+      const p = savedPayment?.[fuel] || {};
+      const standard = paymentForFuelStandard(data, day, fuel) || {};
+      return sum + n(p.cash ?? standard.cash);
+    }, 0);
+    const lubricantCash = (data.lubricantCashSales || [])
+      .filter(s => String(s.date) === String(day) && String(s.paymentMode || "").toUpperCase() === "CASH")
+      .reduce((sum, s) => sum + n(s.amount), 0);
+    return { date: day, cash: fuelCash + lubricantCash };
+  }), [availableDates, data.dailyPayments, data.lubricantCashSales, data]);
+
   const rows = NOZZLES.map(([nozzle, fuel]) => {
     const savedCandidates = (data.sales || []).filter(
       s => s.date === date && s.nozzle === nozzle
@@ -6858,6 +6880,11 @@ export function DailySaleSummary({ data }) {
       ].map(escapeCsv).join(","));
     });
 
+    lines.push("");
+    lines.push(["Date", "Total Cash Payment (MS + HSD + CNG + Lubricant)"].map(escapeCsv).join(","));
+    dailyCashRows.forEach(r => lines.push([r.date, n(r.cash).toFixed(2)].map(escapeCsv).join(",")));
+    lines.push(["TOTAL", dailyCashRows.reduce((sum, r) => sum + n(r.cash), 0).toFixed(2)].map(escapeCsv).join(","));
+
     const blob = new Blob(["\uFEFF" + lines.join("\n")], {
       type: "text/csv;charset=utf-8;"
     });
@@ -6915,6 +6942,11 @@ export function DailySaleSummary({ data }) {
         @media print{@page{size:A4 landscape;margin:10mm}button{display:none}}
       </style></head><body>
       <h1>SATAT FILLING STATION</h1><p><b>Daily Sale Summary</b> — ${esc(date)}</p>
+      <h2>Date-wise Total Cash Payment</h2>
+      <table><thead><tr><th>Date</th><th>Total Cash Payment (MS + HSD + CNG + Lubricant)</th></tr></thead><tbody>
+      ${dailyCashRows.map(r => `<tr><td>${esc(r.date)}</td><td>${money(r.cash)}</td></tr>`).join("")}
+      <tr><th>TOTAL</th><th>${money(dailyCashRows.reduce((sum, r) => sum + n(r.cash), 0))}</th></tr>
+      </tbody></table>
       <h2>1. Nozzle-wise Opening / Closing / Sale</h2>
       <table><thead><tr><th>Nozzle</th><th>Fuel</th><th>Opening</th><th>Closing</th><th>Meter Qty</th><th>Testing</th><th>Sale Qty</th><th>Rate</th><th>Total Sale</th></tr></thead><tbody>${nozzleRows}</tbody></table>
       <h2>2. Fuel-wise Total Sale</h2>
@@ -7005,6 +7037,20 @@ export function DailySaleSummary({ data }) {
           <button type="button" className="btn" onClick={shareWhatsApp}>
             💬 WhatsApp
           </button>
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: 18 }}>
+        <h3>Date-wise Total Cash Payment</h3>
+        <p style={{marginTop:0,color:"#6b7280"}}>केवल MS + HSD + CNG + Lubricant की Cash Payment। UPI, POS, डिजिटल भुगतान और Credit शामिल नहीं हैं। यह रिपोर्ट मौजूदा रिकॉर्ड को केवल पढ़ती है।</p>
+        <div className="table">
+          <table>
+            <thead><tr><th>Date</th><th>Total Cash Payment</th></tr></thead>
+            <tbody>
+              {dailyCashRows.map(r => <tr key={r.date}><td>{r.date}</td><td><b>{money(r.cash)}</b></td></tr>)}
+              <tr className="total-row"><td><b>TOTAL</b></td><td><b>{money(dailyCashRows.reduce((sum, r) => sum + n(r.cash), 0))}</b></td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
