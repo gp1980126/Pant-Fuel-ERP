@@ -6574,19 +6574,18 @@ export function DailySaleSummary({ data }) {
   const lubricantCreditSales = (data.credits || []).filter(c =>
     c.date === date && String(c.fuel || '').toUpperCase() === 'LUBRICANT'
   );
-  const lubricantCashSales = (data.lubricantCashSales || []).filter(c =>
-    c.date === date && String(c.paymentMode || '').toUpperCase() === 'CASH'
-  );
+  const lubricantCashSales = (data.lubricantCashSales || []).filter(c => c.date === date);
   const lubricantSales = [
     ...lubricantCreditSales.map(c => ({...c, _paymentType:'CREDIT'})),
-    ...lubricantCashSales.map(c => ({...c, _paymentType:'CASH'}))
+    ...lubricantCashSales.map(c => ({...c, _paymentType:String(c.paymentMode || 'CASH').toUpperCase()}))
   ];
   const lubricantSummary = {
     qty: lubricantSales.reduce((a, c) => a + n(c.qty), 0),
     amount: lubricantSales.reduce((a, c) => a + n(c.amount), 0),
     entries: lubricantSales.length,
     creditAmount: lubricantCreditSales.reduce((a,c)=>a+n(c.amount),0),
-    cashAmount: lubricantCashSales.reduce((a,c)=>a+n(c.amount),0)
+    cashAmount: lubricantCashSales.filter(c=>String(c.paymentMode || 'CASH').toUpperCase()==='CASH').reduce((a,c)=>a+n(c.amount),0),
+    upiAmount: lubricantCashSales.filter(c=>String(c.paymentMode || '').toUpperCase()==='UPI').reduce((a,c)=>a+n(c.amount),0)
   };
 
   const fuelSummary = {
@@ -7056,14 +7055,14 @@ export function DailySaleSummary({ data }) {
                   <td>1</td>
                   <td>{n(c.qty) > 0 ? n(c.qty).toFixed(2) : 'Qty pending'}</td>
                   <td>{money(c.amount)}</td>
-                  <td><b>{c._paymentType === 'CASH' ? 'CASH' : 'CREDIT / UDHARI'}</b></td>
+                  <td><b>{c._paymentType === 'CASH' ? 'CASH' : c._paymentType === 'UPI' ? 'UPI' : c._paymentType === 'CREDIT' ? 'CREDIT / UDHARI' : c._paymentType}</b></td>
                 </tr>
               )) : <tr><td colSpan="5">आज कोई Lubricant sale नहीं है।</td></tr>}
               <tr className="total-row">
                 <td><b>TOTAL LUBRICANT</b></td><td><b>{lubricantSummary.entries}</b></td>
                 <td><b>{lubricantSummary.qty.toFixed(2)} Ltr</b></td>
                 <td><b>{money(lubricantSummary.amount)}</b></td>
-                <td><b>CASH {money(lubricantSummary.cashAmount)} · CREDIT {money(lubricantSummary.creditAmount)}</b></td>
+                <td><b>CASH {money(lubricantSummary.cashAmount)} · UPI {money(lubricantSummary.upiAmount)} · CREDIT {money(lubricantSummary.creditAmount)}</b></td>
               </tr>
             </tbody>
           </table>
