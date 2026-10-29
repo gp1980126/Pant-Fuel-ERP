@@ -1702,31 +1702,30 @@ export function previousPending(data, date) {
     CNG: 0
   };
 
-  data.dailyPayments
+  // Reconcile all earlier daily differences net of each other:
+  // positive difference = payment short; negative difference = excess payment.
+  // Excess payments must offset shortages for the same fuel before recovery is applied.
+  (data.dailyPayments || [])
     .filter(p => p.date < date)
-    .sort((a, b) =>
-      dk(a.date).localeCompare(dk(b.date))
-    )
     .forEach(p => {
       ["MS", "HSD", "CNG"].forEach(f => {
-        const d = n(p?.[f]?.difference);
-
-        if (d > 0) {
-          out[f] += d;
-        }
+        out[f] += n(p?.[f]?.difference);
       });
     });
 
-  data.recoveries
+  // Recoveries already received reduce the net outstanding balance.
+  (data.recoveries || [])
     .filter(r => r.date < date)
     .forEach(r => {
       if (out[r.fuel] !== undefined) {
-        out[r.fuel] = Math.max(
-          0,
-          out[r.fuel] - n(r.amount)
-        );
+        out[r.fuel] -= n(r.amount);
       }
     });
+
+  // A net credit (surplus payment) means there is no amount outstanding.
+  Object.keys(out).forEach(f => {
+    out[f] = Math.max(0, out[f]);
+  });
 
   return out;
 }
