@@ -6389,7 +6389,7 @@ export function SalePurchaseProfitLoss({ data }) {
       ['openingQty','closingQty','openingValue','closingValue','cogs','profit'].forEach(k=>{out.total[k]=null;});
     }
     return out;
-  },[from,to,filteredSales,filteredPurchases,dailyPayments,data?.openingStock,data?.rates,data?.credits,data?.lubricantCashSales,cngSalePurchaseMatching]);
+  },[from,to,filteredSales,filteredPurchases,dailyPayments,data?.openingStock,data?.rates,data?.credits,data?.lubricantCashSales,data?.dipReadings,data?.dsrHistory,cngSalePurchaseMatching]);
 
   const displayPurchaseCostTotal=(calcMS,calcHSD,calcCNG,calcLube)=>n(calcMS.purchaseCost)+n(calcHSD.purchaseCost)+n(calcCNG.matchedPurchaseCost)+n(calcLube?.purchaseCost);
   // Explicit MS + HSD purchase total from actual invoice totals in the selected period.
