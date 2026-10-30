@@ -54,7 +54,31 @@ export const HISTORICAL_DIP_MS_HSD_2026_08 = [
   ["2026-08-28", 7721.00, 8948.00],
   ["2026-08-29", 6514.00, 8179.00],
   ["2026-08-30", 5083.00, 7197.00]
+
 ];
+
+// DSR physical tank stock is the authoritative MS/HSD inventory boundary.
+// Priority: user-saved Dip, imported DSR opening stock, then the embedded
+// Aug-2026 DSR history. Never substitute a calculated book balance.
+export function physicalDipStockForDate(data, fuel, date) {
+  const f = String(fuel || "").toUpperCase();
+  if (f !== "MS" && f !== "HSD") return null;
+  const saved = (Array.isArray(data?.dipReadings) ? data.dipReadings : [])
+    .find(row => String(row?.date || "") === String(date));
+  if (saved && saved[f] !== undefined && saved[f] !== null && saved[f] !== "") {
+    const value = Number(saved[f]);
+    return Number.isFinite(value) ? value : null;
+  }
+  const dsr = (Array.isArray(data?.dsrHistory) ? data.dsrHistory : [])
+    .find(row => String(row?.date || "") === String(date) &&
+      String(row?.fuel || "").toUpperCase() === f);
+  if (dsr && dsr.opStock !== undefined && dsr.opStock !== null && dsr.opStock !== "") {
+    const value = Number(dsr.opStock);
+    return Number.isFinite(value) ? value : null;
+  }
+  const historical = HISTORICAL_DIP_MS_HSD_2026_08.find(row => row[0] === String(date));
+  return historical ? Number(f === "MS" ? historical[1] : historical[2]) : null;
+}
 
 export const USER_ROLES = {
   ADMIN: "Admin",
@@ -1572,8 +1596,7 @@ export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
     (Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0) +
     (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[]).filter(x=>before(x.date,d)).reduce((a,x)=>a+n(x.qty),0)
   ):sales.filter(x=>x.fuel===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0);
-  const dsrOpeningForDate=(f,d)=>{const rows=Array.isArray(data?.dsrHistory)?data.dsrHistory:[];const row=rows.find(r=>String(r?.date||'')===String(d)&&String(r?.fuel||'').toUpperCase()===String(f).toUpperCase());if(!row)return null;const q=Number(row?.opStock);return Number.isFinite(q)?q:null;};
-  const openingQty=(f,d)=>{if(f==='CNG')return null;const base=f==='MS'?n(data?.openingStock?.MS??9356):f==='HSD'?n(data?.openingStock?.HSD??7500):n(data?.openingStock?.LUBRICANT_QTY);return String(d)===START_DATE?base:base+purchaseQty(f,d)-saleQtyBefore(f,d);};
+  const openingQty=(f,d)=>{if(f==='CNG')return null;if(f==='MS'||f==='HSD')return physicalDipStockForDate(data,f,d);const base=n(data?.openingStock?.LUBRICANT_QTY);return String(d)===START_DATE?base:base+purchaseQty(f,d)-saleQtyBefore(f,d);};
   const openingRate=(f,d)=>{if(f==='LUBRICANT' && n(data?.openingStock?.LUBRICANT_QTY)>0)return n(data?.openingStock?.LUBRICANT_VALUE)/n(data?.openingStock?.LUBRICANT_QTY);const prior=purchases.filter(p=>p.fuel===f&&before(p.date,d));if(prior.length){const q=prior.reduce((a,p)=>a+n(p.quantity),0),v=prior.reduce((a,p)=>a+purchaseLandedValue(p),0);if(q>0)return v/q;}return fallback[f]||0;};
   const fs=sales.filter(x=>x.date>=from&&x.date<=to), fp=purchases.filter(x=>x.date>=from&&x.date<=to), cng=cngSalePurchaseMatchingPure(data,from,to), out={};
   fuels.forEach(f=>{
@@ -1587,11 +1610,15 @@ export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
     ):fs.filter(x=>x.fuel===f).reduce((a,x)=>a+n(x.amount),0);
     const expense=canonicalDailyPayments(data).filter(p=>p.date>=from&&p.date<=to).reduce((a,p)=>a+n(p?.[f]?.pumpExpense)+(p?.[f]?.pumpExpense===undefined?n(p?.[f]?.other):0),0);
     const or=openingRate(f,from), cngTaxRate=Number.isFinite(Number(data?.cngStateTaxRate))?Number(data.cngStateTaxRate):0.05, tax=f==='CNG'?sa*cngTaxRate:0; let cq=null,ov=0,cv=0,cogs=0,avg=or,mq=0,mc=0,usq=0,usa=0,upq=0,upc=0;
-    if(f!=='CNG'){const closingDate=new Date(`${to}T00:00:00Z`);closingDate.setUTCDate(closingDate.getUTCDate()+1);const nextOpeningDate=closingDate.toISOString().slice(0,10);cq=dsrOpeningForDate(f,nextOpeningDate);if(cq===null)cq=openingQty(f,nextOpeningDate);ov=oq*or;const av=ov+pc,aq=oq+pq;avg=aq>0?av/aq:or;cv=cq*avg;cogs=Math.max(0,ov+pc-cv);}
+    if(f!=='CNG'){const closingDate=new Date(`${to}T00:00:00Z`);closingDate.setUTCDate(closingDate.getUTCDate()+1);const nextOpeningDate=closingDate.toISOString().slice(0,10);cq=f==='MS'||f==='HSD'?physicalDipStockForDate(data,f,nextOpeningDate):openingQty(f,nextOpeningDate);if(oq!==null&&cq!==null){ov=oq*or;const av=ov+pc,aq=oq+pq;avg=aq>0?av/aq:or;cv=cq*avg;cogs=Math.max(0,ov+pc-cv);}else{ov=null;cv=null;cogs=null;}}
     else{mq=cng.matchedQty;mc=cng.matchedCost;usq=cng.unmatchedQty;usa=cng.unmatchedAmount;upq=cng.unmatchedPurchaseQty;upc=cng.unmatchedPurchaseCost;cogs=mc;avg=mq>0?mc/mq:0;}
-    out[f]={openingQty:oq,purchaseQty:pq,saleQty:sq,closingQty:cq,openingValue:ov,purchaseCost:pc,closingValue:cv,cogs,sale:sa,expense,stateTax:tax,profit:sa-cogs-expense-tax,avgCostRate:avg,matchedPurchaseQty:mq,matchedPurchaseCost:mc,unmatchedSaleQty:usq,unmatchedSaleAmount:usa,unmatchedPurchaseQty:upq,unmatchedPurchaseCost:upc};
+    const profit=(f==='MS'||f==='HSD')&&(oq===null||cq===null)?null:sa-cogs-expense-tax;
+    out[f]={openingQty:oq,purchaseQty:pq,saleQty:sq,closingQty:cq,openingValue:ov,purchaseCost:pc,closingValue:cv,cogs,sale:sa,expense,stateTax:tax,profit,avgCostRate:avg,matchedPurchaseQty:mq,matchedPurchaseCost:mc,unmatchedSaleQty:usq,unmatchedSaleAmount:usa,unmatchedPurchaseQty:upq,unmatchedPurchaseCost:upc};
   });
   out.total=fuels.reduce((a,f)=>{for(const k of Object.keys(out[f]))if(typeof out[f][k]==='number')a[k]=(a[k]||0)+out[f][k];return a;},{});
+  if(['MS','HSD'].some(f=>out[f].openingQty===null||out[f].closingQty===null)){
+    ['openingQty','closingQty','openingValue','closingValue','cogs','profit'].forEach(k=>{out.total[k]=null;});
+  }
   return {calc:out,cngMatch:cng,salaryExpense:salaryExpenseForPeriodPure(data,from,to),electricityExpense:electricityExpenseForPeriodPure(data,from,to)};
 }
 
