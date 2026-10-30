@@ -1549,7 +1549,7 @@ export function accountingSnapshot(data, from=START_DATE, to='9999-12-31') {
 }
 
 export function salaryExpenseForPeriodPure(data, from, to) {
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(from||'')) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(to||'')) || from>to) return 0;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(from||'')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(to||'')) || from>to) return 0;
   const staff=Array.isArray(data?.staff)?data.staff:[];
   // Charge the full monthly salary for every calendar month touched by the
   // selected P&L period. Attendance/leave never reduces the monthly amount.
