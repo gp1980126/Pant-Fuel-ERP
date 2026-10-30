@@ -115,6 +115,7 @@ import {
   cngSalePurchaseMatchingPure,
   authoritativeSalesRows,
   calculateProfitLossEngine,
+  physicalDipStockForDate,
   standardJournal,
   trialBalance,
   savedPayment,
@@ -6233,10 +6234,17 @@ export function SalePurchaseProfitLoss({ data }) {
   // CNG stock balance is intentionally not invented from those meter readings.
   const openingQtyFor=(fuel,date)=>{
     if(fuel==='CNG') return null;
-    const base=fuel==='MS'?n(data?.openingStock?.MS??9356):fuel==='HSD'?n(data?.openingStock?.HSD??7500):n(data?.openingStock?.LUBRICANT_QTY);
+    if(fuel==='MS'||fuel==='HSD') return physicalDipStockForDate(data,fuel,date);
+    const base=n(data?.openingStock?.LUBRICANT_QTY);
     if(String(date)===String(START_DATE)) return base;
     return base + purchaseQty(fuel,date) - saleQtyBefore(fuel,date);
   };
+  const dayAfter=(date)=>{
+    const d=new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate()+1);
+    return d.toISOString().slice(0,10);
+  };
+  const moneyOrMissing=value=>value===null||value===undefined?'Missing Dip':money(value);
 
   // Opening stock value is carried at the latest known purchase total cost rate before the
   // selected period. If no earlier purchase exists, use the configured fuel rate.
@@ -6343,7 +6351,19 @@ export function SalePurchaseProfitLoss({ data }) {
       const stateTax=f==='CNG'?saleAmount*cngStateTaxRate:0;
       let closingQty=null, openingValue=0, closingValue=0, cogs=0, avgCostRate=openingRate;
       let matchedPurchaseQty=0, matchedPurchaseCost=0, unmatchedSaleQty=0, unmatchedSaleAmount=0, unmatchedPurchaseQty=0, unmatchedPurchaseCost=0;
-      if(f!=='CNG'){
+      if(f==='MS'||f==='HSD'){
+        closingQty=physicalDipStockForDate(data,f,dayAfter(to));
+        if(openingQty!==null&&closingQty!==null){
+          openingValue=openingQty*openingRate;
+          const goodsAvailableValue=openingValue+purchaseCostInPeriod;
+          const availableQty=openingQty+purchaseQtyInPeriod;
+          avgCostRate=availableQty>0?goodsAvailableValue/availableQty:openingRate;
+          closingValue=closingQty*avgCostRate;
+          cogs=Math.max(0,openingValue+purchaseCostInPeriod-closingValue);
+        } else {
+          openingValue=null; closingValue=null; cogs=null;
+        }
+      } else if(f==='LUBRICANT'){
         closingQty=openingQty+purchaseQtyInPeriod-saleQtyInPeriod;
         openingValue=openingQty*openingRate;
         const goodsAvailableValue=openingValue+purchaseCostInPeriod;
@@ -6361,10 +6381,13 @@ export function SalePurchaseProfitLoss({ data }) {
         cogs=matchedPurchaseCost;
         avgCostRate=matchedPurchaseQty>0?matchedPurchaseCost/matchedPurchaseQty:0;
       }
-      const profit=saleAmount-cogs-expense-stateTax;
+      const profit=(f==='MS'||f==='HSD')&&(openingQty===null||closingQty===null)?null:saleAmount-cogs-expense-stateTax;
       out[f]={openingQty,purchaseQty:purchaseQtyInPeriod,saleQty:saleQtyInPeriod,closingQty,openingValue,purchaseCost:purchaseCostInPeriod,closingValue,cogs,sale:saleAmount,expense,stateTax,profit,avgCostRate,matchedPurchaseQty,matchedPurchaseCost,unmatchedSaleQty,unmatchedSaleAmount,unmatchedPurchaseQty,unmatchedPurchaseCost};
     });
     out.total=fuelList.reduce((a,f)=>{Object.keys(out[f]).forEach(k=>{if(typeof out[f][k]==='number')a[k]=(a[k]||0)+out[f][k];});return a;},{});
+    if(['MS','HSD'].some(f=>out[f].openingQty===null||out[f].closingQty===null)){
+      ['openingQty','closingQty','openingValue','closingValue','cogs','profit'].forEach(k=>{out.total[k]=null;});
+    }
     return out;
   },[from,to,filteredSales,filteredPurchases,dailyPayments,data?.openingStock,data?.rates,data?.credits,data?.lubricantCashSales,cngSalePurchaseMatching]);
 
@@ -6385,14 +6408,14 @@ export function SalePurchaseProfitLoss({ data }) {
       [],
       ['SALARY EXPENSE',salaryExpenseForPeriod],
       ['ELECTRICITY EXPENSE',electricityExpenseForPeriod],
-      ['FINAL NET PROFIT',calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod]
+      ['FINAL NET PROFIT',calc.total.profit===null?'MISSING_DIP':calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod]
     ];
     const csv=rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n');
     const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`Sale_Purchase_PL_${from}_to_${to}.csv`;a.click();URL.revokeObjectURL(url);
   };
 
   const printReport=()=>{
-    const body=fuelList.map(f=>`<tr><td>${f}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].openingQty,f)}</td><td>${qtyText(calc[f].purchaseQty,f)}</td><td>${qtyText(calc[f].saleQty,f)}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].closingQty,f)}</td><td>${f==='CNG'?'N/A':money(calc[f].openingValue)}</td><td>${f==='CNG'?money(calc[f].matchedPurchaseCost):money(calc[f].purchaseCost)}</td><td>${f==='CNG'?'N/A':money(calc[f].closingValue)}</td><td>${money(calc[f].cogs)}</td><td>${money(calc[f].sale)}</td><td>${money(calc[f].expense)}</td><td>${money(calc[f].stateTax)}</td><td>${money(calc[f].profit)}</td></tr>`).join('');
+    const body=fuelList.map(f=>`<tr><td>${f}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].openingQty,f)}</td><td>${qtyText(calc[f].purchaseQty,f)}</td><td>${qtyText(calc[f].saleQty,f)}</td><td>${f==='CNG'?'N/A':qtyText(calc[f].closingQty,f)}</td><td>${f==='CNG'?'N/A':moneyOrMissing(calc[f].openingValue)}</td><td>${f==='CNG'?money(calc[f].matchedPurchaseCost):money(calc[f].purchaseCost)}</td><td>${f==='CNG'?'N/A':moneyOrMissing(calc[f].closingValue)}</td><td>${moneyOrMissing(calc[f].cogs)}</td><td>${money(calc[f].sale)}</td><td>${money(calc[f].expense)}</td><td>${money(calc[f].stateTax)}</td><td>${moneyOrMissing(calc[f].profit)}</td></tr>`).join('');
     const html=`<div id="stationmitra-print-report">
       <div class="sm-print-toolbar">
         <button type="button" id="sm-print-now">🖨️ Print / Save PDF</button>
@@ -6402,12 +6425,12 @@ export function SalePurchaseProfitLoss({ data }) {
       <div class="sm-print-paper">
         <div class="sm-print-head"><h2>${String(PUMP_NAME)}</h2><h3>Sale ↔ Purchase P&L</h3><p>${String(from)} to ${String(to)}</p></div>
         <table><tr><th>Fuel</th><th>Opening<br><small>Before From Date</small></th><th>Purchase</th><th>Sale</th><th>Closing<br><small>After To Date</small></th><th>Opening Value</th><th>Purchase Value</th><th>Closing Value</th><th>COGS</th><th>Sale Amount</th><th>Expense</th><th>State Tax</th><th>Operating Profit</th></tr>
-        ${body}<tr><th>TOTAL</th><th>${qtyText(calc.total.openingQty,'TOTAL')}</th><th>${qtyText(calc.total.purchaseQty,'TOTAL')}</th><th>${qtyText(calc.total.saleQty,'TOTAL')}</th><th>${qtyText(calc.total.closingQty,'TOTAL')}</th><th>${money(calc.total.openingValue)}</th><th>${money(calc.total.purchaseCost)}</th><th>${money(calc.total.closingValue)}</th><th>${money(calc.total.cogs)}</th><th>${money(calc.total.sale)}</th><th>${money(calc.total.expense)}</th><th>${money(calc.total.stateTax)}</th><th>${money(calc.total.profit)}</th></tr></table>
+        ${body}<tr><th>TOTAL</th><th>${qtyText(calc.total.openingQty,'TOTAL')}</th><th>${qtyText(calc.total.purchaseQty,'TOTAL')}</th><th>${qtyText(calc.total.saleQty,'TOTAL')}</th><th>${qtyText(calc.total.closingQty,'TOTAL')}</th><th>${moneyOrMissing(calc.total.openingValue)}</th><th>${money(calc.total.purchaseCost)}</th><th>${moneyOrMissing(calc.total.closingValue)}</th><th>${moneyOrMissing(calc.total.cogs)}</th><th>${money(calc.total.sale)}</th><th>${money(calc.total.expense)}</th><th>${money(calc.total.stateTax)}</th><th>${moneyOrMissing(calc.total.profit)}</th></tr></table>
         <div class="sm-print-summary"><div>CNG Matched Purchase Qty: <b>${qtyText(calc.CNG.matchedPurchaseQty,'CNG')}</b></div>
         <div>CNG Unmatched Sale Qty: <b>${qtyText(calc.CNG.unmatchedSaleQty,'CNG')}</b></div><div>CNG Unmatched Sale Amount: <b>${money(calc.CNG.unmatchedSaleAmount)}</b></div>
         <div>CNG Unmatched Purchase Qty: <b>${qtyText(calc.CNG.unmatchedPurchaseQty,'CNG')}</b></div><div>CNG Unmatched Purchase Cost: <b>${money(calc.CNG.unmatchedPurchaseCost)}</b></div>
         <div>Salary Expense: <b>${money(salaryExpenseForPeriod)}</b></div><div>Electricity Expense: <b>${money(electricityExpenseForPeriod)}</b></div>
-        <div class="sm-print-final">Final Net Profit: ${money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</div></div>
+        <div class="sm-print-final">Final Net Profit: ${calc.total.profit===null?'Missing Dip':money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</div></div>
       </div>
     </div>`;
 
@@ -6465,7 +6488,7 @@ export function SalePurchaseProfitLoss({ data }) {
       <SecurityNotice />
     <section className="panel">
       <h2>📊 Sale ↔ Purchase P&L</h2>
-      <p style={{marginTop:0,color:'#6b7280'}}><b>Stock basis:</b> Opening = selected <b>From Date</b> से ठीक पहले का book stock; Closing = selected <b>To Date</b> के बाद का book stock. इसलिए September 2026 report में Opening 01-09 का opening और Closing 30-09 का closing होगा. <br/>MS/HSD/Lubricant stock-based P&L और CNG bill-after-sale matched COGS. CNG में Physical Opening/Closing Stock नहीं है। CNG purchase bill बाद में बनने पर भी earlier sale से FIFO basis पर match होगा। DSR Difference P&L में शामिल नहीं है। CNG Sale Amount पर configured State Tax अलग से घटाया जाता है।</p>
+      <p style={{marginTop:0,color:'#6b7280'}}><b>Stock basis:</b> MS/HSD Opening = From Date का DSR Physical Dip; Closing = To Date के अगले दिन का DSR Physical Dip. जिस तारीख का Physical Dip उपलब्ध नहीं होगा, वहाँ अनुमानित Book Stock नहीं लगाया जाएगा और Profit को Missing Dip दिखाया जाएगा. Lubricant का stock book calculation से रहेगा. <br/>MS/HSD/Lubricant stock-based P&L और CNG bill-after-sale matched COGS. CNG में Physical Opening/Closing Stock नहीं है। CNG purchase bill बाद में बनने पर भी earlier sale से FIFO basis पर match होगा। DSR Difference P&L में शामिल नहीं है। CNG Sale Amount पर configured State Tax अलग से घटाया जाता है।</p>
       <div className="form"><label>Financial Year<select value={selectedFY} onChange={e=>setSelectedFY(e.target.value)}>{FINANCIAL_YEARS.map(y=><option key={y.value} value={y.value}>{y.label}</option>)}</select></label><label>From Date<input type="date" min={START_DATE} value={from} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'From Date')) setFrom(v);}}/></label><label>To Date<input type="date" min={START_DATE} value={to} onChange={e=>{const v=e.target.value; if(!assertPeriodDate(v,'To Date')) setTo(v);}}/></label></div>
       <div style={{display:'flex',gap:10,marginTop:14}}><button className="btn" onClick={exportExcel}>📊 Excel</button><button className="btn" onClick={printReport}>🖨️ Print / PDF</button></div>
     </section>
@@ -6482,13 +6505,13 @@ export function SalePurchaseProfitLoss({ data }) {
           <small>इस selected period में बिजली खर्च हाथ से डालें</small>
         </div>
       </div>
-      <div className="mini" style={{marginTop:12}}><span>FINAL NET PROFIT</span><strong>{money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</strong><small>Operating Profit − Salary − Electricity</small></div>
+      <div className="mini" style={{marginTop:12}}><span>FINAL NET PROFIT</span><strong>{calc.total.profit===null?'Missing Dip':money(calc.total.profit-salaryExpenseForPeriod-electricityExpenseForPeriod)}</strong><small>Operating Profit − Salary − Electricity</small></div>
       <div style={{marginTop:12,padding:'10px 12px',borderRadius:10,background:'#f8fafc',fontSize:11,lineHeight:1.6}}>
         <b>Electricity:</b> Selected period में saved electricity bills के amounts expense में शामिल होते हैं। DSR Difference को Final Net Profit में शामिल नहीं किया गया है।
       </div>
     </section>
     <section className="panel" style={{marginTop:18}}>
-      <Table headers={['Fuel','Opening (Before From Date)','Purchase / Bill Qty','Sale','Closing (After To Date)','Opening Value','Purchase / Matched Cost','Closing Value','COGS','Sale Amount','Expense','State Tax','Profit']} rows={fuelList.map(f=>[f,f==='CNG'?'N/A':qtyText(calc[f].openingQty,f),qtyText(calc[f].purchaseQty,f),qtyText(calc[f].saleQty,f),f==='CNG'?'N/A':qtyText(calc[f].closingQty,f),f==='CNG'?'N/A':money(calc[f].openingValue),f==='CNG'?money(calc[f].matchedPurchaseCost):money(calc[f].purchaseCost),f==='CNG'?'N/A':money(calc[f].closingValue),money(calc[f].cogs),money(calc[f].sale),money(calc[f].expense),money(calc[f].stateTax),money(calc[f].profit)]).concat([['TOTAL',qtyText(calc.total.openingQty,'TOTAL'),qtyText(calc.total.purchaseQty,'TOTAL'),qtyText(calc.total.saleQty,'TOTAL'),qtyText(calc.total.closingQty,'TOTAL'),money(calc.total.openingValue),money(displayPurchaseCostTotal(calc.MS,calc.HSD,calc.CNG,calc.LUBRICANT)),money(calc.total.closingValue),money(calc.total.cogs),money(calc.total.sale),money(calc.total.expense),money(calc.total.stateTax),money(calc.total.profit)]])}/>
+      <Table headers={['Fuel','Opening (Before From Date)','Purchase / Bill Qty','Sale','Closing (After To Date)','Opening Value','Purchase / Matched Cost','Closing Value','COGS','Sale Amount','Expense','State Tax','Profit']} rows={fuelList.map(f=>[f,f==='CNG'?'N/A':qtyText(calc[f].openingQty,f),qtyText(calc[f].purchaseQty,f),qtyText(calc[f].saleQty,f),f==='CNG'?'N/A':qtyText(calc[f].closingQty,f),f==='CNG'?'N/A':moneyOrMissing(calc[f].openingValue),f==='CNG'?money(calc[f].matchedPurchaseCost):money(calc[f].purchaseCost),f==='CNG'?'N/A':moneyOrMissing(calc[f].closingValue),moneyOrMissing(calc[f].cogs),money(calc[f].sale),money(calc[f].expense),money(calc[f].stateTax),moneyOrMissing(calc[f].profit)]).concat([['TOTAL',qtyText(calc.total.openingQty,'TOTAL'),qtyText(calc.total.purchaseQty,'TOTAL'),qtyText(calc.total.saleQty,'TOTAL'),qtyText(calc.total.closingQty,'TOTAL'),moneyOrMissing(calc.total.openingValue),money(displayPurchaseCostTotal(calc.MS,calc.HSD,calc.CNG,calc.LUBRICANT)),moneyOrMissing(calc.total.closingValue),moneyOrMissing(calc.total.cogs),money(calc.total.sale),money(calc.total.expense),money(calc.total.stateTax),moneyOrMissing(calc.total.profit)]])}/>
     </section>
     <section className="panel" style={{marginTop:18}}>
       <h3>👥 Staff Salary Included in P&L</h3>
