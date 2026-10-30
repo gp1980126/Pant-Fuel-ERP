@@ -6263,12 +6263,12 @@ export function SalePurchaseProfitLoss({ data }) {
   const filteredPurchases=validPeriod?purchases.filter(p=>p.date>=from&&p.date<=to):[];
   const staff=Array.isArray(data?.staff)?data.staff:[];
 
-  // Salary = full saved monthly salary. Attendance/leave is NOT used for deduction.
-  // This keeps the P&L salary equal to the staff master total (e.g. ₹91,000).
-  const salaryExpenseForPeriod=useMemo(()=>{
-    if(!from||!to||from>to) return 0;
-    return staff.reduce((sum,person)=>sum+n(person.salary),0);
-  },[from,to,staff]);
+  // Full monthly salary for every calendar month touched by the selected
+  // P&L period. Attendance/leave never reduces salary.
+  const salaryExpenseForPeriod=useMemo(
+    ()=>salaryExpenseForPeriodPure(data,from,to),
+    [data?.staff,from,to]
+  );
 
   // Electricity is a manual P&L adjustment for the selected date range.
   // It is stored by period so changing the report dates does not overwrite another period.
@@ -6532,7 +6532,7 @@ export function SalePurchaseProfitLoss({ data }) {
       {calc.CNG.unmatchedSaleQty>0 && <div style={{marginTop:12,padding:10,borderRadius:8,background:'#fff7ed',border:'1px solid #fed7aa',color:'#9a3412',fontSize:12}}><b>⚠️ CNG Purchase Bill Pending:</b> {qtyText(calc.CNG.unmatchedSaleQty,'CNG')} sale अभी purchase bill से match नहीं हुई है. CNG profit/COGS इस unmatched quantity के लिए provisional है.</div>}
       <div style={{marginTop:10,padding:10,borderRadius:8,background:'#eff6ff',border:'1px solid #bfdbfe',color:'#1e3a8a',fontSize:12}}><b>🔎 CNG 10-Aug verification:</b> HPCL Invoice 9024427628 = 1,058 Kg. Same invoice/fuel/qty/total duplicate rows are automatically collapsed; the bill is counted once only.</div>
       {calc.CNG.unmatchedPurchaseQty>0 && <div style={{marginTop:12,padding:10,borderRadius:8,background:'#eff6ff',border:'1px solid #bfdbfe',color:'#1d4ed8',fontSize:12}}><b>ℹ️ Unmatched Purchase Bill Qty:</b> {qtyText(calc.CNG.unmatchedPurchaseQty,'CNG')} purchase quantity अभी किसी CNG sale पर apply नहीं हुई है. यह केवल reconciliation visibility है; CNG COGS logic नहीं बदला गया है.</div>}
-      <div style={{marginTop:14,lineHeight:1.8,color:'#374151'}}><div><b>MS / HSD COGS</b> = Opening Stock Value + Purchase Value − Closing Stock Value</div><div><b>Purchase Tax Policy</b> = Assessable Value + Tax is one landed Inventory/COGS value; Journal uses the same value (no separate ITC posting).</div><div><b>CNG COGS</b> = Purchase Bills Matched to CNG Sales (later bill dates allowed)</div><div><b>CNG Physical Opening / Closing Stock</b> = N/A</div><div><b>Lubricant Stock</b> = Optional Opening + Lubricant Purchases − Lubricant Sales (Credit Sale Register)</div><div><b>CNG State Tax</b> = CNG Sale Amount × configured State Tax rate</div><div><b>Salary Expense</b> = Saved Monthly Salary for the selected period (partial month is calendar-day prorated)</div><div><b>Electricity Expense</b> = Selected period के saved electricity bills का total</div><div><b>DSR Difference</b> = P&L profit में शामिल नहीं है</div><div><b>Final Net Profit</b> = Total Operating Profit − Salary Expense − Electricity Expense</div></div>
+      <div style={{marginTop:14,lineHeight:1.8,color:'#374151'}}><div><b>MS / HSD COGS</b> = Opening Stock Value + Purchase Value − Closing Stock Value</div><div><b>Purchase Tax Policy</b> = Assessable Value + Tax is one landed Inventory/COGS value; Journal uses the same value (no separate ITC posting).</div><div><b>CNG COGS</b> = Purchase Bills Matched to CNG Sales (later bill dates allowed)</div><div><b>CNG Physical Opening / Closing Stock</b> = N/A</div><div><b>Lubricant Stock</b> = Optional Opening + Lubricant Purchases − Lubricant Sales (Credit Sale Register)</div><div><b>CNG State Tax</b> = CNG Sale Amount × configured State Tax rate</div><div><b>Salary Expense</b> = Full saved Monthly Salary for each calendar month touched by the selected period (no attendance/leave deduction)</div><div><b>Electricity Expense</b> = Selected period के saved electricity bills का total</div><div><b>DSR Difference</b> = P&L profit में शामिल नहीं है</div><div><b>Final Net Profit</b> = Total Operating Profit − Salary Expense − Electricity Expense</div></div>
     </section>
   </div>;
 }
