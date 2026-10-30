@@ -1549,10 +1549,15 @@ export function accountingSnapshot(data, from=START_DATE, to='9999-12-31') {
 }
 
 export function salaryExpenseForPeriodPure(data, from, to) {
-  if(!from || !to || from>to) return 0;
+  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(from||'')) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(to||'')) || from>to) return 0;
   const staff=Array.isArray(data?.staff)?data.staff:[];
-  // Full monthly salary only. Attendance/leave never reduces P&L salary.
-  return rupee(staff.reduce((sum,person)=>sum+n(person.salary),0));
+  // Charge the full monthly salary for every calendar month touched by the
+  // selected P&L period. Attendance/leave never reduces the monthly amount.
+  const startMonth = Number(from.slice(0,4))*12 + Number(from.slice(5,7))-1;
+  const endMonth = Number(to.slice(0,4))*12 + Number(to.slice(5,7))-1;
+  const months = endMonth - startMonth + 1;
+  const monthlySalary = staff.reduce((sum,person)=>sum+n(person.salary),0);
+  return rupee(monthlySalary * months);
 }
 
 export function electricityExpenseForPeriodPure(data,from,to){
