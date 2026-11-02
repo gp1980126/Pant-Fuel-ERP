@@ -1643,6 +1643,7 @@ const importData = (event) => {
           {page === "Sale Purchase P&L" && canAccess(session.role, "Sale Purchase P&L") && (
             <SalePurchaseProfitLoss
               data={data}
+              update={update}
             />
           )}
 
