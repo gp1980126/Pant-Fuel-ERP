@@ -4497,10 +4497,19 @@ export function Reports({ data, totals }) {
     try { w.document.open(); w.document.write(html); w.document.close(); w.focus(); }
     catch (err) { try { w.close(); } catch {} alert("Print report खुल नहीं पाया। कृपया दोबारा Print / PDF दबाएँ।"); }
   };
+  // Build standards-compliant CSV: real CRLF row separators and a real UTF-8 BOM.
+  // Do not double-escape these sequences; doing so writes the literal "\n" / "\uFEFF" text into Excel.
   const downloadCsv = (filename, rows) => {
-    const csv = rows.map(r=>r.map(csvEsc).join(",")).join("\\n");
-    const blob=new Blob(["\\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
-    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    const csv = rows.map(r => r.map(csvEsc).join(",")).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const share = text => window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,"_blank");
 
