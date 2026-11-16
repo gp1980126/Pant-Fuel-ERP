@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   authoritativeSalesRows,
+  bookFuelStockForDate,
   calculateProfitLossEngine,
   canonicalDailyPayments,
   financialYearBounds,
@@ -90,6 +91,26 @@ assert.equal(fyPnl.calc.LUBRICANT.openingQty, 2140,
 assert.equal(financialYearOpeningStockForDate(fyStockFixture, "2027-04-01"), null,
   "unsupported FY dates must not silently fall back to another year's opening stock");
 
+const fuelStockFixture = {
+  openingDate: "2026-08-01",
+  openingStock: { MS: 9356, HSD: 7500 },
+  fillings: [
+    { date: "2026-07-31", fuel: "MS", qty: 500 },
+    { date: "2026-08-01", fuel: "MS", qty: 100 },
+    { date: "2026-08-02", fuel: "MS", qty: 50 },
+  ],
+};
+const fuelStockSales = [
+  { date: "2026-08-01", fuel: "MS", qty: 300, testing: 5 },
+  { date: "2026-08-02", fuel: "MS", qty: 100, testing: 5 },
+];
+assert.equal(bookFuelStockForDate(fuelStockFixture, fuelStockSales, "MS", "2026-07-31"), null,
+  "book stock must not use FY start as an earlier stock opening");
+assert.equal(bookFuelStockForDate(fuelStockFixture, fuelStockSales, "MS", "2026-08-01"), 9156,
+  "book stock = physical opening + tank receipt - net sale; testing is not subtracted twice");
+assert.equal(bookFuelStockForDate(fuelStockFixture, fuelStockSales, "MS", "2026-08-02"), 9106,
+  "book stock must accumulate only fillings and net sales from the actual stock opening date");
+
 const cloudSource = await readFile(new URL("../src/cloud_sync_supabase.js", import.meta.url), "utf8");
 assert.match(cloudSource, /stableJson\(latest\.data\) !== stableJson\(data\)/,
   "network recovery must compare the stored payload, not just the version");
@@ -102,5 +123,6 @@ process.stdout.write("PASS: nozzle duplicate and forensic recovery selection\n")
 process.stdout.write("PASS: financial-year boundaries\n");
 process.stdout.write("PASS: physical dip source priority\n");
 process.stdout.write("PASS: FY-scoped lubricant opening stock and P&L movement firewall\n");
+process.stdout.write("PASS: MS/HSD stock-opening-date book stock formula\n");
 process.stdout.write("PASS: Cloud save payload verification guard\n");
 process.stdout.write("All StationMitra regression checks passed.\n");
