@@ -40,6 +40,17 @@
 - The `fromFY` metadata in the Test JSON contains malformed labels (`2025-20` and `2024-20`). No source data was edited; this metadata needs a separate reviewed correction.
 - FY server-write validation remains pending. `sm_save_business_state` currently verifies that the requested FY is open and authorized, but does not validate transaction dates in the submitted JSON against that FY. A safe validator must allow unchanged legacy rows while rejecting new or modified out-of-FY rows.
 
+## Fuel stock firewall — implementation update
+
+- Stock's actual opening date is `data.openingDate` (Test data: 2026-08-01), while `START_DATE` is the earliest supported FY boundary (2025-04-01). The Stock component had incorrectly reused the FY boundary for stock accumulation and date limits.
+- Fixed the Stock component to use the actual stock opening date for MS/HSD Book Stock, daily reconciliation, dip entry, fuel-rate dates and tank-filling dates. FY date bounds remain separate for accounting.
+- Added a pure MS/HSD book-stock calculation: opening stock + linked tank fillings/receipts − authoritative net sales. `sales.qty` is already net of pump testing, so testing is not subtracted twice. Physical Dip remains a separate actual measurement; missing Dip is not invented.
+- Stock still excludes CNG from tank-stock/Dip calculations, matching the existing module design.
+- Fixed the Lubricant carry-forward code so future `fromFY` metadata uses the proper previous FY code. Existing malformed metadata in the saved Test payload was not edited.
+- Test data audit: 25 date/nozzle duplicate groups were found. All groups had a verified source copy; 23 were exact same-ID/same-quantity copies, and the remaining two were CNG float-format duplicates. No sale, purchase or dip data was changed.
+- Regression tests now cover FY-specific Lubricant opening balances, prior-FY movement exclusion, the MS/HSD Book Stock formula, actual stock-opening date enforcement and no double subtraction of testing.
+- Isolated Vercel Preview build for commit `f99fb29ccb4de611942058e5ce7a4d38b5fbf4d6` reached `READY` after the regression correction. Earlier failing build was caused by a test helper date-regex typo and was corrected; no Production deployment occurred.
+
 ## Six workstreams
 
 1. Cloud and data-integrity firewall: idempotent save confirmation, optimistic concurrency, payload hash, duplicate and date integrity.
