@@ -7541,7 +7541,11 @@ const [newCNGRate, setNewCNGRate] = useState("");
     return (Array.isArray(data.dipReadings) ? data.dipReadings.slice() : [])
       .sort((a, b) => String(a.date).localeCompare(String(b.date)))
       .map(r => {
-        const book = bookStockAsOf(r.date);
+        // A saved DSR Dip is the day's opening stock. Compare it with
+        // the previous day's closing book stock; 01-Aug is the fixed baseline.
+        const book = r.date === stockStartDate
+          ? openingStockForDate(r.date)
+          : bookStockAsOf(previousDate(r.date));
         return {
           date: r.date,
           msDip: n(r.MS),
@@ -8096,7 +8100,10 @@ function updateFuelRates() {
             <thead><tr><th>Date</th><th>MS Dip (L)</th><th>MS Diff</th><th>HSD Dip (L)</th><th>HSD Diff</th></tr></thead>
             <tbody>
               {(Array.isArray(data.dipReadings) ? data.dipReadings.slice().sort((a,b) => String(b.date).localeCompare(String(a.date))) : []).map(r => {
-                const book = bookStockAsOf(r.date);
+                // Dip is opening stock for this date, not its same-day closing stock.
+                const book = r.date === stockStartDate
+                  ? openingStockForDate(r.date)
+                  : bookStockAsOf(previousDate(r.date));
                 return <tr key={r.id ?? r.date}>
                   <td><b>{r.date}</b></td>
                   <td>{n(r.MS).toFixed(2)}</td><td>{(n(r.MS) - book.MS).toFixed(2)} L</td>
