@@ -1736,7 +1736,7 @@ export function previousPending(data, date) {
 
   // Net all earlier signed daily differences per fuel:
   // positive = short payment; negative = excess payment that offsets shortages.
-  (data.dailyPayments || [])
+  canonicalDailyPayments(data)
     .filter(p => p.date < date)
     .forEach(p => {
       ["MS", "HSD", "CNG"].forEach(f => {
