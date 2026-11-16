@@ -44,3 +44,28 @@ Canonical sales aggregation deduplicated repeated nozzle/day rows by sale ID. No
 - Review the original daily DSR, nozzle meter readings, net sales/testing treatment, tank receipt timestamps and dip entries around that first divergence.
 - Do not auto-adjust opening stock, purchases, sales, or physical dip to force a match.
 - This report is diagnostic only. Production remains untouched.
+
+
+## Date-wise opening-dip roll-forward — corrected comparison
+
+The DSR dip row represents the day's opening/opposite stock. Therefore compare the date's physical dip with the previous date's closing book stock, i.e. opening + all fillings before the dip date - all canonical net sales before the dip date. Comparing a day's dip with that same day's end-of-day book stock creates a false variance.
+
+| Dip date | MS book before day | MS dip | MS variance | HSD book before day | HSD dip | HSD variance |
+|---|---:|---:|---:|---:|---:|---:|
+| 2026-08-01 | 9,356.00 | 9,356 | 0.00 | 7,500.00 | 7,500 | 0.00 |
+| 2026-08-02 | 7,960.37 | 7,955 | -5.37 | 6,286.13 | 6,306 | +19.87 |
+| 2026-08-03 | 7,067.02 | 7,059 | -8.02 | 5,238.05 | 5,283 | +44.95 |
+| 2026-08-04 | 6,146.80 | 6,140 | -6.80 | 3,472.36 | 3,556 | +83.64 |
+| 2026-08-05 | 10,332.76 | 10,294 | -38.76 | 17,085.36 | 17,036 | -49.36 |
+| 2026-09-07 | 9,303.90 | 8,025 | -1,278.90 | 9,471.97 | 7,750 | -1,721.97 |
+| 2026-09-08 | 8,456.88 | 8,013 | -443.88 | 7,906.30 | 7,729 | -177.30 |
+| 2026-11-14 | 6,535.49 | 5,072 | -1,463.49 | 13,366.94 | 12,599 | -767.94 |
+| 2026-11-15 | 5,180.92 | 11,653 | +6,472.08 | 11,896.75 | 15,094 | +3,197.25 |
+
+### Key findings
+- 2026-08-01 opening figures match exactly (user confirmed).
+- Small cumulative negative drift appears by early August; it grows gradually across the period.
+- 2026-09-07 is a major one-day negative dip outlier for both fuels; 2026-09-08 values move back much closer to the prior roll-forward, so inspect the original DSR/dip image for 07-Sep before treating it as a stock movement.
+- 2026-11-15 has a large positive dip variance for both fuels; this is the latest dip row and needs source photo/DSR verification.
+- A date-wise audit must distinguish daily opening dip from same-day closing stock and must account for purchase/filling time versus dip capture time.
+- This roll-forward is diagnostic. No app_state data was modified.
