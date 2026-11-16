@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   authoritativeSalesRows,
+  calculateProfitLossEngine,
   canonicalDailyPayments,
   financialYearBounds,
   financialYearForDate,
@@ -83,6 +84,9 @@ assert.equal(lubricantStockQuantityForDate(fyStockFixture, "2026-04-01"), 2090,
   "prior-FY purchases must not be added again on top of the carried-forward opening stock");
 assert.equal(lubricantStockQuantityForDate(fyStockFixture, "2026-04-10"), 2140,
   "FY stock must equal opening + current-FY purchases - current-FY credit and cash sales");
+const fyPnl = calculateProfitLossEngine(fyStockFixture, "2026-04-10", "2026-04-10");
+assert.equal(fyPnl.calc.LUBRICANT.openingQty, 2140,
+  "P&L opening stock must use FY carry-forward plus only same-FY movements");
 assert.equal(financialYearOpeningStockForDate(fyStockFixture, "2027-04-01"), null,
   "unsupported FY dates must not silently fall back to another year's opening stock");
 
@@ -97,5 +101,6 @@ process.stdout.write("PASS: net excess/short and recovery calculation\n");
 process.stdout.write("PASS: nozzle duplicate and forensic recovery selection\n");
 process.stdout.write("PASS: financial-year boundaries\n");
 process.stdout.write("PASS: physical dip source priority\n");
+process.stdout.write("PASS: FY-scoped lubricant opening stock and P&L movement firewall\n");
 process.stdout.write("PASS: Cloud save payload verification guard\n");
 process.stdout.write("All StationMitra regression checks passed.\n");
