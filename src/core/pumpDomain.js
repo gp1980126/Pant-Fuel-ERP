@@ -1426,10 +1426,14 @@ export function canonicalDailyPayments(data) {
   const map = new Map();
   const paymentScore = row => {
     if (!row || typeof row !== 'object') return 0;
-    let score = n(row.total);
+    // Prefer the most complete saved breakdown, not the row with the largest
+    // rupee total. A partial duplicate can have a larger amount but omit methods.
+    let score = 0;
     for (const fuel of ['MS','HSD','CNG']) {
       const p = row[fuel] && typeof row[fuel] === 'object' ? row[fuel] : {};
-      for (const key of ['cash','paytm','card','dtplus','hppay','phonepe','credit','other','pumpExpense']) score += n(p[key]);
+      for (const key of ['cash','paytm','card','dtplus','hppay','phonepe','credit','other','pumpExpense']) {
+        if (p[key] !== undefined && p[key] !== null && p[key] !== '') score += 1;
+      }
     }
     return score;
   };
@@ -1437,7 +1441,7 @@ export function canonicalDailyPayments(data) {
     const date = String(row?.date || '');
     if (!date) continue;
     const previous = map.get(date);
-    if (!previous || paymentScore(row) > paymentScore(previous)) map.set(date, row);
+    if (!previous || paymentScore(row) >= paymentScore(previous)) map.set(date, row);
   }
   return Array.from(map.values()).sort((a,b) => String(a.date).localeCompare(String(b.date)));
 }
