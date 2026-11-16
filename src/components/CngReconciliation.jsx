@@ -49,8 +49,8 @@ export function CngReconciliation({ data }) {
               <td style={{padding:9,borderBottom:"1px solid #eee"}}>{Math.abs(row.variance)<=1 ? "करीबी मिलान" : "जाँच आवश्यक"}</td>
             </tr>)}
             {pending.map((row,i)=><tr key={"pending-"+i} style={{background:"#fff7ed"}}>
-              <td style={{padding:9}}>अगला बिल लंबित</td><td style={{padding:9}}>{row.previousDate}</td><td style={{padding:9}}>—</td><td style={{padding:9}}>—</td>
-              <td style={{padding:9,textAlign:"right"}}>—</td><td style={{padding:9,textAlign:"right"}}>{kg(row.salesQty)}</td><td style={{padding:9,textAlign:"right"}}>—</td><td style={{padding:9,textAlign:"right"}}>{row.salesRows}</td><td style={{padding:9}}>HPCL Bill Pending</td>
+              <td style={{padding:9,fontWeight:700}}>बिल लंबित: {row.periodLabel}</td><td style={{padding:9}}>{row.previousDate || "पहला HPCL बिल प्रतीक्षित"}</td><td style={{padding:9}}>—</td><td style={{padding:9}}>—</td>
+              <td style={{padding:9,textAlign:"right"}}>अभी बिल नहीं</td><td style={{padding:9,textAlign:"right"}}>{kg(row.salesQty)}</td><td style={{padding:9,textAlign:"right"}}>बिल आने पर</td><td style={{padding:9,textAlign:"right"}}>{row.salesRows}</td><td style={{padding:9,fontWeight:700}}>HPCL BILL PENDING</td>
             </tr>)}
             {!audit.rows.length && <tr><td colSpan={9} style={{padding:18,textAlign:"center"}}>इस अवधि में CNG रिकॉर्ड नहीं मिले।</td></tr>}
           </tbody>
