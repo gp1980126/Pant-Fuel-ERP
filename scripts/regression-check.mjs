@@ -4,6 +4,7 @@ import {
   authoritativeSalesRows,
   bookFuelStockForDate,
   calculateProfitLossEngine,
+  cngSalePurchaseMatchingPure,
   canonicalDailyPayments,
   financialYearBounds,
   financialYearForDate,
@@ -123,6 +124,34 @@ assert.match(moduleSource, /financialYearOpeningStockForDate\(data,date\)/,
   "P&L opening valuation must use the selected FY opening value");
 assert.match(moduleSource, /fromFY:previousFY/,
   "future carry-forward metadata must use the valid previous FY label");
+
+const cngFifoFixture = {
+  sales: [
+    { id: "sale-before-lot", date: "2026-03-30", fuel: "CNG", qty: 40, amount: 400 },
+    { id: "sale-fy1", date: "2026-04-01", fuel: "CNG", qty: 80, amount: 800 },
+    { id: "sale-fy2", date: "2026-04-03", fuel: "CNG", qty: 100, amount: 1000 },
+  ],
+  purchases: [
+    { id: "lot-prior-fy", date: "2026-03-31", fuel: "CNG", quantity: 100, amount: 1000 },
+    { id: "lot-current-fy", date: "2026-04-02", fuel: "CNG", quantity: 100, amount: 2000 },
+  ],
+};
+const cngFifo = cngSalePurchaseMatchingPure(cngFifoFixture, "2026-04-01", "2027-03-31");
+assert.equal(cngFifo.saleQty, 180, "selected FY CNG sales must be matched only after purchase lots exist");
+assert.equal(cngFifo.matchedQty, 180, "prior-FY carried-forward CNG lots must match current-FY sales");
+assert.equal(cngFifo.matchedCost, 2600, "FIFO must consume the older carried-forward lot before current-FY lots");
+assert.equal(cngFifo.unmatchedQty, 0);
+assert.equal(cngFifo.unmatchedPurchaseQty, 20, "unused current-FY purchase quantity must remain as closing carry-forward");
+assert.equal(cngFifo.matchedPurchaseOutsidePeriod, 100, "current-FY sale matching must disclose the 100 kg prior-FY lot carry-forward");
+
+const moduleSource = await readFile(new URL("../src/components/PumpModules.jsx", import.meta.url), "utf8");
+const partyLedger = moduleSource.slice(moduleSource.indexOf("export function PartyLedger"), moduleSource.indexOf("export function Accounts"));
+assert.match(partyLedger, /const \[selectedFY, setSelectedFY\] = useState\(DEFAULT_FINANCIAL_YEAR\)/,
+  "Party Ledger must expose a Financial Year selector");
+assert.match(partyLedger, /d < fy.start \|\| d > fy.end/,
+  "Party Ledger rows must be limited to the selected FY");
+assert.match(partyLedger, /validateLedgerFYDate\(payment.date, "Payment Date"\)/,
+  "new Party Ledger receipts must be date-checked against selected FY");
 
 const cloudSource = await readFile(new URL("../src/cloud_sync_supabase.js", import.meta.url), "utf8");
 assert.match(cloudSource, /stableJson\(latest\.data\) !== stableJson\(data\)/,
