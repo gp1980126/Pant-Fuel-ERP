@@ -3138,8 +3138,10 @@ function ledgerCreditRows(credits) {
 
 export function PartyLedger({ data, setPage, update }) {
   const [party, setParty] = useState("");
-  const [from, setFrom] = useState(START_DATE);
-  const [to, setTo] = useState("");
+  const [selectedFY, setSelectedFY] = useState(DEFAULT_FINANCIAL_YEAR);
+  const fy = financialYearBounds(selectedFY);
+  const [from, setFrom] = useState(fy.start);
+  const [to, setTo] = useState(todayISODate() < fy.end ? todayISODate() : fy.end);
   const [openingInput, setOpeningInput] = useState("");
   const [openingType, setOpeningType] = useState("DEBIT");
   const [openingDate, setOpeningDate] = useState(START_DATE);
@@ -3152,6 +3154,11 @@ export function PartyLedger({ data, setPage, update }) {
   });
 
   const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    setFrom(fy.start);
+    setTo(todayISODate() < fy.end ? todayISODate() : fy.end);
+  }, [selectedFY]);
 
   const parties = useMemo(() => {
     const names = new Set();
@@ -3212,9 +3219,17 @@ export function PartyLedger({ data, setPage, update }) {
 
   function inDateRange(date) {
     const d = String(date || "");
+    if (d < fy.start || d > fy.end) return false;
     if (from && d < from) return false;
     if (to && d > to) return false;
     return true;
+  }
+
+  function validateLedgerFYDate(date, label) {
+    const d = String(date || "");
+    if (!isValidISODate(d)) return `${label} सही तारीख नहीं है.`;
+    if (d < fy.start || d > fy.end) return `${label} FY ${selectedFY} (${fy.start} से ${fy.end}) के अंदर होना चाहिए.`;
+    return null;
   }
 
   function openingSigned(opening) {
@@ -3285,7 +3300,7 @@ export function PartyLedger({ data, setPage, update }) {
       return;
     }
 
-    const paymentDateError = assertPeriodDate(payment.date, "Payment Date");
+    const paymentDateError = validateLedgerFYDate(payment.date, "Payment Date") || assertPeriodDate(payment.date, "Payment Date");
     if (paymentDateError) {
       setMsg(paymentDateError);
       return;
@@ -3905,6 +3920,11 @@ th{background:#eee}
             </select>
           </Field>
 
+          <Field label="Financial Year">
+            <select value={selectedFY} onChange={e => setSelectedFY(e.target.value)}>
+              {FINANCIAL_YEARS.map(y => <option key={y.value} value={y.value}>{y.label}</option>)}
+            </select>
+          </Field>
           <Field label="From Date">
             <input
               type="date"
