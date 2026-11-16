@@ -1415,6 +1415,7 @@ const importData = (event) => {
               "Party Ledger",
               "Collection Detail",
               "Reports",
+              "CNG Reconciliation",
               "Purchase",
               "Lubricant",
               "Sale Purchase P&L",
@@ -1632,6 +1633,10 @@ const importData = (event) => {
             />
           )}
 
+          {page === "CNG Reconciliation" && canAccess(session.role, "Reports") && (
+            <CngReconciliation data={data} />
+          )}
+
           {page === "Purchase" && canAccess(session.role, "Purchase") && (
             <Purchase data={data} update={update} />
           )}
@@ -1707,5 +1712,6 @@ import {
 } from "./components/PumpModules";
 import { TallyExport } from "./components/TallyExport";
 import { Fuel15DayBilling } from "./components/Fuel15DayBilling";
+import { CngReconciliation } from "./components/CngReconciliation";
 
 export default App;
