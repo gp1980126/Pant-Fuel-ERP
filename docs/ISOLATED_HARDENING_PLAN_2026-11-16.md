@@ -30,6 +30,16 @@
 5. `cloudSaveState()` currently treats any later Cloud version as proof that its own payload was saved. Verify the stored payload before reporting success.
 6. `package.json` references three scripts that are absent from the current main tree: `scripts/parse-check.mjs`, `scripts/regression-check.mjs`, and `scripts/release-check.mjs`.
 
+## Stock and FY investigation — 2026-11-16
+
+- Test `SATAT-FILLING-STATION` state row is tagged with FY 2026-27 and contains 1,095 sales, 117 purchases, and 107 dip readings.
+- One Lubricant purchase dated 2026-03-27 remains in that FY 2026-27 JSON payload. It is a prior-FY transaction and must remain untouched until a separately approved data migration is planned.
+- `openingStockByFY['2026-27']` is present (qty 2,090; value ₹557,727), but the P&L engine previously used the legacy global opening quantity plus all purchases before the report date. This could count the prior-FY 2,300 L purchase again instead of using the FY carry-forward balance.
+- Fixed on the isolated branch: FY-specific Lubricant opening quantity/value now comes from `openingStockByFY`; only purchases and Lubricant sales dated within that FY are included in the movement calculation. Unsupported FY dates return no opening balance rather than silently falling back to the latest FY.
+- Added regression cases for prior-FY purchase exclusion, FY opening carry-forward, current-FY purchase/sale movements, and physical-dip source priority.
+- The `fromFY` metadata in the Test JSON contains malformed labels (`2025-20` and `2024-20`). No source data was edited; this metadata needs a separate reviewed correction.
+- FY server-write validation remains pending. `sm_save_business_state` currently verifies that the requested FY is open and authorized, but does not validate transaction dates in the submitted JSON against that FY. A safe validator must allow unchanged legacy rows while rejecting new or modified out-of-FY rows.
+
 ## Six workstreams
 
 1. Cloud and data-integrity firewall: idempotent save confirmation, optimistic concurrency, payload hash, duplicate and date integrity.
