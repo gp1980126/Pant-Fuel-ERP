@@ -18,6 +18,15 @@ const duplicatePayments = {
   recoveries: [{ date: "2026-04-02", fuel: "MS", amount: 5 }],
 };
 assert.equal(canonicalDailyPayments(duplicatePayments).length, 2);
+const completenessSelection = {
+  dailyPayments: [
+    { date: "2026-04-01", MS: { cash: 900, difference: 700 }, HSD: { cash: 100 } },
+    { date: "2026-04-01", MS: { cash: 200, paytm: 0, card: 0, dtplus: 0, hppay: 0, phonepe: 0, credit: 0, other: 0, pumpExpense: 0 },
+      HSD: { cash: 50, paytm: 0, card: 0, dtplus: 0, hppay: 0, phonepe: 0, credit: 0, other: 0, pumpExpense: 0 } },
+  ],
+};
+assert.equal(canonicalDailyPayments(completenessSelection)[0].MS.cash, 200,
+  "the most complete payment breakdown must win even when its cash amount is lower");
 assert.equal(previousPending(duplicatePayments, "2026-04-03").MS, 5,
   "pending must use one canonical payment row per date and apply recoveries");
 
