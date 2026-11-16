@@ -3156,8 +3156,10 @@ export function PartyLedger({ data, setPage, update }) {
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
+    const periodEnd = todayISODate() < fy.end ? todayISODate() : fy.end;
     setFrom(fy.start);
-    setTo(todayISODate() < fy.end ? todayISODate() : fy.end);
+    setTo(periodEnd);
+    setPayment(prev => ({ ...prev, date: todayISODate() >= fy.start && todayISODate() <= fy.end ? todayISODate() : fy.start }));
   }, [selectedFY]);
 
   const parties = useMemo(() => {
@@ -3341,8 +3343,8 @@ export function PartyLedger({ data, setPage, update }) {
   // receipts/sales from before From Date are carried into the opening balance.
   const periodOpeningSigned = useMemo(() => {
     if (!party) return 0;
-    let balance = openingSigned(selectedOpening);
     const baseDate = String(selectedOpening?.date || START_DATE);
+    let balance = selectedOpening && baseDate <= String(from || fy.start) ? openingSigned(selectedOpening) : 0;
     ledgerCreditRows(data.credits)
       .filter(c => c.party === party && String(c.date || "") >= baseDate && String(c.date || "") < String(from || START_DATE))
       .forEach(c => { balance += rupee(c.amount); });
@@ -3350,7 +3352,7 @@ export function PartyLedger({ data, setPage, update }) {
       .filter(p => p.party === party && String(p.date || "") >= baseDate && String(p.date || "") < String(from || START_DATE))
       .forEach(p => { balance -= rupee(p.amount); });
     return rupee(balance);
-  }, [party, selectedOpening, data.credits, payments, from]);
+  }, [party, selectedOpening, data.credits, payments, from, fy.start]);
 
   const entries = useMemo(() => {
     if (!party) return [];
@@ -3446,7 +3448,7 @@ export function PartyLedger({ data, setPage, update }) {
     return parties.map(name => {
       const opening = openings.find(o => o.party === name) || null;
       const baseDate = String(opening?.date || START_DATE);
-      let openingValue = openingSigned(opening);
+      let openingValue = opening && baseDate <= String(from || fy.start) ? openingSigned(opening) : 0;
       ledgerCreditRows(data.credits)
         .filter(c => c.party === name && String(c.date || "") >= baseDate && String(c.date || "") < String(from || START_DATE))
         .forEach(c => { openingValue += rupee(c.amount); });
@@ -3480,7 +3482,8 @@ export function PartyLedger({ data, setPage, update }) {
     data.credits,
     payments,
     from,
-    to
+    to,
+    fy.start
   ]);
 
   const outstandingPartySummary = useMemo(
