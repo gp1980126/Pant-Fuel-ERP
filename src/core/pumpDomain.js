@@ -80,6 +80,56 @@ export function physicalDipStockForDate(data, fuel, date) {
   return historical ? Number(f === "MS" ? historical[1] : historical[2]) : null;
 }
 
+// FY-specific lubricant opening balances are authoritative. Movements before
+// the selected FY belong to the carried-forward opening balance, not this FY.
+export function financialYearOpeningStockForDate(data, date) {
+  const fyCode = financialYearForDate(date);
+  if (!fyCode) return null;
+  const fy = financialYearBounds(fyCode);
+  const stored = data?.openingStockByFY?.[fyCode];
+  if (stored && typeof stored === "object") {
+    const qty = Number(stored.qty);
+    const value = Number(stored.value);
+    return {
+      fy: fyCode,
+      start: fy.start,
+      end: fy.end,
+      qty: Number.isFinite(qty) ? qty : 0,
+      value: Number.isFinite(value) ? value : 0,
+      source: stored.source || "FY_OPENING",
+    };
+  }
+  // Legacy fallback is safe only for the earliest supported FY. Later FYs
+  // must not inherit the global legacy opening balance accidentally.
+  if (fy.start === START_DATE) {
+    const qty = Number(data?.openingStock?.LUBRICANT_QTY || 0);
+    const value = Number(data?.openingStock?.LUBRICANT_VALUE || 0);
+    return {
+      fy: fyCode, start: fy.start, end: fy.end,
+      qty: Number.isFinite(qty) ? qty : 0,
+      value: Number.isFinite(value) ? value : 0,
+      source: "LEGACY_OPENING",
+    };
+  }
+  return { fy: fyCode, start: fy.start, end: fy.end, qty: 0, value: 0, source: "MISSING_FY_OPENING" };
+}
+
+export function lubricantStockQuantityForDate(data, date) {
+  const opening = financialYearOpeningStockForDate(data, date);
+  if (!opening) return null;
+  const beforeDate = row => String(row?.date || "") >= opening.start && String(row?.date || "") < String(date);
+  const purchased = (Array.isArray(data?.purchases) ? data.purchases : [])
+    .filter(row => String(row?.fuel || "").toUpperCase() === "LUBRICANT" && beforeDate(row))
+    .reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0);
+  const creditSales = (Array.isArray(data?.credits) ? data.credits : [])
+    .filter(row => String(row?.fuel || "").toUpperCase() === "LUBRICANT" && beforeDate(row))
+    .reduce((sum, row) => sum + (Number(row?.qty) || 0), 0);
+  const cashSales = (Array.isArray(data?.lubricantCashSales) ? data.lubricantCashSales : [])
+    .filter(beforeDate)
+    .reduce((sum, row) => sum + (Number(row?.qty) || 0), 0);
+  return opening.qty + purchased - creditSales - cashSales;
+}
+
 export const USER_ROLES = {
   ADMIN: "Admin",
   OWNER: "Owner",
@@ -1600,13 +1650,14 @@ export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
   const payments=Array.isArray(data?.dailyPayments)?data.dailyPayments:[], fuels=['MS','HSD','CNG','LUBRICANT'];
   const fallback={MS:n(data?.rates?.MS??99.79),HSD:n(data?.rates?.HSD??95.32),CNG:n(data?.rates?.CNG??101),LUBRICANT:(n(data?.openingStock?.LUBRICANT_QTY)>0?n(data?.openingStock?.LUBRICANT_VALUE)/n(data?.openingStock?.LUBRICANT_QTY):0)};
   const before=(a,b)=>String(a).localeCompare(String(b))<0;
-  const purchaseQty=(f,d=null)=>purchases.filter(p=>p.fuel===f&&(!d||before(p.date,d))).reduce((a,p)=>a+n(p.quantity),0);
-  const saleQtyBefore=(f,d)=>f==='LUBRICANT'?(
-    (Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0) +
-    (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[]).filter(x=>before(x.date,d)).reduce((a,x)=>a+n(x.qty),0)
-  ):sales.filter(x=>x.fuel===f&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0);
-  const openingQty=(f,d)=>{if(f==='CNG')return null;if(f==='MS'||f==='HSD')return physicalDipStockForDate(data,f,d);const base=n(data?.openingStock?.LUBRICANT_QTY);return String(d)===START_DATE?base:base+purchaseQty(f,d)-saleQtyBefore(f,d);};
-  const openingRate=(f,d)=>{if(f==='LUBRICANT' && n(data?.openingStock?.LUBRICANT_QTY)>0)return n(data?.openingStock?.LUBRICANT_VALUE)/n(data?.openingStock?.LUBRICANT_QTY);const prior=purchases.filter(p=>p.fuel===f&&before(p.date,d));if(prior.length){const q=prior.reduce((a,p)=>a+n(p.quantity),0),v=prior.reduce((a,p)=>a+purchaseLandedValue(p),0);if(q>0)return v/q;}return fallback[f]||0;};
+  const fyForDate=d=>{const code=financialYearForDate(d);return code?financialYearBounds(code):null;};
+  const purchaseQty=(f,d=null)=>{const fy=d?fyForDate(d):null;return purchases.filter(p=>p.fuel===f&&(!d||(fy&&String(p.date)>=fy.start&&before(p.date,d)))).reduce((a,p)=>a+n(p.quantity),0);};
+  const saleQtyBefore=(f,d)=>{const fy=fyForDate(d);if(!fy)return 0;return f==='LUBRICANT'?(
+    (Array.isArray(data?.credits)?data.credits:[]).filter(x=>String(x?.fuel||'').toUpperCase()===f&&String(x.date)>=fy.start&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0) +
+    (Array.isArray(data?.lubricantCashSales)?data.lubricantCashSales:[]).filter(x=>String(x.date)>=fy.start&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0)
+  ):sales.filter(x=>x.fuel===f&&String(x.date)>=fy.start&&before(x.date,d)).reduce((a,x)=>a+n(x.qty),0);};
+  const openingQty=(f,d)=>{if(f==='CNG')return null;if(f==='MS'||f==='HSD')return physicalDipStockForDate(data,f,d);return lubricantStockQuantityForDate(data,d);};
+  const openingRate=(f,d)=>{if(f==='LUBRICANT'){const opening=financialYearOpeningStockForDate(data,d);if(!opening)return 0;const prior=purchases.filter(p=>p.fuel===f&&String(p.date)>=opening.start&&before(p.date,d));const q=opening.qty+prior.reduce((a,p)=>a+n(p.quantity),0),v=opening.value+prior.reduce((a,p)=>a+purchaseLandedValue(p),0);if(q>0)return v/q;return fallback[f]||0;}const prior=purchases.filter(p=>p.fuel===f&&before(p.date,d));if(prior.length){const q=prior.reduce((a,p)=>a+n(p.quantity),0),v=prior.reduce((a,p)=>a+purchaseLandedValue(p),0);if(q>0)return v/q;}return fallback[f]||0;};
   const fs=sales.filter(x=>x.date>=from&&x.date<=to), fp=purchases.filter(x=>x.date>=from&&x.date<=to), cng=cngSalePurchaseMatchingPure(data,from,to), out={};
   fuels.forEach(f=>{
     const oq=openingQty(f,from), pq=fp.filter(p=>p.fuel===f).reduce((a,p)=>a+n(p.quantity),0), pc=fp.filter(p=>p.fuel===f).reduce((a,p)=>a+purchaseLandedValue(p),0);
