@@ -55,6 +55,16 @@
 - Regression tests now cover FY-specific Lubricant opening balances, prior-FY movement exclusion, the MS/HSD Book Stock formula, actual stock-opening date enforcement and no double subtraction of testing.
 - Isolated Vercel Preview build for commit `f99fb29ccb4de611942058e5ce7a4d38b5fbf4d6` reached `READY` after the regression correction. Earlier failing build was caused by a test helper date-regex typo and was corrected; no Production deployment occurred.
 
+## Party Ledger and CNG FIFO — implementation update
+
+- Party Ledger now has a Financial Year selector. Selecting a FY resets the From/To period to that FY and clamps date inputs to its boundaries. Rows outside the selected FY are excluded from the selected-period ledger and all-party summary.
+- Period Opening is carried forward from the saved legacy Party Opening record plus all earlier credit sales minus earlier receipts. The saved baseline opening is not applied to a FY that predates its effective date. New payment receipts are checked against the selected FY and default to a date within that FY.
+- The existing single legacy `ledgerOpenings` record remains the baseline source. No bulk snapshot or rewrite of Party Opening records was performed; the FY opening is derived from dated history to avoid duplicating balances.
+- CNG FIFO matching was corrected to process purchase and sale events chronologically. Purchases can only fund sales on or after their purchase date; unused lots carry forward across FY boundaries. Reports for a selected FY disclose prior-period matched purchase quantity separately as `matchedPurchaseOutsidePeriod`.
+- Added regression cases: prior-FY CNG lot matching current-FY sales, FIFO consumption order, unused current-FY lot carry-forward, Party Ledger FY selector, FY date filtering and payment date validation.
+- Isolated Vercel Preview commit `2b6bbaaea0696914060b0eab10e5ea60e4cc3859` reached `READY`. Build ran syntax checks, all regression assertions (including the new Party Ledger and CNG FIFO cases), and Vite production build successfully. A non-blocking large-bundle warning remains.
+- This is still an isolated Preview build. No production merge, deployment or database write was performed for these Party Ledger/CNG changes.
+
 ## Six workstreams
 
 1. Cloud and data-integrity firewall: idempotent save confirmation, optimistic concurrency, payload hash, duplicate and date integrity.
