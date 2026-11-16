@@ -204,6 +204,22 @@ const pendingAudit = buildCngDeliveryReconciliation({
 }, "2026-08-01", "2026-08-31");
 assert.equal(pendingAudit.rows.at(-1).type, "PENDING_BILL");
 assert.equal(pendingAudit.rows.at(-1).salesQty, 45);
+assert.equal(pendingAudit.rows.at(-1).periodLabel, "2026-08-06");
+assert.equal(pendingAudit.rows.at(-1).status, "HPCL BILL PENDING");
+const boundedPendingAudit = buildCngDeliveryReconciliation({
+  purchases: [{date:"2026-11-11",fuel:"CNG",quantity:100,invoiceNo:"INV-11"}],
+  sales: [
+    {id:1,date:"2026-11-12",fuel:"CNG",nozzle:"CNG-1",qty:500},
+    {id:2,date:"2026-11-13",fuel:"CNG",nozzle:"CNG-1",qty:600},
+    {id:3,date:"2026-11-16",fuel:"CNG",nozzle:"CNG-1",qty:700},
+  ]
+}, "2026-11-12", "2026-11-13");
+assert.equal(boundedPendingAudit.rows.at(-1).periodLabel, "2026-11-12 से 2026-11-13",
+  "pending bill row must show the open date interval after the latest HPCL bill");
+assert.equal(boundedPendingAudit.rows.at(-1).salesQty, 1100,
+  "pending bill quantity must be clipped to the selected To Date");
+assert.equal(boundedPendingAudit.rows.at(-1).salesRows, 2,
+  "sales beyond the selected To Date must not leak into the pending interval");
 process.stdout.write("PASS: CNG delivery interval reconciliation and duplicate audit\\n");
 
 process.stdout.write("All StationMitra regression checks passed.");
