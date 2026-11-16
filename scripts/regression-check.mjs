@@ -175,9 +175,10 @@ process.stdout.write("PASS: FY-scoped lubricant opening stock and P&L movement f
 process.stdout.write("PASS: MS/HSD stock-opening-date book stock formula\n");
 
 const stockUiSource = await readFile(new URL("../src/components/PumpModules.jsx", import.meta.url), "utf8");
-assert.equal((stockUiSource.match(/bookStockAsOf\\(previousDate\\(r\\.date\\)\\)/g) || []).length, 2,
+assert.equal(stockUiSource.split("bookStockAsOf(previousDate(r.date))").length - 1, 2,
   "Dip Report exports and on-screen Dip table must compare opening Dip with previous-day closing book stock");
-assert.match(stockUiSource, /r\\.date === stockStartDate\\s*\\? openingStockForDate\\(r\\.date\\)/,
+assert.ok(stockUiSource.includes("r.date === stockStartDate") &&
+  stockUiSource.includes("? openingStockForDate(r.date)"),
   "the first stock-opening date must compare against the fixed opening-stock baseline");
 process.stdout.write("PASS: opening Dip compares with previous-day closing book stock in report, Excel/PDF and table\\n");
 process.stdout.write("PASS: Cloud save payload verification guard\\n");
