@@ -114,6 +114,7 @@ import {
   electricityExpenseForPeriodPure,
   cngSalePurchaseMatchingPure,
   authoritativeSalesRows,
+  bookFuelStockForDate,
   calculateProfitLossEngine,
   physicalDipStockForDate,
   standardJournal,
@@ -4863,7 +4864,7 @@ export function LubricantManagement({ data, update }) {
   const carryForwardOpening=()=>{
     const q=n(calculatedPreviousClosing.qty), v=n(calculatedPreviousClosing.value);
     if(q<0||v<0) return setMsg("❌ Previous FY closing stock invalid है।");
-    update({openingStockByFY:{...(data?.openingStockByFY||{}),[selectedFY]:{qty:q,value:v,source:"CARRY_FORWARD",fromFY:`${Number(String(selectedFY).slice(0,4))-1}-${String(selectedFY).slice(0,4).slice(0,2)}`}}});
+    update({openingStockByFY:{...(data?.openingStockByFY||{}),[selectedFY]:{qty:q,value:v,source:"CARRY_FORWARD",fromFY:previousFY}}});
     setOpeningQty(q); setOpeningValue(v);
     setMsg(`✅ Previous FY closing stock carry-forward हो गया: ${q.toFixed(2)} L · ${money(v)}`);
   };
@@ -7314,6 +7315,7 @@ export function Stock({
   update,
   totals
 }) {
+  const stockStartDate = String(data?.openingDate || "2026-08-01");
   const salesRows = Array.isArray(data?.sales) ? data.sales : [];
   const fillingsRows = Array.isArray(data?.fillings) ? data.fillings : [];
   const dipRows = Array.isArray(data?.dipReadings) ? data.dipReadings : [];
@@ -7341,7 +7343,7 @@ export function Stock({
         candidates[candidates.length - 1];
     });
   }, [salesRows]);
-const [rateDate, setRateDate] = useState(START_DATE);
+const [rateDate, setRateDate] = useState(stockStartDate);
 
 const [newMSRate, setNewMSRate] = useState("");
 const [newHSDRate, setNewHSDRate] = useState("");
@@ -7353,18 +7355,10 @@ const [newCNGRate, setNewCNGRate] = useState("");
 
   function bookStockAsOf(date) {
     const d = String(date || todayDate());
-    const sales = authoritativeSales.filter(x => x.date >= START_DATE && x.date <= d);
-    const fillings = (Array.isArray(data.fillings) ? data.fillings : []).filter(x => x.date >= START_DATE && x.date <= d);
-    const base = {
-      MS: n(data.openingStock?.MS ?? 9356),
-      HSD: n(data.openingStock?.HSD ?? 7500)
+    return {
+      MS: bookFuelStockForDate(data, authoritativeSales, "MS", d) ?? 0,
+      HSD: bookFuelStockForDate(data, authoritativeSales, "HSD", d) ?? 0
     };
-    const out = { ...base };
-    ["MS", "HSD"].forEach(fuel => {
-      out[fuel] += fillings.filter(x => x.fuel === fuel).reduce((sum, x) => sum + n(x.qty), 0);
-      out[fuel] -= sales.filter(x => x.fuel === fuel).reduce((sum, x) => sum + n(x.qty), 0);
-    });
-    return out;
   }
 
   function historicalDipForDate(date) {
@@ -7390,14 +7384,14 @@ const [newCNGRate, setNewCNGRate] = useState("");
   // the date's own recorded DIP is its opening physical stock. For Sales By Dip,
   // the next day's DIP is used as the current day's closing physical stock.
   function openingStockForDate(date) {
-    if (date === START_DATE) {
+    if (date === stockStartDate) {
       return { MS: n(data.openingStock?.MS ?? 9356), HSD: n(data.openingStock?.HSD ?? 7500) };
     }
     const dip = historicalDipForDate(date);
     if (dip) return { MS: n(dip.MS), HSD: n(dip.HSD) };
 
     // If no physical opening DIP exists for this date, carry forward the
-    // previous day's calculated book closing stock. Never reuse START_DATE
+    // previous day's calculated book closing stock. Never reuse stockStartDate
     // opening stock for later dates.
     const prevBook = bookStockAsOf(previousDate(date));
     return { MS: n(prevBook.MS), HSD: n(prevBook.HSD) };
@@ -7416,13 +7410,13 @@ const [newCNGRate, setNewCNGRate] = useState("");
   const savedDip = (Array.isArray(data.dipReadings) ? data.dipReadings : []).find(x => x.date === dipDate);
 
   const dailyStockRows = useMemo(() => {
-    const dates = new Set([START_DATE]);
-    salesRows.forEach(x => { if (x.date >= START_DATE) dates.add(x.date); });
-    fillingsRows.forEach(x => { if (x.date >= START_DATE) dates.add(x.date); });
-    dipRows.forEach(x => { if (x.date >= START_DATE) dates.add(x.date); });
+    const dates = new Set([stockStartDate]);
+    salesRows.forEach(x => { if (x.date >= stockStartDate) dates.add(x.date); });
+    fillingsRows.forEach(x => { if (x.date >= stockStartDate) dates.add(x.date); });
+    dipRows.forEach(x => { if (x.date >= stockStartDate) dates.add(x.date); });
     HISTORICAL_DIP_MS_HSD_2026_08.forEach(([d]) => dates.add(d));
     const today = todayDate();
-    if (today >= START_DATE) dates.add(today);
+    if (today >= stockStartDate) dates.add(today);
 
     let cumulative = 0;
     return Array.from(dates).sort().map(date => {
@@ -7467,7 +7461,7 @@ const [newCNGRate, setNewCNGRate] = useState("");
 
   function saveDipReading() {
     setDipMsg("");
-    if (!dipDate || dipDate < START_DATE) return setDipMsg("01-08-2026 से पहले की Dip entry allowed नहीं है।");
+    if (!dipDate || dipDate < stockStartDate) return setDipMsg("01-08-2026 से पहले की Dip entry allowed नहीं है।");
     if (dipValues.MS === "" || dipValues.HSD === "") return setDipMsg("MS और HSD दोनों की physical/dip quantity भरें।");
     if (["MS", "HSD"].some(f => n(dipValues[f]) < 0)) return setDipMsg("Dip quantity negative नहीं हो सकती।");
     const rows = Array.isArray(data.dipReadings) ? data.dipReadings : [];
@@ -7555,7 +7549,7 @@ function updateFuelRates() {
       return;
     }
 
-    if (rateDate < START_DATE) {
+    if (rateDate < stockStartDate) {
       setMsg("01-08-2026 से पहले का rate allowed नहीं है।");
       return;
     }
@@ -7596,7 +7590,7 @@ function updateFuelRates() {
     useState({
       fuel: "MS",
       qty: "",
-      date: START_DATE,
+      date: stockStartDate,
       purchaseRef: ""
     });
 
@@ -7610,12 +7604,12 @@ function updateFuelRates() {
 
   const periodSales =
     data.sales.filter(
-      s => s.date >= START_DATE
+      s => s.date >= stockStartDate
     );
 
   const periodFillings =
     data.fillings.filter(
-      x => x.date >= START_DATE
+      x => x.date >= stockStartDate
     );
 
   /* ======================================================
@@ -7702,7 +7696,7 @@ function updateFuelRates() {
 
     setMsg("");
 
-    if (f.date < START_DATE) {
+    if (f.date < stockStartDate) {
 
       return setMsg(
         "01-08-2026 से पहले की filling allowed नहीं है."
@@ -7924,7 +7918,7 @@ function updateFuelRates() {
         <h2>Daily Stock Reconciliation — MS / HSD</h2>
         <p>01-08-2026 से MS/HSD की primary reconciliation physical stock के आधार पर है: <b>Opening + Purchase − Physical Closing = Stock Consumption</b>. इसके बाद <b>Net Sale = Stock Consumption − Pump Test</b>. DSR Difference को Sale नहीं माना जाता। CNG इस reconciliation और DIP से बाहर है.</p>
         {["MS","HSD"].map(fuel => {
-          const periodRows = dailyStockRows.filter(r => r.date >= START_DATE);
+          const periodRows = dailyStockRows.filter(r => r.date >= stockStartDate);
           const opening = periodRows.length ? n(periodRows[0].opening[fuel]) : 0;
           const purchase = periodRows.reduce((s,r) => s + n(r.receivedByFuel[fuel]), 0);
           const last = periodRows.at(-1);
@@ -7998,7 +7992,7 @@ function updateFuelRates() {
 
         <div className="form">
           <Field label="Date">
-            <input type="date" min={START_DATE} value={dipDate} onChange={e => setDipDate(e.target.value)} />
+            <input type="date" min={stockStartDate} value={dipDate} onChange={e => setDipDate(e.target.value)} />
           </Field>
           <Field label="MS Dip / Physical (L)">
             <input type="number" min="0" step="0.01" value={dipValues.MS} onChange={e => setDipValues(v => ({ ...v, MS: e.target.value }))} />
@@ -8064,7 +8058,7 @@ function updateFuelRates() {
           <Field label="Effective Date">
             <input
               type="date"
-              min={START_DATE}
+              min={stockStartDate}
               value={rateDate}
               onChange={e => setRateDate(e.target.value)}
             />
@@ -8222,7 +8216,7 @@ function updateFuelRates() {
 
             <input
               type="date"
-              min={START_DATE}
+              min={stockStartDate}
               value={f.date}
               onChange={e =>
                 setF({
