@@ -111,6 +111,19 @@ assert.equal(bookFuelStockForDate(fuelStockFixture, fuelStockSales, "MS", "2026-
 assert.equal(bookFuelStockForDate(fuelStockFixture, fuelStockSales, "MS", "2026-08-02"), 9106,
   "book stock must accumulate only fillings and net sales from the actual stock opening date");
 
+const moduleSource = await readFile(new URL("../src/components/PumpModules.jsx", import.meta.url), "utf8");
+const stockComponent = moduleSource.slice(moduleSource.indexOf("export function Stock({"), moduleSource.indexOf("export function Table({"));
+assert.match(stockComponent, /const stockStartDate = String\(data\?\.openingDate \|\| "2026-08-01"\)/,
+  "Stock must use the configured stock opening date, not the FY boundary");
+assert.doesNotMatch(stockComponent, /START_DATE/,
+  "Stock date calculations must remain separate from Financial Year start");
+assert.match(moduleSource, /return lubricantStockQuantityForDate\(data,date\)/,
+  "P&L screen must use the FY-scoped lubricant stock calculation");
+assert.match(moduleSource, /financialYearOpeningStockForDate\(data,date\)/,
+  "P&L opening valuation must use the selected FY opening value");
+assert.match(moduleSource, /fromFY:previousFY/,
+  "future carry-forward metadata must use the valid previous FY label");
+
 const cloudSource = await readFile(new URL("../src/cloud_sync_supabase.js", import.meta.url), "utf8");
 assert.match(cloudSource, /stableJson\(latest\.data\) !== stableJson\(data\)/,
   "network recovery must compare the stored payload, not just the version");
