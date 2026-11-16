@@ -3374,6 +3374,27 @@ export function PartyLedger({ data, setPage, update }) {
       });
     }
 
+    // If the saved opening outstanding starts after the selected report's From Date,
+    // show it on its actual effective date instead of silently dropping it.
+    const openingEffectiveDate = String(selectedOpening?.date || "");
+    if (selectedOpening && openingEffectiveDate >= String(from || fy.start) &&
+        openingEffectiveDate <= String(to || fy.end) &&
+        openingEffectiveDate >= fy.start && openingEffectiveDate <= fy.end) {
+      const signed = openingSigned(selectedOpening);
+      out.push({
+        id: `0-opening-outstanding-${party}-${openingEffectiveDate}`,
+        date: openingEffectiveDate,
+        type: "Opening Outstanding",
+        parchiNo: "",
+        vehicle: "",
+        fuel: "",
+        qty: 0,
+        debit: signed > 0 ? signed : 0,
+        credit: signed < 0 ? Math.abs(signed) : 0,
+        note: "Saved opening outstanding as of effective date"
+      });
+    }
+
     ledgerCreditRows(data.credits)
       .filter(c => c.party === party && inDateRange(c.date))
       .forEach(c => {
