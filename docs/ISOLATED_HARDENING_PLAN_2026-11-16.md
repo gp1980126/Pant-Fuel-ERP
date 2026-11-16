@@ -38,7 +38,10 @@
 - Fixed on the isolated branch: FY-specific Lubricant opening quantity/value now comes from `openingStockByFY`; only purchases and Lubricant sales dated within that FY are included in the movement calculation. Unsupported FY dates return no opening balance rather than silently falling back to the latest FY.
 - Added regression cases for prior-FY purchase exclusion, FY opening carry-forward, current-FY purchase/sale movements, and physical-dip source priority.
 - The `fromFY` metadata in the Test JSON contains malformed labels (`2025-20` and `2024-20`). No source data was edited; this metadata needs a separate reviewed correction.
-- FY server-write validation remains pending. `sm_save_business_state` currently verifies that the requested FY is open and authorized, but does not validate transaction dates in the submitted JSON against that FY. A safe validator must allow unchanged legacy rows while rejecting new or modified out-of-FY rows.
+- Test Database `sm_save_business_state` now has a server-side FY date firewall for sales, purchases, fillings, credits, daily payments, ledger payments, recoveries, dip readings, attendance, electricity bills/payments and lubricant cash sales. New/modified rows must have valid dates within the selected FY; unchanged legacy rows outside the FY remain readable and can be carried forward unchanged.
+- Server-side write-guard test passed inside a rolled-back transaction: unchanged current state (including the existing 2026-03-27 purchase and undated legacy electricity bills) was accepted; a newly appended 2026-03-27 purchase under FY 2026-27 was rejected with `FY_DATE_OUT_OF_RANGE`.
+- Test transaction was rolled back. Verified afterward: `app_state.version` remains 1919 and the test subscription expiry remains 2026-10-16. The subscription was temporarily extended only inside the test transaction to exercise the existing authorization gate; no subscription or app data change persisted.
+- Test migration history now includes `20261116045426_fy_transaction_date_write_firewall_20261116` and `20261116045456_fix_fy_transaction_date_write_firewall_regex_20261116`. Production has no corresponding migration.
 
 ## Fuel stock firewall — implementation update
 
