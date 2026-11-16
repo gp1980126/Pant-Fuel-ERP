@@ -1652,17 +1652,45 @@ export function cngSalePurchaseMatchingPure(data,from=START_DATE,to='9999-12-31'
   const cngPurchases=purchases.filter(p=>p.fuel==='CNG'&&p.date>=START_DATE).slice().sort((a,b)=>{
     const d=String(a.date).localeCompare(String(b.date)); return d||String(a.id??'').localeCompare(String(b.id??''));
   });
-  const remainingSales=cngSales.map(s=>({sale:s,remaining:Math.max(0,n(s.qty)),matchedQty:0,matchedCost:0})), billMatches=[];
-  cngPurchases.forEach(p=>{
-    let rp=Math.max(0,n(p.quantity)); const unit=n(p.quantity)>0?purchaseEffectiveRate(p):0; let mq=0,mc=0;
-    for(const item of remainingSales){ if(rp<=0) break; if(item.remaining<=0) continue; const q=Math.min(rp,item.remaining); item.remaining-=q; item.matchedQty+=q; item.matchedCost+=q*unit; rp-=q; mq+=q; mc+=q*unit; }
-    billMatches.push({purchaseId:p.id??`${p.date}|${p.invoiceNo}|CNG`,date:p.date,invoiceNo:p.invoiceNo||'—',qty:n(p.quantity),unitCost:unit,matchedQty:mq,matchedCost:mc,unmatchedQty:Math.max(0,n(p.quantity)-mq)});
+  // Chronological FIFO: a purchase can only fund sales on/after its date.
+  // Unused lots remain available across FY boundaries as carried-forward stock.
+  const events=[
+    ...cngPurchases.map(p=>({kind:'purchase',date:String(p.date),id:String(p.id??''),row:p})),
+    ...cngSales.map(s=>({kind:'sale',date:String(s.date),id:String(s.id??''),row:s}))
+  ].sort((a,b)=>{
+    const d=a.date.localeCompare(b.date); if(d) return d;
+    if(a.kind!==b.kind) return a.kind==='purchase'?-1:1;
+    return a.id.localeCompare(b.id);
   });
-  const selected=remainingSales.filter(x=>x.sale.date>=from&&x.sale.date<=to), selectedBills=billMatches.filter(x=>String(x.date)>=String(from)&&String(x.date)<=String(to));
+  const lots=[], saleMatches=new Map(), billMatches=new Map();
+  for(const event of events){
+    if(event.kind==='purchase'){
+      const p=event.row, qty=Math.max(0,n(p.quantity)), unit=qty>0?purchaseEffectiveRate(p):0;
+      const lot={purchaseId:p.id??`${p.date}|${p.invoiceNo}|CNG`,date:p.date,invoiceNo:p.invoiceNo||'—',qty,remaining:qty,unitCost:unit,matchedQty:0,matchedCost:0};
+      lots.push(lot); billMatches.set(lot.purchaseId,lot);
+      continue;
+    }
+    const sale=event.row;
+    let remaining=Math.max(0,n(sale.qty)), matchedQty=0, matchedCost=0;
+    for(const lot of lots){
+      if(remaining<=0) break;
+      if(lot.remaining<=0) continue;
+      const q=Math.min(remaining,lot.remaining);
+      lot.remaining-=q; lot.matchedQty+=q; lot.matchedCost+=q*lot.unitCost;
+      remaining-=q; matchedQty+=q; matchedCost+=q*lot.unitCost;
+    }
+    saleMatches.set(sale.id??`${sale.date}|${sale.nozzle}|CNG`,{sale,remaining,matchedQty,matchedCost});
+  }
+  const billRows=Array.from(billMatches.values()).map(x=>({
+    purchaseId:x.purchaseId,date:x.date,invoiceNo:x.invoiceNo,qty:x.qty,unitCost:x.unitCost,
+    matchedQty:x.matchedQty,matchedCost:x.matchedCost,unmatchedQty:Math.max(0,x.qty-x.matchedQty)
+  }));
+  const selected=Array.from(saleMatches.values()).filter(x=>x.sale.date>=from&&x.sale.date<=to);
+  const selectedBills=billRows.filter(x=>String(x.date)>=String(from)&&String(x.date)<=String(to));
   const matchedQty=selected.reduce((a,x)=>a+x.matchedQty,0), matchedCost=selected.reduce((a,x)=>a+x.matchedCost,0), saleQty=selected.reduce((a,x)=>a+n(x.sale.qty),0);
   const unmatchedQty=selected.reduce((a,x)=>a+x.remaining,0), unmatchedAmount=selected.reduce((a,x)=>a+(x.remaining>0?n(x.sale.amount)*x.remaining/Math.max(1,n(x.sale.qty)):0),0);
   const unmatchedPurchaseQty=selectedBills.reduce((a,x)=>a+n(x.unmatchedQty),0), unmatchedPurchaseCost=selectedBills.reduce((a,x)=>a+n(x.unmatchedQty)*n(x.unitCost),0);
-  return {saleQty,matchedQty,matchedCost,unmatchedQty,unmatchedAmount,unmatchedPurchaseQty,unmatchedPurchaseCost,matchedPurchaseOutsidePeriod:matchedQty-selectedBills.reduce((a,x)=>a+x.matchedQty,0),billMatches,selected,selectedBillMatches:selectedBills};
+  return {saleQty,matchedQty,matchedCost,unmatchedQty,unmatchedAmount,unmatchedPurchaseQty,unmatchedPurchaseCost,matchedPurchaseOutsidePeriod:matchedQty-selectedBills.reduce((a,x)=>a+x.matchedQty,0),billMatches:billRows,selected,selectedBillMatches:selectedBills};
 }
 
 export function calculateProfitLossEngine(data,from=START_DATE,to='9999-12-31'){
