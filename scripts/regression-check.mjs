@@ -193,11 +193,11 @@ const cngDeliveryFixture = {
 };
 const deliveryAudit = buildCngDeliveryReconciliation(cngDeliveryFixture, "2026-08-01", "2026-08-31");
 assert.equal(deliveryAudit.rows[0].invoiceNos, "INV-1");
-assert.equal(deliveryAudit.rows[0].salesQty, 4321.139);
-assert.equal(deliveryAudit.rows[1].salesQty, 801.087);
+assert.equal(Number(deliveryAudit.rows[0].salesQty.toFixed(3)), 4321.139);
+assert.equal(Number(deliveryAudit.rows[1].salesQty.toFixed(3)), 801.087);
 assert.equal(deliveryAudit.rows[1].entryDate, "2026-08-07");
 assert.equal(deliveryAudit.duplicateGroups.length, 1);
-assert.equal(deliveryAudit.totals.salesQty, 5122.226);
+assert.equal(Number(deliveryAudit.totals.salesQty.toFixed(3)), 5122.226);
 const pendingAudit = buildCngDeliveryReconciliation({
   purchases: [{date:"2026-08-05",fuel:"CNG",quantity:100,invoiceNo:"INV"}],
   sales: [{id:1,date:"2026-08-06",fuel:"CNG",nozzle:"CNG-1",qty:45}]
