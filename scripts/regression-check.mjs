@@ -144,7 +144,6 @@ assert.equal(cngFifo.unmatchedQty, 0);
 assert.equal(cngFifo.unmatchedPurchaseQty, 20, "unused current-FY purchase quantity must remain as closing carry-forward");
 assert.equal(cngFifo.matchedPurchaseOutsidePeriod, 100, "current-FY sale matching must disclose the 100 kg prior-FY lot carry-forward");
 
-const moduleSource = await readFile(new URL("../src/components/PumpModules.jsx", import.meta.url), "utf8");
 const partyLedger = moduleSource.slice(moduleSource.indexOf("export function PartyLedger"), moduleSource.indexOf("export function Accounts"));
 assert.match(partyLedger, /const \[selectedFY, setSelectedFY\] = useState\(DEFAULT_FINANCIAL_YEAR\)/,
   "Party Ledger must expose a Financial Year selector");
