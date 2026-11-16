@@ -7,6 +7,12 @@ const num = value => {
   return Number.isFinite(n) ? n : 0;
 };
 const dateOf = row => String(row?.date || "");
+const addDays = (date, days = 1) => {
+  if (!date) return "";
+  const value = new Date(date + "T00:00:00Z");
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+};
 const idOf = row => String(row?.id ?? row?.transactionId ?? row?.txId ?? "");
 
 export function authoritativeCngSales(sales = []) {
@@ -75,17 +81,31 @@ export function buildCngDeliveryReconciliation(data = {}, from = "0000-01-01", t
     });
     previousDate = date;
   }
-  const tailSales = sales.filter(row => !previousDate || dateOf(row) > previousDate);
+  // Sales after the latest HPCL invoice remain an open interval until the next
+  // invoice arrives. Clip this interval to the selected report window so the
+  // pending quantity never includes dates outside the user's To Date.
+  const tailSales = sales.filter(row =>
+    (!previousDate || dateOf(row) > previousDate) &&
+    dateOf(row) >= from && dateOf(row) <= to
+  );
   if (tailSales.length) {
+    const pendingFromDate = !previousDate || from > addDays(previousDate) ? from : addDays(previousDate);
+    const pendingToDate = tailSales.reduce((latest, row) => dateOf(row) > latest ? dateOf(row) : latest, "");
     rows.push({
       type: "PENDING_BILL",
       date: "",
       previousDate,
+      pendingFromDate,
+      pendingToDate,
+      periodLabel: pendingFromDate === pendingToDate
+        ? pendingFromDate
+        : pendingFromDate + " से " + pendingToDate,
+      status: "HPCL BILL PENDING",
       invoiceNos: "",
       entryDate: "",
       fileNames: "",
       billCount: 0,
-      purchaseQty: 0,
+      purchaseQty: null,
       salesQty: tailSales.reduce((sum,row) => sum + num(row.qty), 0),
       variance: null,
       salesRows: tailSales.length
