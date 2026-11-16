@@ -173,8 +173,8 @@ process.stdout.write("PASS: financial-year boundaries\n");
 process.stdout.write("PASS: physical dip source priority\n");
 process.stdout.write("PASS: FY-scoped lubricant opening stock and P&L movement firewall\n");
 process.stdout.write("PASS: MS/HSD stock-opening-date book stock formula\n");
-process.stdout.write("PASS: Cloud save payload verification guard\n");
-process.stdout.write("
+process.stdout.write("PASS: Cloud save payload verification guard\\n");
+
 const { buildCngDeliveryReconciliation } = await import("../src/core/cngDeliveryReconciliation.js");
 const cngDeliveryFixture = {
   purchases: [
@@ -205,4 +205,5 @@ const pendingAudit = buildCngDeliveryReconciliation({
 assert.equal(pendingAudit.rows.at(-1).type, "PENDING_BILL");
 assert.equal(pendingAudit.rows.at(-1).salesQty, 45);
 process.stdout.write("PASS: CNG delivery interval reconciliation and duplicate audit\\n");
-\nAll StationMitra regression checks passed.\n");
+
+All StationMitra regression checks passed.\\n");\n
