@@ -3932,8 +3932,9 @@ th{background:#eee}
             <input
               type="date"
               value={from}
-              min={START_DATE}
-              onChange={e => setFrom(e.target.value)}
+              min={fy.start}
+              max={fy.end}
+              onChange={e => setFrom(e.target.value < fy.start || e.target.value > fy.end ? fy.start : e.target.value)}
             />
           </Field>
 
@@ -3941,8 +3942,9 @@ th{background:#eee}
             <input
               type="date"
               value={to}
-              min={START_DATE}
-              onChange={e => setTo(e.target.value)}
+              min={fy.start}
+              max={fy.end}
+              onChange={e => setTo(e.target.value < fy.start || e.target.value > fy.end ? fy.end : e.target.value)}
             />
           </Field>
         </div>
