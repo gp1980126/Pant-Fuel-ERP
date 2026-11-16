@@ -115,6 +115,19 @@ export async function cloudLoadState(stationId = 'SATAT-FILLING-STATION') {
   return data || null;
 }
 
+function stableJson(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return '[' + value.map(item => item === undefined ? 'null' : stableJson(item)).join(',') + ']';
+  }
+  const keys = Object.keys(value).filter(key =>
+    value[key] !== undefined &&
+    typeof value[key] !== 'function' &&
+    typeof value[key] !== 'symbol'
+  ).sort();
+  return '{' + keys.map(key => JSON.stringify(key) + ':' + stableJson(value[key])).join(',') + '}';
+}
+
 async function rpcSaveOnce(stationId, data, expectedVersion, userId) {
   const { data: rows, error } = await supabase.rpc('save_app_state', {
     p_station_id: stationId,
@@ -156,19 +169,34 @@ export async function cloudSaveState(stationId, data, expectedVersion, userId) {
 
       // If the request reached Supabase but the browser lost the response,
       // a read can prove that the requested save already advanced the version.
+      let latest = null;
       try {
-        const latest = await cloudLoadState(stationId);
-        const latestVersion = Number(latest?.version || 0);
+        latest = await cloudLoadState(stationId);
+      } catch {}
+
+      if (latest) {
+        const latestVersion = Number(latest.version || 0);
         if (latestVersion > expected) {
+          // A later version alone is not proof that this request was saved:
+          // another device may have written different data in the meantime.
+          if (stableJson(latest.data) !== stableJson(data)) {
+            const conflict = new Error(
+              'Cloud version advanced, but the stored payload does not match this save. Local changes were not confirmed.'
+            );
+            conflict.code = 'CLOUD_CONFLICT';
+            conflict.currentVersion = latestVersion;
+            throw conflict;
+          }
           return {
             ok: true,
             code: 'OK',
-            message: 'Cloud save confirmed after network response loss',
+            message: 'Cloud save confirmed by matching the stored payload after network response loss',
             new_version: latestVersion,
             recovered_after_network_error: true,
+            verified_payload_match: true,
           };
         }
-      } catch {}
+      }
 
       if (attempt < 2) {
         await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
