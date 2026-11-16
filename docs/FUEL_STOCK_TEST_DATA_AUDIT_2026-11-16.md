@@ -11,6 +11,7 @@
 - Latest physical dip used: 2026-11-15.
 - Sales data extends through 2026-11-15.
 - Purchase/filling data extends through 2026-11-10.
+- User confirmed that the 2026-08-01 opening stock figures (MS 9,356 L; HSD 7,500 L) are correct.
 
 ## Verified purchase-to-filling linkage totals
 | Fuel | Purchase rows | Purchase quantity | Filling rows | Filling quantity |
@@ -35,9 +36,11 @@ Canonical sales aggregation deduplicated repeated nozzle/day rows by sale ID. No
 - The groups have one distinct sale ID per group; most are exact repeated copies. Two CNG groups have formatting-level quantity differences and must remain in forensic review.
 - No duplicate sale was deleted or rewritten during this audit.
 
-## Interpretation / next required evidence
+## Updated interpretation and next investigation
+- The user has confirmed the 2026-08-01 opening stock, so opening stock is no longer an outstanding verification item.
 - Purchase-to-filling quantities reconcile exactly.
 - Large positive physical-dip variances remain for MS and HSD on 2026-11-15.
+- The next diagnostic step is a date-by-date roll-forward from 2026-08-01 to 2026-11-15, comparing each day's book closing against the next available physical dip, and isolating the first date where the variance appears or materially changes.
+- Review the original daily DSR, nozzle meter readings, net sales/testing treatment, tank receipt timestamps and dip entries around that first divergence.
 - Do not auto-adjust opening stock, purchases, sales, or physical dip to force a match.
-- Before any data correction, verify the 2026-08-01 opening tank dip/stock and the 2026-11-15 physical dip against the original DSR/register or signed shift record; also inspect missing/duplicate sale source records.
 - This report is diagnostic only. Production remains untouched.
