@@ -174,4 +174,35 @@ process.stdout.write("PASS: physical dip source priority\n");
 process.stdout.write("PASS: FY-scoped lubricant opening stock and P&L movement firewall\n");
 process.stdout.write("PASS: MS/HSD stock-opening-date book stock formula\n");
 process.stdout.write("PASS: Cloud save payload verification guard\n");
-process.stdout.write("All StationMitra regression checks passed.\n");
+process.stdout.write("
+const { buildCngDeliveryReconciliation } = await import("../src/core/cngDeliveryReconciliation.js");
+const cngDeliveryFixture = {
+  purchases: [
+    { date:"2026-08-05", fuel:"CNG", quantity:4321, invoiceNo:"INV-1" },
+    { date:"2026-08-06", fuel:"CNG", quantity:802, invoiceNo:"INV-2", billEntryDate:"2026-08-07" },
+  ],
+  sales: [
+    { id:1, date:"2026-08-01", fuel:"CNG", nozzle:"CNG-1", qty:949.416 },
+    { id:2, date:"2026-08-02", fuel:"CNG", nozzle:"CNG-1", qty:1235.041 },
+    { id:3, date:"2026-08-03", fuel:"CNG", nozzle:"CNG-1", qty:596.850 },
+    { id:4, date:"2026-08-04", fuel:"CNG", nozzle:"CNG-1", qty:748.767 },
+    { id:5, date:"2026-08-05", fuel:"CNG", nozzle:"CNG-1", qty:791.065 },
+    { id:6, date:"2026-08-06", fuel:"CNG", nozzle:"CNG-1", qty:801.087 },
+    { id:6, date:"2026-08-06", fuel:"CNG", nozzle:"CNG-1", qty:801.087, transactionId:"SALE-6-RECOVERY-copy" },
+  ],
+};
+const deliveryAudit = buildCngDeliveryReconciliation(cngDeliveryFixture, "2026-08-01", "2026-08-31");
+assert.equal(deliveryAudit.rows[0].invoiceNos, "INV-1");
+assert.equal(deliveryAudit.rows[0].salesQty, 4321.139);
+assert.equal(deliveryAudit.rows[1].salesQty, 801.087);
+assert.equal(deliveryAudit.rows[1].entryDate, "2026-08-07");
+assert.equal(deliveryAudit.duplicateGroups.length, 1);
+assert.equal(deliveryAudit.totals.salesQty, 5122.226);
+const pendingAudit = buildCngDeliveryReconciliation({
+  purchases: [{date:"2026-08-05",fuel:"CNG",quantity:100,invoiceNo:"INV"}],
+  sales: [{id:1,date:"2026-08-06",fuel:"CNG",nozzle:"CNG-1",qty:45}]
+}, "2026-08-01", "2026-08-31");
+assert.equal(pendingAudit.rows.at(-1).type, "PENDING_BILL");
+assert.equal(pendingAudit.rows.at(-1).salesQty, 45);
+process.stdout.write("PASS: CNG delivery interval reconciliation and duplicate audit\\n");
+\nAll StationMitra regression checks passed.\n");
