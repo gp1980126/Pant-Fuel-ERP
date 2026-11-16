@@ -130,6 +130,27 @@ export function lubricantStockQuantityForDate(data, date) {
   return opening.qty + purchased - creditSales - cashSales;
 }
 
+
+// MS/HSD Book Stock is calculated from the actual stock-opening date, not the
+// first supported Financial Year date. Filling records represent tank receipts;
+// sales.qty is already NET SALE (testing is not subtracted a second time).
+export function bookFuelStockForDate(data, salesRows, fuel, date) {
+  const f = String(fuel || "").toUpperCase();
+  if (f !== "MS" && f !== "HSD") return null;
+  const start = String(data?.openingDate || "2026-08-01");
+  const end = String(date || "");
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(end) || end < start) return null;
+  const base = Number(data?.openingStock?.[f] ?? (f === "MS" ? 9356 : 7500));
+  if (!Number.isFinite(base)) return null;
+  const fillings = (Array.isArray(data?.fillings) ? data.fillings : [])
+    .filter(row => row?.fuel === f && String(row?.date || "") >= start && String(row?.date || "") <= end)
+    .reduce((sum, row) => sum + (Number(row?.qty) || 0), 0);
+  const sales = (Array.isArray(salesRows) ? salesRows : [])
+    .filter(row => row?.fuel === f && String(row?.date || "") >= start && String(row?.date || "") <= end)
+    .reduce((sum, row) => sum + (Number(row?.qty) || 0), 0);
+  return base + fillings - sales;
+}
+
 export const USER_ROLES = {
   ADMIN: "Admin",
   OWNER: "Owner",
