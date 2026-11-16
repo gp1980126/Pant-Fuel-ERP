@@ -206,4 +206,4 @@ assert.equal(pendingAudit.rows.at(-1).type, "PENDING_BILL");
 assert.equal(pendingAudit.rows.at(-1).salesQty, 45);
 process.stdout.write("PASS: CNG delivery interval reconciliation and duplicate audit\\n");
 
-All StationMitra regression checks passed.\\n");\n
+All StationMitra regression checks passed.");
