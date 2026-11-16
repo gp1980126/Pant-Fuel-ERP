@@ -5,6 +5,8 @@ import {
   canonicalDailyPayments,
   financialYearBounds,
   financialYearForDate,
+  financialYearOpeningStockForDate,
+  lubricantStockQuantityForDate,
   physicalDipStockForDate,
   previousPending,
 } from "../src/core/pumpDomain.js";
@@ -58,6 +60,31 @@ assert.deepEqual(financialYearBounds("2026-27"), {
 assert.equal(physicalDipStockForDate({}, "MS", "2026-08-01"), 9356);
 assert.equal(physicalDipStockForDate({}, "HSD", "2026-08-01"), 7500);
 assert.equal(physicalDipStockForDate({}, "CNG", "2026-08-01"), null);
+assert.equal(physicalDipStockForDate({ dipReadings: [{ date: "2026-08-01", MS: 9000 }] }, "MS", "2026-08-01"), 9000,
+  "saved physical dip must take priority over imported and embedded history");
+
+const fyStockFixture = {
+  openingStock: { LUBRICANT_QTY: 0, LUBRICANT_VALUE: 0 },
+  openingStockByFY: {
+    "2026-27": { qty: 2090, value: 557727, source: "CARRY_FORWARD", fromFY: "2025-26" },
+  },
+  purchases: [
+    { date: "2026-03-27", fuel: "LUBRICANT", quantity: 2300 },
+    { date: "2026-04-05", fuel: "LUBRICANT", quantity: 100 },
+  ],
+  credits: [{ date: "2026-04-06", fuel: "LUBRICANT", qty: 20 }],
+  lubricantCashSales: [{ date: "2026-04-07", qty: 30 }],
+};
+assert.deepEqual(financialYearOpeningStockForDate(fyStockFixture, "2026-04-01"), {
+  fy: "2026-27", start: "2026-04-01", end: "2027-03-31",
+  qty: 2090, value: 557727, source: "CARRY_FORWARD",
+});
+assert.equal(lubricantStockQuantityForDate(fyStockFixture, "2026-04-01"), 2090,
+  "prior-FY purchases must not be added again on top of the carried-forward opening stock");
+assert.equal(lubricantStockQuantityForDate(fyStockFixture, "2026-04-10"), 2140,
+  "FY stock must equal opening + current-FY purchases - current-FY credit and cash sales");
+assert.equal(financialYearOpeningStockForDate(fyStockFixture, "2027-04-01"), null,
+  "unsupported FY dates must not silently fall back to another year's opening stock");
 
 const cloudSource = await readFile(new URL("../src/cloud_sync_supabase.js", import.meta.url), "utf8");
 assert.match(cloudSource, /stableJson\(latest\.data\) !== stableJson\(data\)/,
