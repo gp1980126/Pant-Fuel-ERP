@@ -151,6 +151,10 @@ assert.match(partyLedger, /d < fy.start \|\| d > fy.end/,
   "Party Ledger rows must be limited to the selected FY");
 assert.match(partyLedger, /validateLedgerFYDate\(payment.date, "Payment Date"\)/,
   "new Party Ledger receipts must be date-checked against selected FY");
+assert.match(partyLedger, /type: "Opening Outstanding"/,
+  "saved opening outstanding must appear on its actual effective date when it falls inside the selected report range");
+assert.match(partyLedger, /openingEffectiveDate >= String\(from \|\| fy.start\)/,
+  "opening outstanding dated after the report start must not be silently omitted");
 
 const cloudSource = await readFile(new URL("../src/cloud_sync_supabase.js", import.meta.url), "utf8");
 assert.match(cloudSource, /stableJson\(latest\.data\) !== stableJson\(data\)/,
