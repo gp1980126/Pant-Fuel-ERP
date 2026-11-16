@@ -139,7 +139,7 @@ export function bookFuelStockForDate(data, salesRows, fuel, date) {
   if (f !== "MS" && f !== "HSD") return null;
   const start = String(data?.openingDate || "2026-08-01");
   const end = String(date || "");
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(end) || end < start) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) return null;
   const base = Number(data?.openingStock?.[f] ?? (f === "MS" ? 9356 : 7500));
   if (!Number.isFinite(base)) return null;
   const fillings = (Array.isArray(data?.fillings) ? data.fillings : [])
