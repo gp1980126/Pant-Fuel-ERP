@@ -47,6 +47,7 @@
 - Added a pure MS/HSD book-stock calculation: opening stock + linked tank fillings/receipts − authoritative net sales. `sales.qty` is already net of pump testing, so testing is not subtracted twice. Physical Dip remains a separate actual measurement; missing Dip is not invented.
 - Stock still excludes CNG from tank-stock/Dip calculations, matching the existing module design.
 - Fixed the Lubricant carry-forward code so future `fromFY` metadata uses the proper previous FY code. Existing malformed metadata in the saved Test payload was not edited.
+- The Sale/Purchase P&L screen had a separate Lubricant opening-quantity and opening-rate calculation from the Core engine. It now calls the same FY-scoped opening quantity/value helpers, preventing the report UI from reintroducing prior-FY purchases.
 - Test data audit: 25 date/nozzle duplicate groups were found. All groups had a verified source copy; 23 were exact same-ID/same-quantity copies, and the remaining two were CNG float-format duplicates. No sale, purchase or dip data was changed.
 - Regression tests now cover FY-specific Lubricant opening balances, prior-FY movement exclusion, the MS/HSD Book Stock formula, actual stock-opening date enforcement and no double subtraction of testing.
 - Isolated Vercel Preview build for commit `f99fb29ccb4de611942058e5ce7a4d38b5fbf4d6` reached `READY` after the regression correction. Earlier failing build was caused by a test helper date-regex typo and was corrected; no Production deployment occurred.
