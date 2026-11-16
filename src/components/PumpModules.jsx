@@ -115,6 +115,8 @@ import {
   cngSalePurchaseMatchingPure,
   authoritativeSalesRows,
   bookFuelStockForDate,
+  financialYearOpeningStockForDate,
+  lubricantStockQuantityForDate,
   calculateProfitLossEngine,
   physicalDipStockForDate,
   standardJournal,
@@ -6245,9 +6247,7 @@ export function SalePurchaseProfitLoss({ data }) {
   const openingQtyFor=(fuel,date)=>{
     if(fuel==='CNG') return null;
     if(fuel==='MS'||fuel==='HSD') return physicalDipStockForDate(data,fuel,date);
-    const base=n(data?.openingStock?.LUBRICANT_QTY);
-    if(String(date)===String(START_DATE)) return base;
-    return base + purchaseQty(fuel,date) - saleQtyBefore(fuel,date);
+    return lubricantStockQuantityForDate(data,date);
   };
   const dayAfter=(date)=>{
     const d=new Date(`${date}T00:00:00Z`);
@@ -6259,6 +6259,14 @@ export function SalePurchaseProfitLoss({ data }) {
   // Opening stock value is carried at the latest known purchase total cost rate before the
   // selected period. If no earlier purchase exists, use the configured fuel rate.
   const openingRateFor=(fuel,date)=>{
+    if(fuel==='LUBRICANT'){
+      const opening=financialYearOpeningStockForDate(data,date);
+      if(!opening) return fallbackRate[fuel]||0;
+      const prior=purchases.filter(p=>p.fuel===fuel&&String(p.date)>=opening.start&&dateBefore(p.date,date));
+      const q=opening.qty+prior.reduce((a,p)=>a+n(p.quantity),0);
+      const b=opening.value+prior.reduce((a,p)=>a+purchaseLandedValue(p),0);
+      return q>0?b/q:(fallbackRate[fuel]||0);
+    }
     const prior=purchases.filter(p=>p.fuel===fuel&&dateBefore(p.date,date));
     if(prior.length){
       const q=prior.reduce((a,p)=>a+n(p.quantity),0);
