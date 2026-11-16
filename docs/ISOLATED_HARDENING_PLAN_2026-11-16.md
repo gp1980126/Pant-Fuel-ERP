@@ -65,6 +65,21 @@
 - Isolated Vercel Preview commit `2b6bbaaea0696914060b0eab10e5ea60e4cc3859` reached `READY`. Build ran syntax checks, all regression assertions (including the new Party Ledger and CNG FIFO cases), and Vite production build successfully. A non-blocking large-bundle warning remains.
 - This is still an isolated Preview build. No production merge, deployment or database write was performed for these Party Ledger/CNG changes.
 
+## Manual backup table access decision — verified 2026-11-16
+
+- User-selected policy: Database Owner and secure Backend only; no ordinary users.
+- On the Test project only, `public.app_state_manual_backup_20261017` has RLS enabled and no policies.
+- Effective privilege checks: `anon` and `authenticated` have no SELECT/INSERT/UPDATE/DELETE privilege; `service_role` has backend DML privilege and `BYPASSRLS`; table owner is `postgres`.
+- This matches the requested private-only access model. No Production project was queried for changes or modified.
+- Supabase Advisor's `rls_enabled_no_policy` INFO for this table is expected under this intentional private-only design. The private recovery snapshot table has the same no-policy posture.
+
+## Current regression result — 2026-11-16
+
+- Latest isolated Vercel preview build: READY; `npm run check`, `npm run regression`, and Vite build completed.
+- Regression checks passed for duplicate payment canonicalization, net excess/short and recovery, nozzle duplicate/forensic recovery selection, FY boundaries, physical-dip priority, FY-scoped lubricant opening and P&L, MS/HSD stock-opening formula, Cloud Save payload verification, and CNG delivery-interval reconciliation/duplicate audit.
+- Browser confirmation was received for the CNG Reconciliation page and delivery-wise report. This confirms navigation and rendering; it does not by itself certify the business totals.
+- Still pending: independent/offsite backup and restore drill; full server-side FY date firewall; review/remediation of 13 authenticated-callable SECURITY DEFINER RPCs and leaked-password protection; complete production-like end-to-end tests for all six workstreams. Do not merge or deploy to Production without separate explicit approval.
+
 ## Six workstreams
 
 1. Cloud and data-integrity firewall: idempotent save confirmation, optimistic concurrency, payload hash, duplicate and date integrity.
