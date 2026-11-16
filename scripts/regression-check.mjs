@@ -173,6 +173,13 @@ process.stdout.write("PASS: financial-year boundaries\n");
 process.stdout.write("PASS: physical dip source priority\n");
 process.stdout.write("PASS: FY-scoped lubricant opening stock and P&L movement firewall\n");
 process.stdout.write("PASS: MS/HSD stock-opening-date book stock formula\n");
+
+const stockUiSource = await readFile(new URL("../src/components/PumpModules.jsx", import.meta.url), "utf8");
+assert.equal((stockUiSource.match(/bookStockAsOf\\(previousDate\\(r\\.date\\)\\)/g) || []).length, 2,
+  "Dip Report exports and on-screen Dip table must compare opening Dip with previous-day closing book stock");
+assert.match(stockUiSource, /r\\.date === stockStartDate\\s*\\? openingStockForDate\\(r\\.date\\)/,
+  "the first stock-opening date must compare against the fixed opening-stock baseline");
+process.stdout.write("PASS: opening Dip compares with previous-day closing book stock in report, Excel/PDF and table\\n");
 process.stdout.write("PASS: Cloud save payload verification guard\\n");
 
 const { buildCngDeliveryReconciliation } = await import("../src/core/cngDeliveryReconciliation.js");
