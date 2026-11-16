@@ -3457,8 +3457,11 @@ export function PartyLedger({ data, setPage, update }) {
     .filter(e => e.type === "Payment Received")
     .reduce((sum, e) => sum + rupee(e.credit), 0);
 
-  const currentOutstanding =
-    openingOutstanding + salesTotal - receiptsTotal;
+  // Derive the closing balance from the actual visible ledger rows. This includes
+  // an opening outstanding whose effective date falls inside the selected range.
+  const currentOutstanding = rupee(
+    entries.reduce((balance, entry) => balance + n(entry.debit) - n(entry.credit), 0)
+  );
 
   const qty = entries.reduce((sum, e) => sum + n(e.qty), 0);
 
@@ -3485,8 +3488,15 @@ export function PartyLedger({ data, setPage, update }) {
         .filter(p => p.party === name && inDateRange(p.date))
         .reduce((sum, p) => sum + rupee(p.amount), 0);
 
+      const effectiveOpeningInRange = opening &&
+        baseDate >= String(from || fy.start) &&
+        baseDate <= String(to || fy.end) &&
+        baseDate >= fy.start && baseDate <= fy.end
+          ? openingSigned(opening)
+          : 0;
+
       const outstanding = rupee(
-        openingValue + sales - received
+        openingValue + effectiveOpeningInRange + sales - received
       );
 
       return {
