@@ -1,11 +1,18 @@
 $ErrorActionPreference = "Stop"
 $Project = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Node = (Get-Command node.exe).Source
-# Auto-imports only when StationMitra PDF Preview marks every row READY and invoice/fuel/date checks pass.
-$Action = New-ScheduledTaskAction -Execute $Node -Argument "`"$Project\agent.js`" --mode daily --import-ready" -WorkingDirectory $Project
-$Trigger = New-ScheduledTaskTrigger -Daily -At 8:00AM
-$Trigger.Repetition = (New-ScheduledTaskRepetitionSettings -Interval (New-TimeSpan -Hours 1) -Duration (New-TimeSpan -Hours 14))
+$NodeCommand = Get-Command node.exe -ErrorAction Stop
+$Node = $NodeCommand.Source
+if (-not (Test-Path (Join-Path $Project "agent.js"))) { throw "agent.js not found in $Project" }
+
+# Windows PowerShell 5.1: -RepetitionInterval is not supported with -Daily.
+# Use 15 daily triggers, one for each hour from 08:00 through 22:00.
+$Triggers = 8..22 | ForEach-Object {
+    New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours($_))
+}
+if ($Triggers.Count -ne 15) { throw "Expected 15 daily triggers; got $($Triggers.Count)." }
+
+$Action = New-ScheduledTaskAction -Execute $Node -Argument "`"$Project\agent.js`" --mode daily" -WorkingDirectory $Project
 $Settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 45)
-Register-ScheduledTask -TaskName "StationMitra HPCL Automission" -Action $Action -Trigger $Trigger -Settings $Settings -Description "Hourly HPCL invoice discovery, PDF preview validation and READY-only import." -Force | Out-Null
-Write-Host "Scheduled daily 8 AM to 10 PM, every hour."
-Write-Host "Keep Edge open and logged in to HPCL and StationMitra."
+Register-ScheduledTask -TaskName "StationMitra HPCL Automission" -Action $Action -Trigger $Triggers -Settings $Settings -Description "Hourly HPCL invoice discovery and PDF download only. No StationMitra imports." -Force | Out-Null
+Write-Host "Scheduled daily download-only checks at 08:00 through 22:00."
+Write-Host "Keep Windows awake and Edge open and signed in to HPCL."
