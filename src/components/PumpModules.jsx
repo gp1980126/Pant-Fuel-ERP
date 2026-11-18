@@ -6075,6 +6075,24 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
 }
 
 export function Purchase({data,update}){
+  // Local CSV downloader for Purchase exports. The Reports component has its own
+  // helper; Purchase must define this in its own scope to avoid downloadCsv undefined.
+  const downloadCsv = (filename, rows) => {
+    const csv = rows.map(row => row.map(value => {
+      const text = String(value ?? "");
+      return `"${text.replace(/"/g, '""')}"`;
+    }).join(",")).join("\\r\\n");
+    const blob = new Blob(["\\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const [preview,setPreview]=useState([]), [msg,setMsg]=useState(''), [busy,setBusy]=useState(false);
   const [selectedFY,setSelectedFY]=useState(DEFAULT_FINANCIAL_YEAR);
   const fy=financialYearBounds(selectedFY);
