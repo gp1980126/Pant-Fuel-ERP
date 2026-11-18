@@ -1,14 +1,29 @@
 # StationMitra HPCL Automission
 
-Local discovery/download agent only. It does not connect to Supabase or import into StationMitra. It uses the already logged-in Edge session at 127.0.0.1:9222. Backfill checks 01-Aug-2026 to 18-Nov-2026 in two ranges; daily mode checks today. PDFs, SHA-256 hashes and raw row text are saved under data/. Shared MS/HSD invoice PDFs download once while separate fuel rows are retained. Distinct CNG invoice numbers remain separate.
+A local Windows agent for HPCL invoice discovery, PDF download, StationMitra's existing PDF Preview, and guarded READY-only import. It does not modify StationMitra application code or database schema.
 
-## Setup
-1. Run npm install in this folder.
-2. Sign in to HPCL manually in Edge started with --remote-debugging-port=9222 and the dedicated profile.
-3. Run npm run backfill.
-4. Review data/manifest-backfill.json and data/pdf/.
+## One-time historical backfill
+1. Keep Edge open with the dedicated profile, signed in to HPCL and StationMitra. Edge CDP must be available at http://127.0.0.1:9222.
+2. Open PowerShell in this folder.
+3. Run: powershell -ExecutionPolicy Bypass -File .\setup-and-backfill.ps1
 
-## Hourly schedule
-After review, run PowerShell: powershell -ExecutionPolicy Bypass -File .\install-hourly-task.ps1. This schedules hourly checks from 8 AM to 10 PM. Keep Windows awake and Edge logged in.
+The setup checks Node.js 22+, verifies Edge CDP, installs dependencies and scans 01-Aug-2026 through 18-Nov-2026 in two HPCL date ranges. It downloads linked PDFs and sends each PDF through the existing StationMitra Purchase PDF Preview. It imports only when every preview row is READY and invoice number, fuel and bill date match the HPCL listing. DUPLICATE, INVALID, missing-PDF, failed-download and mismatched records are held for review.
 
-Passwords and OTPs are not stored. Import remains disabled until PDF values are verified against StationMitra preview and HPCL source totals.
+## Hourly automation
+After the historical backfill and manifest have been reviewed, run:
+powershell -ExecutionPolicy Bypass -File .\install-hourly-task.ps1
+
+This creates a Windows Task Scheduler task for hourly checks from 8:00 AM through 10:00 PM. It runs daily mode with READY-only import enabled. Keep Windows awake and Edge signed in to HPCL and StationMitra.
+
+## Data and logs
+- data\pdf\ — downloaded source PDFs
+- data\manifest-backfill.json / manifest-daily.json — source rows, SHA-256 and import status
+- logs\agent.jsonl — run and exception log
+
+## Safety
+- Uses the logged-in Edge session; no password or OTP is stored.
+- Never closes the user's Edge browser.
+- Does not write directly to Supabase or bypass the StationMitra Purchase UI.
+- StationMitra's existing preview/parser and duplicate checks remain the import gate.
+- If the UI, parser, or portal changes, the agent should fail closed and log the item rather than guess.
+- Test the first run and inspect the manifest before enabling the hourly task.
