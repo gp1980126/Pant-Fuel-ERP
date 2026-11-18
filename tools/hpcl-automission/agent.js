@@ -86,6 +86,8 @@ async function importPdfIntoStation(page,filePath,expectedRows) {
   const combined=rows.join(" | ");
   if(!expectedInvoices.every(n=>combined.includes(n))) throw new Error("Invoice number mismatch in StationMitra preview.");
   if(!expectedFuels.every(f=>combined.includes(f))) throw new Error("Fuel mismatch in StationMitra preview.");
+  const expectedDates=[...new Set(expectedRows.map(r=>r.date).filter(Boolean))];
+  if(!expectedDates.every(d=>combined.includes(d))) throw new Error("Bill date mismatch in StationMitra preview.");
   if(rows.some(r=>/INVALID|DUPLICATE/.test(r)) || rows.some(r=>!/READY/.test(r))) {
     throw new Error("Preview has DUPLICATE/INVALID/non-READY rows; held for manual review.");
   }
