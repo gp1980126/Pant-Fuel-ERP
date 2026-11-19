@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { CLOUD_ENABLED, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudGetStationId, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
+import { CLOUD_ENABLED, CLOUD_CONFIG_ERROR, supabase, cloudSignIn, cloudResetPassword, cloudSignOut, cloudGetProfile, cloudGetStationId, cloudLoadState, cloudSaveState, subscribeState } from "./cloud_sync_supabase";
 import {
   START_DATE,
   PUMP_NAME,
@@ -279,6 +279,13 @@ function App() {
   };
 
   useEffect(() => {
+    if (CLOUD_CONFIG_ERROR) {
+      setAuthReady(true);
+      setCloudReady(false);
+      setCloudStatus("error");
+      setLoginError(CLOUD_CONFIG_ERROR);
+      return;
+    }
     if (!CLOUD_ENABLED) {
       setAuthReady(true);
       const saved = localStorage.getItem(KEY + '_session');
