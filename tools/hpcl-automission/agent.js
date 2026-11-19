@@ -38,18 +38,18 @@ const ranges = MODE === "daily"
   : [{ from: "01/08/2026", to: "31/10/2026" }, { from: "01/11/2026", to: "18/11/2026" }];
 const sha256 = b => crypto.createHash("sha256").update(b).digest("hex");
 const dateISO = value => {
-  const m = String(value || "").match(/(\\d{2})[\\/-](\\d{2})[\\/-](\\d{4})/);
+  const m = String(value || "").match(/(\d{2})[\/-](\d{2})[\/-](\d{4})/);
   return m ? m[3] + "-" + m[2] + "-" + m[1] : null;
 };
-const fuelOf = value => /0992000|\\bCNG\\b/i.test(value) ? "CNG"
-  : /2812000|\\bHSD\\b|DIESEL/i.test(value) ? "HSD"
-  : /2822000|\\bMS\\b|MOTOR SPIRIT|PETROL/i.test(value) ? "MS" : null;
-const digits = value => String(value || "").replace(/\\D/g, "");
+const fuelOf = value => /0992000|\bCNG\b/i.test(value) ? "CNG"
+  : /2812000|\bHSD\b|DIESEL/i.test(value) ? "HSD"
+  : /2822000|\bMS\b|MOTOR SPIRIT|PETROL/i.test(value) ? "MS" : null;
+const digits = value => String(value || "").replace(/\D/g, "");
 
 await Promise.all([OUT, PDF_DIR, LOG_DIR].map(p => fs.mkdir(p, { recursive: true })));
 const log = async (event, details = {}) => {
   const line = JSON.stringify({ at: new Date().toISOString(), event, ...details });
-  await fs.appendFile(path.join(LOG_DIR, "agent.jsonl"), line + "\\n");
+  await fs.appendFile(path.join(LOG_DIR, "agent.jsonl"), line + "\n");
   console.log(line);
 };
 const fillDate = async (page, prefix, value) => {
@@ -83,7 +83,7 @@ async function ensureHpclLogin(page) {
     if (!INTERACTIVE_LOGIN) {
       throw new Error("HPCL login/session expired. Scheduled or non-interactive run stopped safely; sign in manually and run the backfill with --interactive-login.");
     }
-    console.log("\\nHPCL login required. Enter credentials and solve the image CAPTCHA directly in the visible Edge window.");
+    console.log("\nHPCL login required. Enter credentials and solve the image CAPTCHA directly in the visible Edge window.");
     console.log("The agent will NOT read, store, transmit, or attempt to solve your password/CAPTCHA.");
     const rl = readline.createInterface({ input, output });
     try {
@@ -125,10 +125,10 @@ async function fetchHpclRows(page, range) {
     throw new Error("HPCL redirected to login during invoice search. Stopping without retry or import.");
   }
   return await page.locator("tr").evaluateAll(rows => rows.map(tr => {
-    const cells = [...tr.querySelectorAll("th,td")].map(td => (td.innerText || "").replace(/\\s+/g, " ").trim());
+    const cells = [...tr.querySelectorAll("th,td")].map(td => (td.innerText || "").replace(/\s+/g, " ").trim());
     const links = [...tr.querySelectorAll("a[href]")].map(a => a.href);
     return { text: cells.join(" | "), cells, links };
-  }).filter(r => /0992000|2812000|2822000|CNG|HSD|DIESEL|PETROL|\\bMS\\b/i.test(r.text)));
+  }).filter(r => /0992000|2812000|2822000|CNG|HSD|DIESEL|PETROL|\bMS\b/i.test(r.text)));
 }
 
 async function main() {
@@ -147,8 +147,8 @@ async function main() {
       await log("range_start", { range });
       const found = await fetchHpclRows(hpclPage, range);
       for (const row of found) {
-        const invoiceNo = (row.text.match(/\\b\\d{10}\\b/) || [])[0] || null;
-        const dateRaw = (row.text.match(/\\b\\d{2}[\\/-]\\d{2}[\\/-]\\d{4}\\b/) || [])[0] || null;
+        const invoiceNo = (row.text.match(/\b\d{10}\b/) || [])[0] || null;
+        const dateRaw = (row.text.match(/\b\d{2}[\/-]\d{2}[\/-]\d{4}\b/) || [])[0] || null;
         const fuel = fuelOf(row.text);
         const pdfUrl = row.links.find(x => /salesinvPDFdownload|invKy=/i.test(x)) || null;
         if (invoiceNo && fuel) collected.push({ invoiceNo, dateRaw, date: dateISO(dateRaw), fuel, pdfUrl, rowText: row.text, cells: row.cells, range });
