@@ -11,14 +11,19 @@ const OUT = path.join(ROOT, "data");
 const PDF_DIR = path.join(OUT, "pdf");
 const LOG_DIR = path.join(ROOT, "logs");
 const HPCL_FORM = "https://sales.hpcl.co.in/bportal/retail/retailcust.jsp";
+const HPCL_HOST = "sales.hpcl.co.in";
 const CDP = process.env.HPCL_CDP_URL || "http://127.0.0.1:9222";
 const MODE_INDEX = process.argv.indexOf("--mode");
 const MODE = MODE_INDEX >= 0 ? process.argv[MODE_INDEX + 1] : "backfill";
+const INTERACTIVE_LOGIN = process.argv.includes("--interactive-login");
 const IMPORT_REQUESTED = process.argv.includes("--import-ready");
 const CUSTOMER_CODE = process.env.HPCL_CUSTOMER_CODE || "41012332";
 
 if (!["backfill", "daily"].includes(MODE)) {
   throw new Error('Unsupported mode. Use "--mode backfill" or "--mode daily".');
+}
+if (INTERACTIVE_LOGIN && MODE !== "backfill") {
+  throw new Error("Interactive login is allowed only for a manually started backfill, never for scheduled daily runs.");
 }
 if (IMPORT_REQUESTED) {
   throw new Error("IMPORT DISABLED: this build is download-and-manifest only. Customer identity, HPCL quantity/amount mapping and StationMitra reconciliation must be verified before any import feature is enabled.");
@@ -33,18 +38,18 @@ const ranges = MODE === "daily"
   : [{ from: "01/08/2026", to: "31/10/2026" }, { from: "01/11/2026", to: "18/11/2026" }];
 const sha256 = b => crypto.createHash("sha256").update(b).digest("hex");
 const dateISO = value => {
-  const m = String(value || "").match(/(\d{2})[\/-](\d{2})[\/-](\d{4})/);
+  const m = String(value || "").match(/(\\d{2})[\\/-](\\d{2})[\\/-](\\d{4})/);
   return m ? m[3] + "-" + m[2] + "-" + m[1] : null;
 };
-const fuelOf = value => /0992000|\bCNG\b/i.test(value) ? "CNG"
-  : /2812000|\bHSD\b|DIESEL/i.test(value) ? "HSD"
-  : /2822000|\bMS\b|MOTOR SPIRIT|PETROL/i.test(value) ? "MS" : null;
-const digits = value => String(value || "").replace(/\D/g, "");
+const fuelOf = value => /0992000|\\bCNG\\b/i.test(value) ? "CNG"
+  : /2812000|\\bHSD\\b|DIESEL/i.test(value) ? "HSD"
+  : /2822000|\\bMS\\b|MOTOR SPIRIT|PETROL/i.test(value) ? "MS" : null;
+const digits = value => String(value || "").replace(/\\D/g, "");
 
 await Promise.all([OUT, PDF_DIR, LOG_DIR].map(p => fs.mkdir(p, { recursive: true })));
 const log = async (event, details = {}) => {
   const line = JSON.stringify({ at: new Date().toISOString(), event, ...details });
-  await fs.appendFile(path.join(LOG_DIR, "agent.jsonl"), line + "\n");
+  await fs.appendFile(path.join(LOG_DIR, "agent.jsonl"), line + "\\n");
   console.log(line);
 };
 const fillDate = async (page, prefix, value) => {
@@ -53,33 +58,60 @@ const fillDate = async (page, prefix, value) => {
     await page.locator('[name="' + prefix + part + '"]').fill(v);
   }
 };
+
+async function invoiceFormReady(page) {
+  if (new URL(page.url()).hostname !== HPCL_HOST) return false;
+  const required = [
+    "#cmbcat",
+    '[name="txtfrmday"]',
+    '[name="txtfrmmonth"]',
+    '[name="txtfrmyear"]',
+    '[name="txttoday"]',
+    '[name="txttomonth"]',
+    '[name="txttoyear"]'
+  ];
+  for (const selector of required) {
+    if (!(await page.locator(selector).count())) return false;
+  }
+  return !(await page.locator('input[type="password"]').count());
+}
+
 async function ensureHpclLogin(page) {
   await page.goto(HPCL_FORM, { waitUntil: "domcontentloaded", timeout: 60000 });
   const passwordField = page.locator('input[type="password"]');
   if (await passwordField.count()) {
+    if (!INTERACTIVE_LOGIN) {
+      throw new Error("HPCL login/session expired. Scheduled or non-interactive run stopped safely; sign in manually and run the backfill with --interactive-login.");
+    }
     console.log("\\nHPCL login required. Enter credentials and solve the image CAPTCHA directly in the visible Edge window.");
     console.log("The agent will NOT read, store, transmit, or attempt to solve your password/CAPTCHA.");
     const rl = readline.createInterface({ input, output });
-    try { await rl.question("After HPCL confirms login and the invoice page is visible, press ENTER here to continue... "); }
-    finally { rl.close(); }
-    await page.waitForTimeout(1000);
-    if (await passwordField.count()) {
-      throw new Error("HPCL login is not complete. Password field is still visible; no invoice scan was started.");
+    try {
+      await rl.question("After HPCL confirms login, press ENTER here. The agent will reopen and verify the invoice form... ");
+    } finally {
+      rl.close();
     }
+    // Do not trust the page the user happens to be viewing: revisit the exact invoice form.
+    await page.goto(HPCL_FORM, { waitUntil: "domcontentloaded", timeout: 60000 });
   }
-  if (!page.url().startsWith("https://sales.hpcl.co.in/")) {
-    throw new Error("HPCL session could not be verified on the expected official portal. No invoice scan was started.");
+  if (!(await invoiceFormReady(page))) {
+    throw new Error("HPCL invoice form could not be verified (expected category/date controls are missing or login is still required). No invoice scan was started.");
   }
-  await log("hpcl_session_ready", { host: new URL(page.url()).host, loginMethod: "USER_COMPLETED_VISIBLE_LOGIN_AND_IMAGE_CAPTCHA" });
+  await log("hpcl_session_ready", {
+    host: HPCL_HOST,
+    loginMethod: INTERACTIVE_LOGIN ? "USER_COMPLETED_VISIBLE_LOGIN_AND_IMAGE_CAPTCHA" : "EXISTING_SESSION",
+    invoiceFormVerified: true
+  });
 }
+
 async function fetchHpclRows(page, range) {
-  await page.goto(HPCL_FORM, { waitUntil: "domcontentloaded", timeout: 60000 });
-  const category = page.locator("#cmbcat");
-  if (await category.count()) {
-    const options = await category.locator("option").evaluateAll(es => es.map(e => ({ value: e.value, label: (e.textContent || "").trim() })));
-    const all = options.find(o => /all/i.test(o.label));
-    if (all) await category.selectOption(all.value);
+  if (!(await invoiceFormReady(page))) {
+    throw new Error("HPCL session expired or invoice form is unavailable before search. Run stopped; no login prompt will appear in this mode.");
   }
+  const category = page.locator("#cmbcat");
+  const options = await category.locator("option").evaluateAll(es => es.map(e => ({ value: e.value, label: (e.textContent || "").trim() })));
+  const all = options.find(o => /all/i.test(o.label));
+  if (all) await category.selectOption(all.value);
   await fillDate(page, "txtfrm", range.from);
   await fillDate(page, "txtto", range.to);
   const html = page.locator('input[value="HTML"]');
@@ -89,18 +121,24 @@ async function fetchHpclRows(page, range) {
   await submit.first().click();
   await page.waitForLoadState("domcontentloaded").catch(() => {});
   await page.waitForTimeout(1200);
+  if (await page.locator('input[type="password"]').count()) {
+    throw new Error("HPCL redirected to login during invoice search. Stopping without retry or import.");
+  }
   return await page.locator("tr").evaluateAll(rows => rows.map(tr => {
-    const cells = [...tr.querySelectorAll("th,td")].map(td => (td.innerText || "").replace(/\s+/g, " ").trim());
+    const cells = [...tr.querySelectorAll("th,td")].map(td => (td.innerText || "").replace(/\\s+/g, " ").trim());
     const links = [...tr.querySelectorAll("a[href]")].map(a => a.href);
     return { text: cells.join(" | "), cells, links };
-  }).filter(r => /0992000|2812000|2822000|CNG|HSD|DIESEL|PETROL|\bMS\b/i.test(r.text)));
+  }).filter(r => /0992000|2812000|2822000|CNG|HSD|DIESEL|PETROL|\\bMS\\b/i.test(r.text)));
 }
+
 async function main() {
   try {
     const browser = await chromium.connectOverCDP(CDP);
     const context = browser.contexts()[0];
     if (!context) throw new Error("Edge CDP connected but no browser context found.");
-    let hpclPage = context.pages().find(p => p.url().includes("sales.hpcl.co.in")) || context.pages()[0];
+    let hpclPage = context.pages().find(p => {
+      try { return new URL(p.url()).hostname === HPCL_HOST; } catch { return false; }
+    }) || context.pages()[0];
     if (!hpclPage) hpclPage = await context.newPage();
     await ensureHpclLogin(hpclPage);
 
@@ -109,8 +147,8 @@ async function main() {
       await log("range_start", { range });
       const found = await fetchHpclRows(hpclPage, range);
       for (const row of found) {
-        const invoiceNo = (row.text.match(/\b\d{10}\b/) || [])[0] || null;
-        const dateRaw = (row.text.match(/\b\d{2}[\/-]\d{2}[\/-]\d{4}\b/) || [])[0] || null;
+        const invoiceNo = (row.text.match(/\\b\\d{10}\\b/) || [])[0] || null;
+        const dateRaw = (row.text.match(/\\b\\d{2}[\\/-]\\d{2}[\\/-]\\d{4}\\b/) || [])[0] || null;
         const fuel = fuelOf(row.text);
         const pdfUrl = row.links.find(x => /salesinvPDFdownload|invKy=/i.test(x)) || null;
         if (invoiceNo && fuel) collected.push({ invoiceNo, dateRaw, date: dateISO(dateRaw), fuel, pdfUrl, rowText: row.text, cells: row.cells, range });
@@ -118,7 +156,6 @@ async function main() {
       await log("range_done", { range, matchedRows: found.length, collectedRows: collected.length });
     }
 
-    // Preserve distinct invoice+fuel rows. Flag conflicting source rows rather than silently choosing one.
     const grouped = new Map();
     for (const row of collected) {
       const key = row.invoiceNo + "|" + row.fuel;
@@ -156,12 +193,7 @@ async function main() {
           const linkedRows = uniqueRows.filter(r => r.pdfUrl === url);
           const normalizedText = digits(pdfText);
           const invoiceNoFound = linkedRows.length > 0 && linkedRows.every(r => normalizedText.includes(digits(r.invoiceNo)));
-          parsed = {
-            pages: parsedPdf.numpages,
-            textChars: pdfText.length,
-            invoiceNoFound,
-            parseOk: pdfText.trim().length > 0
-          };
+          parsed = { pages: parsedPdf.numpages, textChars: pdfText.length, invoiceNoFound, parseOk: pdfText.trim().length > 0 };
         } catch (e) {
           parsed.error = String(e);
         }
