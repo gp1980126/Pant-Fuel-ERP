@@ -7,7 +7,7 @@ A local Windows agent for HPCL invoice discovery, PDF download, SHA-256 fingerpr
 2. Open PowerShell in this folder.
 3. Run: `powershell -ExecutionPolicy Bypass -File .\\setup-and-backfill.ps1`.
 4. If HPCL asks for login, enter credentials and solve the image CAPTCHA yourself in the visible Edge window. Return to PowerShell and press Enter.
-5. The agent reopens the exact HPCL invoice page and verifies the expected category and date controls before scanning. If the invoice form cannot be verified, it stops.
+5. The agent opens the HPCL dashboard, clicks the Invoices tile itself, and verifies the expected category and date controls before scanning. You do not need to click Invoices manually. If the invoice form cannot be verified, it stops.
 
 The setup checks Node.js 22+, verifies Edge CDP, installs dependencies and scans 01-Aug-2026 through 18-Nov-2026 in two HPCL date ranges. It downloads linked PDFs and writes a manifest. It does **not** open StationMitra, write to Supabase, or import any purchase record.
 
