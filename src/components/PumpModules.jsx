@@ -6115,7 +6115,7 @@ export function Purchase({data,update}){
           const validQty=n(r.quantity)>0, validTotal=n(r.totalAmount||r.amount)>0;
           const key=purchaseBusinessKey(r);
           let status='READY';
-          if(dateErr || !validFuel || !validQty || !validTotal) status='INVALID';
+          if(dateErr || !String(r.invoiceNo||r.billingDocNo||'').trim() || !validFuel || !validQty || !validTotal) status='INVALID';
           else if(seen.has(key) || batchSeen.has(key)) status='DUPLICATE';
           batchSeen.add(key);
           return {...r,status,selected:status==='READY'};
@@ -6127,24 +6127,48 @@ export function Purchase({data,update}){
     }catch(err){console.error(err);setMsg('❌ PDF पढ़ने में error आया।');}
     finally{setBusy(false);e.target.value='';}
   };
-  const importSelected=()=>{
-    const rows=preview.filter(x=>x.selected&&x.status==='READY');
-    if(!rows.length){setMsg('Import करने के लिए valid row select करें।');return;}
-    const existingKeys=new Set(existing.map(p=>purchaseBusinessKey(p)));
-    const batchKeys=new Set();
-    const conflicts=rows.filter(r=>{const k=purchaseBusinessKey(r);const hit=existingKeys.has(k)||batchKeys.has(k);batchKeys.add(k);return hit;});
-    if(conflicts.length){
-      setMsg(`❌ Import रोक दिया गया: ${conflicts.length} duplicate/conflict row मिली। पहले Preview में duplicate rows हटाएँ.`);
-      setPreview(p=>p.map(x=>conflicts.some(c=>c===x)?{...x,status:'DUPLICATE',selected:false}:x));
-      return;
+  const importLock=useRef(false);
+  const importSelected=async()=>{
+    // A ref lock closes the rapid double-click window before React can rerender.
+    if(importLock.current) return;
+    importLock.current=true;
+    try{
+      const rows=preview.filter(x=>x.selected&&x.status==='READY');
+      if(!rows.length){setMsg('Import करने के लिए valid row select करें।');return;}
+      const existingKeys=new Set(existing.map(p=>purchaseBusinessKey(p)));
+      const batchKeys=new Set();
+      const conflicts=rows.filter(r=>{
+        const k=purchaseBusinessKey(r);
+        const hit=!String(r.invoiceNo||r.billingDocNo||'').trim() || existingKeys.has(k) || batchKeys.has(k);
+        batchKeys.add(k);
+        return hit;
+      });
+      if(conflicts.length){
+        setMsg(`❌ Import रोक दिया गया: ${conflicts.length} duplicate/invalid invoice row मिली। Preview में जाँचें.`);
+        setPreview(p=>p.map(x=>conflicts.some(c=>c===x)?{...x,status:'DUPLICATE',selected:false}:x));
+        return;
+      }
+      const records=rows.map(r=>({
+        id:Date.now()+Math.random(), invoiceNo:r.invoiceNo,billingDocNo:r.billingDocNo,date:r.date,fuel:r.fuel,
+        productName:r.productName,productCode:r.productCode,productType:r.productType,quantity:r.quantity,unit:r.unit,
+        rate:r.rate,basicAmount:r.basicAmount,taxAmount:r.taxAmount,taxBreakdown:r.taxBreakdown,totalAmount:r.totalAmount||r.amount,
+        amount:r.totalAmount||r.amount,supplyLocation:r.supplyLocation||'',salesOrder:r.salesOrder||'',vehicleNo:r.vehicleNo||'',source:'HPCL'
+      }));
+      // update() resolves only after the central mutation gateway accepts the new state.
+      // It does not itself prove that the later asynchronous Supabase sync has completed.
+      const result=await update({purchases:[...existing,...records]});
+      if(!result?.ok){
+        setMsg(`❌ Import रोक दिया गया: ${result?.reason||'डेटा स्वीकार नहीं हुआ'}। Preview सुरक्षित रखा गया है।`);
+        return;
+      }
+      setPreview([]);
+      setMsg(`⏳ ${records.length} purchase row ऐप में स्वीकार हुई। Cloud Sync status "Synced" होने और Purchase Register में जाँच के बाद ही इसे पूर्ण मानें।`);
+    }catch(err){
+      console.error(err);
+      setMsg('❌ Purchase import save नहीं हुआ। Preview सुरक्षित रखा गया है; Purchase Register refresh करके जाँचें।');
+    }finally{
+      importLock.current=false;
     }
-    const records=rows.map(r=>({
-      id:Date.now()+Math.random(), invoiceNo:r.invoiceNo,billingDocNo:r.billingDocNo,date:r.date,fuel:r.fuel,
-      productName:r.productName,productCode:r.productCode,productType:r.productType,quantity:r.quantity,unit:r.unit,
-      rate:r.rate,basicAmount:r.basicAmount,taxAmount:r.taxAmount,taxBreakdown:r.taxBreakdown,totalAmount:r.totalAmount||r.amount,
-      amount:r.totalAmount||r.amount,supplyLocation:r.supplyLocation||'',salesOrder:r.salesOrder||'',vehicleNo:r.vehicleNo||'',source:'HPCL'
-    }));
-    update({purchases:[...existing,...records]}); setPreview([]); setMsg(`✅ ${records.length} purchase bill imported.`);
   };
   const filtered=existing.filter(p=>p.date>=from&&p.date<=to);
   const fuels=['MS','HSD','CNG'];
