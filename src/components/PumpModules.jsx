@@ -6128,7 +6128,7 @@ export function Purchase({data,update}){
     finally{setBusy(false);e.target.value='';}
   };
   const importLock=useRef(false);
-  const importSelected=()=>{
+  const importSelected=async()=>{
     // A ref lock closes the rapid double-click window before React can rerender.
     if(importLock.current) return;
     importLock.current=true;
@@ -6154,12 +6154,18 @@ export function Purchase({data,update}){
         rate:r.rate,basicAmount:r.basicAmount,taxAmount:r.taxAmount,taxBreakdown:r.taxBreakdown,totalAmount:r.totalAmount||r.amount,
         amount:r.totalAmount||r.amount,supplyLocation:r.supplyLocation||'',salesOrder:r.salesOrder||'',vehicleNo:r.vehicleNo||'',source:'HPCL'
       }));
-      update({purchases:[...existing,...records]});
+      // update() resolves only after the central mutation gateway accepts the new state.
+      // It does not itself prove that the later asynchronous Supabase sync has completed.
+      const result=await update({purchases:[...existing,...records]});
+      if(!result?.ok){
+        setMsg(`❌ Import रोक दिया गया: ${result?.reason||'डेटा स्वीकार नहीं हुआ'}। Preview सुरक्षित रखा गया है।`);
+        return;
+      }
       setPreview([]);
-      setMsg(`✅ ${records.length} purchase bill imported.`);
+      setMsg(`⏳ ${records.length} purchase row ऐप में स्वीकार हुई। Cloud Sync status "Synced" होने और Purchase Register में जाँच के बाद ही इसे पूर्ण मानें।`);
     }catch(err){
       console.error(err);
-      setMsg('❌ Purchase import save नहीं हुआ। कृपया Purchase Register refresh करके जाँचें।');
+      setMsg('❌ Purchase import save नहीं हुआ। Preview सुरक्षित रखा गया है; Purchase Register refresh करके जाँचें।');
     }finally{
       importLock.current=false;
     }
