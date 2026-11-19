@@ -17,6 +17,7 @@ const MODE_INDEX = process.argv.indexOf("--mode");
 const MODE = MODE_INDEX >= 0 ? process.argv[MODE_INDEX + 1] : "backfill";
 const INTERACTIVE_LOGIN = process.argv.includes("--interactive-login");
 const IMPORT_REQUESTED = process.argv.includes("--import-ready");
+const VERIFY_ONLY = process.argv.includes("--verify-only");
 const CUSTOMER_CODE = process.env.HPCL_CUSTOMER_CODE || "41012332";
 
 if (!["backfill", "daily"].includes(MODE)) {
@@ -176,6 +177,17 @@ async function main() {
     }) || context.pages()[0];
     if (!hpclPage) hpclPage = await context.newPage();
     hpclPage = await ensureHpclLogin(hpclPage);
+    if (VERIFY_ONLY) {
+      await log("verify_only_complete", {
+        invoiceFormVerified: true,
+        navigation: "AUTOMISSION_OPENED_INVOICES_TILE",
+        scanned: false,
+        downloaded: 0,
+        imported: 0
+      });
+      console.log("HPCL Invoices page verified by Automission. Verify-only mode: no search, PDF download, or import was performed.");
+      return;
+    }
 
     const collected = [];
     for (const range of ranges) {
