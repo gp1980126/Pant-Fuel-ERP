@@ -3,6 +3,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { chromium } from "playwright";
 import pdfParse from "pdf-parse";
+import readline from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 
 const ROOT = path.resolve(process.env.HPCL_AGENT_HOME || process.cwd());
 const OUT = path.join(ROOT, "data");
@@ -51,6 +53,25 @@ const fillDate = async (page, prefix, value) => {
     await page.locator('[name="' + prefix + part + '"]').fill(v);
   }
 };
+async function ensureHpclLogin(page) {
+  await page.goto(HPCL_FORM, { waitUntil: "domcontentloaded", timeout: 60000 });
+  const passwordField = page.locator('input[type="password"]');
+  if (await passwordField.count()) {
+    console.log("\\nHPCL login required. Enter credentials and solve the image CAPTCHA directly in the visible Edge window.");
+    console.log("The agent will NOT read, store, transmit, or attempt to solve your password/CAPTCHA.");
+    const rl = readline.createInterface({ input, output });
+    try { await rl.question("After HPCL confirms login and the invoice page is visible, press ENTER here to continue... "); }
+    finally { rl.close(); }
+    await page.waitForTimeout(1000);
+    if (await passwordField.count()) {
+      throw new Error("HPCL login is not complete. Password field is still visible; no invoice scan was started.");
+    }
+  }
+  if (!page.url().startsWith("https://sales.hpcl.co.in/")) {
+    throw new Error("HPCL session could not be verified on the expected official portal. No invoice scan was started.");
+  }
+  await log("hpcl_session_ready", { host: new URL(page.url()).host, loginMethod: "USER_COMPLETED_VISIBLE_LOGIN_AND_IMAGE_CAPTCHA" });
+}
 async function fetchHpclRows(page, range) {
   await page.goto(HPCL_FORM, { waitUntil: "domcontentloaded", timeout: 60000 });
   const category = page.locator("#cmbcat");
@@ -81,6 +102,7 @@ async function main() {
     if (!context) throw new Error("Edge CDP connected but no browser context found.");
     let hpclPage = context.pages().find(p => p.url().includes("sales.hpcl.co.in")) || context.pages()[0];
     if (!hpclPage) hpclPage = await context.newPage();
+    await ensureHpclLogin(hpclPage);
 
     const collected = [];
     for (const range of ranges) {
