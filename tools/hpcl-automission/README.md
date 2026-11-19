@@ -1,11 +1,13 @@
 # StationMitra HPCL Automission
 
-A local Windows agent for HPCL invoice discovery, PDF download, SHA-256 fingerprinting and a review manifest. This version is deliberately **download-only**.
+A local Windows agent for HPCL invoice discovery, PDF download, SHA-256 fingerprinting and a review manifest. This version is deliberately **download-only** and uses a **human-completed image-CAPTCHA login**.
 
 ## One-time historical backfill
-1. Keep Edge open with the dedicated profile, signed in to HPCL. Edge CDP must be available at http://127.0.0.1:9222.
-2. Open PowerShell in this folder.
-3. Run: `powershell -ExecutionPolicy Bypass -File .\setup-and-backfill.ps1`
+1. Start Edge with a dedicated profile and CDP at `http://127.0.0.1:9222`.
+2. Run the agent. It opens the official HPCL invoice page. If login is required, complete username/password and image CAPTCHA yourself in the visible Edge window, then return to PowerShell and press Enter.
+3. The agent checks that the password field is no longer present and the page remains on the official `sales.hpcl.co.in` host before it scans invoices. If the check fails, it stops.
+4. Open PowerShell in this folder.
+5. Run: `powershell -ExecutionPolicy Bypass -File .\setup-and-backfill.ps1`
 
 The setup checks Node.js 22+, verifies Edge CDP, installs dependencies and scans 01-Aug-2026 through 18-Nov-2026 in two HPCL date ranges. It downloads linked PDFs and writes a manifest. It does **not** open StationMitra, write to Supabase, or import any purchase record.
 
@@ -21,7 +23,8 @@ On Windows PowerShell 5.1 this installs 15 daily triggers: 08:00, 09:00, ... 22:
 - `logs\agent.jsonl` — run and exception log
 
 ## Verification limits and safety
-- Uses the logged-in Edge session; no password or OTP is stored.
+- Uses the user's visible Edge session. The user enters credentials and solves the image CAPTCHA directly on the official HPCL page; the agent never reads, stores, logs, or submits credentials or CAPTCHA answers.
+- No CAPTCHA solving, bypass, stealth, or authentication circumvention is implemented.
 - Never closes the user's Edge browser.
 - Checks that each downloaded response is a PDF and uses pdf-parse to extract text and verify that listed invoice numbers appear in the PDF.
 - Preserves distinct invoice+fuel rows and flags conflicting source rows.
