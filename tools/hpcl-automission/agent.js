@@ -10,7 +10,7 @@ const ROOT = path.resolve(process.env.HPCL_AGENT_HOME || process.cwd());
 const OUT = path.join(ROOT, "data");
 const PDF_DIR = path.join(OUT, "pdf");
 const LOG_DIR = path.join(ROOT, "logs");
-const HPCL_FORM = "https://sales.hpcl.co.in/bportal/retail/retailcust.jsp";
+const HPCL_DASHBOARD = "https://sales.hpcl.co.in/bportal/retail/dashboard.jsp";
 const HPCL_HOST = "sales.hpcl.co.in";
 const CDP = process.env.HPCL_CDP_URL || "http://127.0.0.1:9222";
 const MODE_INDEX = process.argv.indexOf("--mode");
@@ -76,32 +76,67 @@ async function invoiceFormReady(page) {
   return !(await page.locator('input[type="password"]').count());
 }
 
+async function openInvoicePage(page) {
+  if (await invoiceFormReady(page)) return page;
+  if (new URL(page.url()).hostname !== HPCL_HOST) {
+    throw new Error("Cannot open HPCL Invoices: current tab is not on the official HPCL host.");
+  }
+
+  // Dashboard tile navigation is performed by the agent; the user does not need
+  // to click Invoices manually. Do not submit any search form in this step.
+  const invoiceCandidates = [
+    page.getByRole("link", { name: /^invoices?$/i }),
+    page.getByRole("button", { name: /^invoices?$/i }),
+    page.getByText(/^invoices?$/i)
+  ];
+  for (const candidate of invoiceCandidates) {
+    const count = await candidate.count().catch(() => 0);
+    if (!count) continue;
+    const target = candidate.first();
+    if (!(await target.isVisible().catch(() => false))) continue;
+    const popupPromise = page.waitForEvent("popup", { timeout: 1500 }).catch(() => null);
+    await target.click({ timeout: 10000 });
+    const popup = await popupPromise;
+    if (popup) page = popup;
+    await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    if (await invoiceFormReady(page)) return page;
+    break;
+  }
+
+  throw new Error("Automission reached the HPCL dashboard but could not verify the Invoices page. The portal layout or invoice tile selector needs inspection. No invoice search or download was started.");
+}
+
 async function ensureHpclLogin(page) {
-  await page.goto(HPCL_FORM, { waitUntil: "domcontentloaded", timeout: 60000 });
+  if (new URL(page.url()).hostname !== HPCL_HOST) {
+    await page.goto(HPCL_DASHBOARD, { waitUntil: "domcontentloaded", timeout: 60000 });
+  }
   const passwordField = page.locator('input[type="password"]');
   if (await passwordField.count()) {
     if (!INTERACTIVE_LOGIN) {
       throw new Error("HPCL login/session expired. Scheduled or non-interactive run stopped safely; sign in manually and run the backfill with --interactive-login.");
     }
-    console.log("\nHPCL login required. Enter credentials and solve the image CAPTCHA directly in the visible Edge window.");
+    console.log("\\nHPCL login required. Enter credentials and solve the image CAPTCHA directly in the visible Edge window.");
     console.log("The agent will NOT read, store, transmit, or attempt to solve your password/CAPTCHA.");
     const rl = readline.createInterface({ input, output });
     try {
-      await rl.question("After HPCL confirms login, press ENTER here. The agent will reopen and verify the invoice form... ");
+      await rl.question("After HPCL confirms login, press ENTER here. The agent will open the dashboard and navigate to Invoices... ");
     } finally {
       rl.close();
     }
-    // Do not trust the page the user happens to be viewing: revisit the exact invoice form.
-    await page.goto(HPCL_FORM, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(HPCL_DASHBOARD, { waitUntil: "domcontentloaded", timeout: 60000 });
   }
-  if (!(await invoiceFormReady(page))) {
-    throw new Error("HPCL invoice form could not be verified (expected category/date controls are missing or login is still required). No invoice scan was started.");
+  if (await page.locator('input[type="password"]').count()) {
+    throw new Error("HPCL login is still required. No invoice scan was started.");
   }
+  page = await openInvoicePage(page);
   await log("hpcl_session_ready", {
     host: HPCL_HOST,
     loginMethod: INTERACTIVE_LOGIN ? "USER_COMPLETED_VISIBLE_LOGIN_AND_IMAGE_CAPTCHA" : "EXISTING_SESSION",
-    invoiceFormVerified: true
+    invoiceFormVerified: true,
+    navigation: "AUTOMISSION_OPENED_INVOICES_TILE"
   });
+  return page;
 }
 
 async function fetchHpclRows(page, range) {
@@ -140,7 +175,7 @@ async function main() {
       try { return new URL(p.url()).hostname === HPCL_HOST; } catch { return false; }
     }) || context.pages()[0];
     if (!hpclPage) hpclPage = await context.newPage();
-    await ensureHpclLogin(hpclPage);
+    hpclPage = await ensureHpclLogin(hpclPage);
 
     const collected = [];
     for (const range of ranges) {
