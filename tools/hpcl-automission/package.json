@@ -1,0 +1,16 @@
+{
+  "name": "stationmitra-hpcl-automission",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "backfill": "node agent.js --mode backfill",
+    "backfill:import": "node agent.js --mode backfill --import-ready",
+    "daily": "node agent.js --mode daily",
+    "daily:import": "node agent.js --mode daily --import-ready"
+  },
+  "dependencies": {
+    "pdf-parse": "^1.1.1",
+    "playwright": "^1.65.0"
+  }
+}

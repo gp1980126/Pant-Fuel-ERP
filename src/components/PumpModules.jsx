@@ -6065,7 +6065,11 @@ export function hpclParseInvoicePdfText2(text,fileName=''){
     const landedRate = p.quantity > 0 ? billTotal / p.quantity : 0;
     return {
       ...p,
-      rate: landedRate,
+      // Keep HPCL's printed unit rate separate from landed/effective rate.
+      // The Purchase Preview's Bill Rate column reads "rate"; effective rate is
+      // derived from totalAmount / quantity by purchaseEffectiveRate().
+      rate: n(p.rate),
+      effectiveRate: landedRate,
       totalAmount: billTotal,
       amount: billTotal,
       taxAmount: tax,
